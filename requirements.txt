@@ -1,0 +1,7 @@
+Flask==2.3.3
+gunicorn==21.2.0
+mysql-connector-python
+requests==2.31.0
+python-telegram-bot==22.3
+pytz
+python-dotenv
