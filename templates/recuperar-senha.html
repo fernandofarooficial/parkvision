@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}Recuperar Senha - ParkVision{% endblock %}
+
+{% block extra_css %}
+<style>
+.recuperacao-container {
+    max-width: 500px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.recuperacao-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.recuperacao-header h2 {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+.form-floating {
+    margin-bottom: 1rem;
+}
+
+.btn-recuperar {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.info-card {
+    background: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.step-indicator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #6c757d;
+    font-weight: bold;
+    margin: 0 1rem;
+    position: relative;
+}
+
+.step.active {
+    background: #0d6efd;
+    color: white;
+}
+
+.step.completed {
+    background: #28a745;
+    color: white;
+}
+
+.step::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    width: 2rem;
+    height: 2px;
+    background: #e9ecef;
+    transform: translateY(-50%);
+}
+
+.step:last-child::after {
+    display: none;
+}
+
+.step.completed::after {
+    background: #28a745;
+}
+
+.token-input {
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    text-align: center;
+    letter-spacing: 2px;
+}
+
+.password-strength {
+    margin-top: 0.5rem;
+}
+
+.strength-bar {
+    height: 4px;
+    background: #e9ecef;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.strength-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 2px;
+}
+
+.strength-weak { 
+    background: #dc3545; 
+    width: 25%; 
+}
+
+.strength-fair { 
+    background: #ffc107; 
+    width: 50%; 
+}
+
+.strength-good { 
+    background: #28a745; 
+    width: 75%; 
+}
+
+.strength-strong { 
+    background: #20c997; 
+    width: 100%; 
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="recuperacao-container">
+    <!-- Indicador de etapas -->
+    <div class="step-indicator">
+        <div class="step active" id="step-1">1</div>
+        <div class="step" id="step-2">2</div>
+        <div class="step" id="step-3">3</div>
+    </div>
+
+    <!-- Etapa 1: Solicitar recuperação -->
+    <div id="etapa-1">
+        <div class="recuperacao-header">
+            <i class="bi bi-key text-primary" style="font-size: 3rem;"></i>
+            <h2>Recuperar Senha</h2>
+            <p class="text-muted">Informe seu email para receber instruções</p>
+        </div>
+
+        <div class="info-card">
+            <h6><i class="bi bi-info-circle me-2"></i>Como funciona?</h6>
+            <p class="mb-0">Enviaremos um token de segurança para seu email. Use este token para definir uma nova senha.</p>
+        </div>
+
+        <div id="alert-container-1"></div>
+
+        <form id="solicitarRecuperacaoForm">
+            <div class="form-floating">
+                <input type="email" class="form-control" id="email-recuperacao" name="email" placeholder="seu@email.com" required>
+                <label for="email-recuperacao">Email cadastrado</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-recuperar" id="btnSolicitar">
+                <i class="bi bi-envelope me-2"></i>Enviar Token de Recuperação
+            </button>
+        </form>
+    </div>
+
+    <!-- Etapa 2: Inserir token (oculta inicialmente) -->
+    <div id="etapa-2" class="d-none">
+        <div class="recuperacao-header">
+            <i class="bi bi-shield-check text-success" style="font-size: 3rem;"></i>
+            <h2>Token Enviado!</h2>
+            <p class="text-muted">Verifique seu email e insira o token abaixo</p>
+        </div>
+
+        <div class="info-card">
+            <p class="mb-0">
+                <strong>Token enviado para:</strong><br>
+                <span id="email-destino"></span>
+            </p>
+            <small class="text-muted mt-2 d-block">
+                Não recebeu? Verifique sua caixa de spam ou 
+                <a href="#" onclick="voltarEtapa1()">solicite novamente</a>
+            </small>
+        </div>
+
+        <div id="alert-container-2"></div>
+
+        <form id="validarTokenForm">
+            <div class="form-floating">
+                <input type="text" class="form-control token-input" id="token-recuperacao" name="token" placeholder="TOKEN-DE-RECUPERACAO" required maxlength="50">
+                <label for="token-recuperacao">Token de Recuperação</label>
+                <div class="form-text">Cole o token recebido por email</div>
+            </div>
+
+            <button type="submit" class="btn btn-success btn-recuperar" id="btnValidarToken">
+                <i class="bi bi-check-circle me-2"></i>Validar Token
+            </button>
+        </form>
+    </div>
+
+    <!-- Etapa 3: Nova senha (oculta inicialmente) -->
+    <div id="etapa-3" class="d-none">
+        <div class="recuperacao-header">
+            <i class="bi bi-shield-lock text-warning" style="font-size: 3rem;"></i>
+            <h2>Nova Senha</h2>
+            <p class="text-muted">Defina uma senha forte para sua conta</p>
+        </div>
+
+        <div id="alert-container-3"></div>
+
+        <form id="novaSenhaForm">
+            <input type="hidden" id="token-validado">
+
+            <div class="form-floating">
+                <input type="password" class="form-control" id="nova-senha" name="nova_senha" placeholder="Nova senha" required>
+                <label for="nova-senha">Nova Senha</label>
+                
+                <div class="password-strength">
+                    <div class="strength-bar">
+                        <div class="strength-fill" id="strength-fill"></div>
+                    </div>
+                    <small class="text-muted" id="strength-text">Digite sua nova senha</small>
+                </div>
+            </div>
+
+            <div class="form-floating">
+                <input type="password" class="form-control" id="confirmar-nova-senha" name="confirmar_senha" placeholder="Confirmar nova senha" required>
+                <label for="confirmar-nova-senha">Confirmar Nova Senha</label>
+                <div class="form-text" id="confirm-feedback"></div>
+            </div>
+
+            <button type="submit" class="btn btn-warning btn-recuperar" id="btnNovaSenha" disabled>
+                <i class="bi bi-shield-check me-2"></i>Definir Nova Senha
+            </button>
+        </form>
+    </div>
+
+    <!-- Etapa 4: Sucesso (oculta inicialmente) -->
+    <div id="etapa-4" class="d-none">
+        <div class="recuperacao-header">
+            <i class="bi bi-check-circle text-success" style="font-size: 4rem;"></i>
+            <h2>Senha Alterada!</h2>
+            <p class="text-muted">Sua senha foi alterada com sucesso</p>
+        </div>
+
+        <div class="info-card">
+            <h6><i class="bi bi-lightbulb me-2"></i>Próximos passos</h6>
+            <p class="mb-0">Agora você pode fazer login com sua nova senha.</p>
+        </div>
+
+        <a href="/login" class="btn btn-success btn-recuperar">
+            <i class="bi bi-box-arrow-in-right me-2"></i>Fazer Login
+        </a>
+    </div>
+
+    <div class="text-center mt-3">
+        <a href="/login" class="text-decoration-none">← Voltar para Login</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    let senhaValida = false;
+    let senhasIguais = false;
+
+    // Form de solicitação
+    $('#solicitarRecuperacaoForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const email = $('#email-recuperacao').val().trim().toLowerCase();
+        
+        if (!email) {
+            showAlert(1, 'Por favor, informe seu email', 'warning');
+            return;
+        }
+        
+        const btnSolicitar = $('#btnSolicitar');
+        const btnText = btnSolicitar.html();
+        btnSolicitar.html('<span class="spinner-border spinner-border-sm me-2"></span>Enviando...').prop('disabled', true);
+        
+        $.ajax({
+            url: '/api/auth/solicitar-recuperacao',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ email: email }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert(1, response.message, 'success');
+                    $('#email-destino').text(email);
+                    
+                    // Para desenvolvimento - mostrar token
+                    if (response.token) {
+                        $('#token-recuperacao').val(response.token);
+                        showAlert(1, 'DESENVOLVIMENTO: Token = ' + response.token, 'info');
+                    }
+                    
+                    setTimeout(() => {
+                        irParaEtapa(2);
+                    }, 2000);
+                } else {
+                    showAlert(1, response.message, 'warning');
+                }
+            },
+            error: function(xhr) {
+                showAlert(1, 'Erro interno do servidor', 'danger');
+            },
+            complete: function() {
+                btnSolicitar.html(btnText).prop('disabled', false);
+            }
+        });
+    });
+
+    // Form de validação de token
+    $('#validarTokenForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const token = $('#token-recuperacao').val().trim();
+        
+        if (!token) {
+            showAlert(2, 'Por favor, informe o token', 'warning');
+            return;
+        }
+        
+        $('#token-validado').val(token);
+        showAlert(2, 'Token validado! Agora defina sua nova senha.', 'success');
+        
+        setTimeout(() => {
+            irParaEtapa(3);
+        }, 1500);
+    });
+
+    // Form de nova senha
+    $('#novaSenhaForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const token = $('#token-validado').val();
+        const novaSenha = $('#nova-senha').val();
+        const confirmarSenha = $('#confirmar-nova-senha').val();
+        
+        if (!novaSenha || !confirmarSenha) {
+            showAlert(3, 'Por favor, preencha todos os campos', 'warning');
+            return;
+        }
+        
+        if (!senhaValida) {
+            showAlert(3, 'A senha não atende aos requisitos de segurança', 'warning');
+            return;
+        }
+        
+        if (novaSenha !== confirmarSenha) {
+            showAlert(3, 'A confirmação de senha não confere', 'warning');
+            return;
+        }
+        
+        const btnNovaSenha = $('#btnNovaSenha');
+        const btnText = btnNovaSenha.html();
+        btnNovaSenha.html('<span class="spinner-border spinner-border-sm me-2"></span>Definindo...').prop('disabled', true);
+        
+        $.ajax({
+            url: '/api/auth/recuperar-senha',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                token: token,
+                nova_senha: novaSenha
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert(3, response.message, 'success');
+                    setTimeout(() => {
+                        irParaEtapa(4);
+                    }, 2000);
+                } else {
+                    showAlert(3, response.message, 'danger');
+                }
+            },
+            error: function(xhr) {
+                showAlert(3, 'Erro interno do servidor', 'danger');
+            },
+            complete: function() {
+                btnNovaSenha.html(btnText).prop('disabled', false);
+            }
+        });
+    });
+
+    // Validação em tempo real da senha
+    $('#nova-senha').on('input', function() {
+        const senha = $(this).val();
+        validarSenha(senha);
+        verificarConfirmacao();
+    });
+
+    $('#confirmar-nova-senha').on('input', function() {
+        verificarConfirmacao();
+    });
+
+    $('#nova-senha, #confirmar-nova-senha').on('input', function() {
+        atualizarBotaoNovaSenha();
+    });
+
+    function irParaEtapa(etapa) {
+        // Ocultar todas as etapas
+        $('[id^="etapa-"]').addClass('d-none');
+        
+        // Mostrar etapa atual
+        $(`#etapa-${etapa}`).removeClass('d-none');
+        
+        // Atualizar indicador
+        $('.step').removeClass('active completed');
+        for (let i = 1; i < etapa; i++) {
+            $(`#step-${i}`).addClass('completed');
+        }
+        $(`#step-${etapa}`).addClass('active');
+    }
+
+    function voltarEtapa1() {
+        $('#email-recuperacao').val('').focus();
+        irParaEtapa(1);
+    }
+
+    function validarSenha(senha) {
+        const requisitos = {
+            length: senha.length >= 8,
+            upper: /[A-Z]/.test(senha),
+            lower: /[a-z]/.test(senha),
+            number: /\d/.test(senha),
+            special: /[!@#$%^&*(),.?":{}|<>]/.test(senha)
+        };
+
+        const validCount = Object.values(requisitos).filter(Boolean).length;
+        senhaValida = validCount === 5;
+
+        let strengthClass = '';
+        let strengthText = '';
+
+        if (senha.length === 0) {
+            strengthText = 'Digite sua nova senha';
+            strengthClass = '';
+        } else if (validCount <= 2) {
+            strengthText = 'Senha muito fraca';
+            strengthClass = 'strength-weak';
+        } else if (validCount === 3) {
+            strengthText = 'Senha fraca';
+            strengthClass = 'strength-fair';
+        } else if (validCount === 4) {
+            strengthText = 'Senha boa';
+            strengthClass = 'strength-good';
+        } else {
+            strengthText = 'Senha forte';
+            strengthClass = 'strength-strong';
+        }
+
+        $('#strength-fill').removeClass('strength-weak strength-fair strength-good strength-strong').addClass(strengthClass);
+        $('#strength-text').text(strengthText);
+    }
+
+    function verificarConfirmacao() {
+        const novaSenha = $('#nova-senha').val();
+        const confirmarSenha = $('#confirmar-nova-senha').val();
+        const feedback = $('#confirm-feedback');
+
+        if (confirmarSenha.length === 0) {
+            feedback.text('').removeClass('text-success text-danger');
+            senhasIguais = false;
+        } else if (novaSenha === confirmarSenha) {
+            feedback.text('✓ Senhas conferem').removeClass('text-danger').addClass('text-success');
+            senhasIguais = true;
+        } else {
+            feedback.text('✗ Senhas não conferem').removeClass('text-success').addClass('text-danger');
+            senhasIguais = false;
+        }
+    }
+
+    function atualizarBotaoNovaSenha() {
+        const novaSenha = $('#nova-senha').val().trim();
+        const confirmarSenha = $('#confirmar-nova-senha').val().trim();
+
+        const podeDefinir = novaSenha && confirmarSenha && senhaValida && senhasIguais;
+        $('#btnNovaSenha').prop('disabled', !podeDefinir);
+    }
+
+    function showAlert(etapa, message, type) {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        $(`#alert-container-${etapa}`).html(alertHtml);
+        
+        // Auto dismiss para alertas de sucesso
+        if (type === 'success') {
+            setTimeout(function() {
+                $('.alert').alert('close');
+            }, 5000);
+        }
+    }
+});
+</script>
+{% endblock %}

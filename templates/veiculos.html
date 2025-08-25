@@ -1,0 +1,2133 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision - Veículos do Condomínio{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-entrada {
+        color: #198754;
+        font-weight: bold;
+    }
+    .status-saida {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    .refresh-icon {
+        animation: spin 1s linear infinite;
+        display: none;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .timestamp {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+    .table-responsive {
+        min-height: 400px;
+    }
+    .filtro-container {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .btn-mapa-vagas {
+        background-color: #fd7e14;
+        border-color: #fd7e14;
+        color: white;
+    }
+    .btn-mapa-vagas:hover {
+        background-color: #e76b00;
+        border-color: #e76b00;
+        color: white;
+    }
+    .btn-cadastrar-veiculo {
+        background-color: #20c997;
+        border-color: #20c997;
+        color: white;
+    }
+    .btn-cadastrar-veiculo:hover {
+        background-color: #1ba87e;
+        border-color: #1ba87e;
+        color: white;
+    }
+    
+    /* Classes para status das vagas */
+    .status-disponivel {
+        color: #198754;
+        font-weight: bold;
+    }
+    .status-completo {
+        color: #fd7e14;
+        font-weight: bold;
+    }
+    .status-excesso {
+        color: #dc3545;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h2><i class="bi bi-car-front me-2"></i>Monitoramento de Veículos</h2>
+        <p class="lead">Condomínio: <span id="nome-condominio">Carregando...</span></p>
+    </div>
+    <div class="col-md-4 text-end">
+        <div class="d-flex justify-content-end align-items-center">
+            <span id="ultima-atualizacao" class="me-2">Última atualização: <span class="timestamp">--:--:--</span></span>
+            <button id="btn-atualizar" class="btn btn-primary">
+                <i class="bi bi-arrow-clockwise me-1"></i>
+                <i class="bi bi-arrow-clockwise refresh-icon"></i>
+                Atualizar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-12 text-end">
+        <div class="d-flex justify-content-end align-items-center gap-2">
+            <a href="#" id="btn-mapa-vagas" class="btn btn-mapa-vagas me-auto">
+                <i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas
+            </a>
+            <button id="btn-relatorios" class="btn btn-info">
+                <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatórios
+            </button>
+            <button id="btn-nao-cadastrados" class="btn btn-warning">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Veículos não cadastrados: <span id="total-nao-cadastrados-header">0</span>
+            </button>
+            <button id="btn-cadastrar-veiculo" class="btn btn-cadastrar-veiculo">
+                <i class="bi bi-plus-circle me-2"></i>Veículo + Permissão
+            </button>
+            <button id="btn-criar-permissao" class="btn btn-success">
+                <i class="bi bi-plus-circle me-2"></i>Permissão
+            </button>
+            <button id="btn-modulo-veiculo" class="btn btn-warning">
+                <i class="bi bi-car-front me-2"></i>Veículo
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Registros de Veículos</h5>
+        <button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#filtroCollapse">
+            <i class="bi bi-funnel me-1"></i>Filtros
+        </button>
+    </div>
+
+    <div class="collapse" id="filtroCollapse">
+        <div class="filtro-container">
+            <div class="row">
+                <div class="col-md-6 mb-2">
+                    <label for="filtro-placa" class="form-label">Placa</label>
+                    <input type="text" class="form-control" id="filtro-placa" placeholder="ABC1234">
+                </div>
+                <div class="col-md-6 mb-2">
+                    <label for="filtro-unidade" class="form-label">Unidade</label>
+                    <input type="text" class="form-control" id="filtro-unidade" placeholder="Ex: 1001">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12">
+                    <button id="btn-aplicar-filtros" class="btn btn-primary btn-sm me-2">
+                        <i class="bi bi-search me-1"></i>Aplicar Filtros
+                    </button>
+                    <button id="btn-limpar-filtros" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-x-circle me-1"></i>Limpar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <span class="text-muted">Total de registros: </span>
+                <span id="total-registros" class="badge bg-primary">0</span>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
+                <label class="form-check-label" for="auto-refresh">
+                    Atualização automática (30s)
+                </label>
+            </div>
+        </div> -->
+
+       <div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead style="background-color: #343a40;">
+            <tr>
+                <th>Veículo</th>
+                <th>Unidade</th>
+                <th>Vagas(Ocup/Perm)</th>
+                <th>Última Movimentação</th>
+                <th>Status</th>
+                <th>Tempo</th>
+                <th>Permissão</th>
+            </tr>
+        </thead>
+        <tbody id="veiculos-tbody">
+            <tr>
+                <td colspan="5" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                    <p class="mt-2">Carregando veículos...</p>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+
+
+
+<!-- Modal para Criar/Modificar Permissão -->
+<div class="modal fade" id="modalCriarPermissao" tabindex="-1" aria-labelledby="modalCriarPermissaoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="modalCriarPermissaoLabel">
+                    <i class="bi bi-shield-check me-2"></i>Módulo de Permissões
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- ABAS DE NAVEGAÇÃO -->
+                <ul class="nav nav-tabs" id="permissaoTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="criar-permissao-tab" data-bs-toggle="tab" data-bs-target="#criar-permissao" type="button" role="tab">
+                            <i class="bi bi-plus-circle me-1"></i>Criar Nova Permissão
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="modificar-permissao-tab" data-bs-toggle="tab" data-bs-target="#modificar-permissao" type="button" role="tab">
+                            <i class="bi bi-pencil-square me-1"></i>Modificar Permissão
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- CONTEÚDO DAS ABAS -->
+                <div class="tab-content mt-3" id="permissaoTabsContent">
+
+                    <!-- ABA CRIAR NOVA PERMISSÃO -->
+                    <div class="tab-pane fade show active" id="criar-permissao" role="tabpanel">
+                        <form id="formCriarPermissao">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="criar-placa" class="form-label">Placa do Veículo *</label>
+                                        <input type="text" class="form-control" id="criar-placa" placeholder="ABC1234" maxlength="8" required>
+                                        <div class="form-text">Veículo deve estar cadastrado no sistema</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="criar-unidade" class="form-label">Unidade *</label>
+                                        <select class="form-control" id="criar-unidade" required>
+                                            <option value="">Carregando unidades...</option>
+                                        </select>
+                                        <div class="form-text">Selecione a unidade, Avulso ou Prestador</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="criar-data-inicio" class="form-label">Data de Início *</label>
+                                        <input type="date" class="form-control" id="criar-data-inicio" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="criar-data-fim" class="form-label">Data de Fim</label>
+                                        <input type="date" class="form-control" id="criar-data-fim">
+                                        <div class="form-text">Deixe vazio para tempo indeterminado</div>
+                                    </div>
+                                </div>
+
+                                <!-- NOVOS CAMPOS DE HORÁRIO -->
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="criar-hora-inicio" class="form-label">Horário de Início *</label>
+                                            <input type="time" class="form-control" id="criar-hora-inicio" value="08:00" required>
+                                            <div class="form-text">Horário padrão: 08:00</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="criar-hora-fim" class="form-label">Horário de Fim *</label>
+                                            <input type="time" class="form-control" id="criar-hora-fim" value="17:00" required>
+                                            <div class="form-text">Horário padrão: 17:00</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="criar-tempo-indeterminado">
+                                <label class="form-check-label" for="criar-tempo-indeterminado">
+                                    Tempo Indeterminado
+                                </label>
+                                <div class="form-text">Marque para permissão sem data de fim</div>
+                            </div>
+                            <div class="alert alert-danger d-none" id="criar-permissao-error"></div>
+                            <div class="alert alert-success d-none" id="criar-permissao-success"></div>
+                        </form>
+                    </div>
+
+                    <!-- ABA MODIFICAR PERMISSÃO -->
+                    <div class="tab-pane fade" id="modificar-permissao" role="tabpanel">
+                        <!-- BUSCA POR PLACA -->
+                        <div id="busca-permissao">
+                            <div class="mb-3">
+                                <label for="buscar-permissao-placa" class="form-label">Placa do Veículo *</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="buscar-permissao-placa" placeholder="ABC1234" maxlength="8">
+                                    <button class="btn btn-primary" type="button" id="btn-buscar-permissao">
+                                        <i class="bi bi-search me-1"></i>Buscar
+                                    </button>
+                                </div>
+                                <div class="form-text">Digite a placa para buscar permissão vigente ou indefinida</div>
+                            </div>
+                            <div class="alert alert-danger d-none" id="busca-permissao-error"></div>
+                        </div>
+
+                        <!-- FORMULÁRIO DE MODIFICAÇÃO (inicialmente oculto) -->
+                        <div id="form-modificar-permissao-container" style="display: none;">
+                            <hr>
+                            <h6><i class="bi bi-pencil-square me-1"></i>Modificar Permissão Encontrada</h6>
+                            <form id="formModificarPermissao">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Placa</label>
+                                            <input type="text" class="form-control" id="modificar-placa-display" readonly>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+
+
+                                            <label class="form-label">Unidade</label>
+                                            <input type="text" class="form-control" id="modificar-unidade-display" readonly>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Data de Início</label>
+                                            <input type="date" class="form-control" id="modificar-data-inicio-display" readonly>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="modificar-data-fim" class="form-label">Nova Data de Fim</label>
+                                            <input type="date" class="form-control" id="modificar-data-fim">
+                                            <div class="form-text">Deixe vazio para tempo indeterminado</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- ADICIONAR APÓS OS CAMPOS DE DATA EXISTENTES -->
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="modificar-hora-inicio" class="form-label">Horário de Início</label>
+                                                <input type="time" class="form-control" id="modificar-hora-inicio">
+                                                <div class="form-text">Deixe vazio para manter atual</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="modificar-hora-fim" class="form-label">Horário de Fim</label>
+                                                <input type="time" class="form-control" id="modificar-hora-fim">
+                                                <div class="form-text">Deixe vazio para manter atual</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="modificar-tempo-indeterminado">
+                                    <label class="form-check-label" for="modificar-tempo-indeterminado">
+                                        Tempo Indeterminado
+                                    </label>
+                                </div>
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    <strong>Atenção:</strong> Apenas permissões vigentes ou indefinidas podem ser modificadas. Permissões vencidas não podem ser alteradas.
+                                </div>
+                                <div class="alert alert-danger d-none" id="modificar-permissao-error"></div>
+                                <div class="alert alert-success d-none" id="modificar-permissao-success"></div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <!-- Botões dinâmicos baseados na aba ativa -->
+                <button type="button" class="btn btn-success" id="btn-salvar-criar-permissao" style="display: none;">
+                    <i class="bi bi-save me-1"></i>Criar Permissão
+                </button>
+                <button type="button" class="btn btn-warning" id="btn-salvar-modificar-permissao" style="display: none;">
+                    <i class="bi bi-save me-1"></i>Salvar Modificações
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- Modal de Detalhes do Veículo -->
+<div class="modal fade" id="veiculoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Detalhes do Veículo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4 id="modal-placa">ABC1234</h4>
+                        <p id="modal-unidade">Unidade: </p>
+                        <p id="modal-cor">Cor: </p>
+                        <p id="modal-marca">Marca: </p>
+                        <p id="modal-modelo">Modelo: </p>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">Últimas Movimentações</div>
+                            <div class="card-body">
+                                <ul id="modal-movimentacoes" class="list-group">
+                                    <!-- Será preenchido via JavaScript -->
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <!-- Botão dinâmico para cadastrar veículo não cadastrado -->
+                <button type="button" class="btn btn-success" id="btn-cadastrar-nao-cadastrado" style="display: none;">
+                    <i class="bi bi-plus-circle me-1"></i>Cadastrar Veículo
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Cadastro de Veículo -->
+<div class="modal fade" id="cadastroVeiculoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Cadastrar Novo Veículo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="cadastro-veiculo-form">
+                    <div class="mb-3">
+                        <label for="cadastro-marca" class="form-label">Marca</label>
+                        <select class="form-select" id="cadastro-marca" required>
+                            <option value="">Selecione uma marca</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="cadastro-modelo" class="form-label">Modelo</label>
+                        <select class="form-select" id="cadastro-modelo" required disabled>
+                            <option value="">Primeiro selecione uma marca</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="cadastro-placa" class="form-label">Placa</label>
+                        <input type="text" class="form-control" id="cadastro-placa" required maxlength="7" placeholder="ABC1234 ou ABC1D23">
+                        <div class="form-text">Formato antigo: ABC1234 | Formato Mercosul: ABC1D23</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="cadastro-unidade" class="form-label">Unidade</label>
+                        <select class="form-control" id="cadastro-unidade" required>
+                            <option value="">Carregando unidades...</option>
+                        </select>
+                        <div class="form-text">Selecione a unidade, Avulso ou Prestador</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="cadastro-cor" class="form-label">Cor</label>
+                        <select class="form-select" id="cadastro-cor" required>
+                            <option value="">Selecione a cor</option>
+                            <option value="Amarelo">Amarelo</option>
+                            <option value="Azul">Azul</option>
+                            <option value="Bege">Bege</option>
+                            <option value="Branco">Branco</option>
+                            <option value="Cinza">Cinza</option>
+                            <option value="Dourado">Dourado</option>
+                            <option value="Laranja">Laranja</option>
+                            <option value="Marrom">Marrom</option>
+                            <option value="Prata">Prata</option>
+                            <option value="Preto">Preto</option>
+                            <option value="Rosa">Rosa</option>
+                            <option value="Roxo">Roxo</option>
+                            <option value="Verde">Verde</option>
+                            <option value="Vermelho">Vermelho</option>
+                            <option value="Vinho">Vinho</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </div>
+
+                    <!-- Campos de Data de Permanência -->
+                    <div class="mb-3">
+                        <label class="form-label">Período de Permanência</label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="cadastro-data-inicio" class="form-label">Data de Início</label>
+                                <input type="date" class="form-control" id="cadastro-data-inicio" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="cadastro-data-fim" class="form-label">Data de Fim</label>
+                                <input type="date" class="form-control" id="cadastro-data-fim">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="criar-hora-inicio" class="form-label">Horário de Início *</label>
+                                            <input type="time" class="form-control" id="cadastro-hora-inicio" value="08:00" required>
+                                            <div class="form-text">Horário padrão: 08:00</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="criar-hora-fim" class="form-label">Horário de Fim *</label>
+                                            <input type="time" class="form-control" id="cadastro-hora-fim" value="17:00" required>
+                                            <div class="form-text">Horário padrão: 17:00</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="cadastro-tempo-indeterminado">
+                            <label class="form-check-label" for="cadastro-tempo-indeterminado">
+                                Tempo Indeterminado
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            Marque "Tempo Indeterminado" para permissão permanente. Caso contrário, o veículo será removido automaticamente após a data de fim.
+                        </div>
+                    </div>
+
+                    
+
+                    <div class="alert alert-danger d-none" id="cadastro-error">
+                        Erro ao cadastrar veículo. Verifique os dados e tente novamente.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="btn-salvar-veiculo">
+                    <i class="bi bi-save me-2"></i>Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== INTERFACE FRONTEND PARA MÓDULO CADASTRO DE VEÍCULOS =====
+     Adicionar este código ao arquivo veiculos.html -->
+
+
+
+<!-- MODAL MÓDULO VEÍCULO - Adicionar antes do fechamento do body -->
+<div class="modal fade" id="modalModuloVeiculo" tabindex="-1" aria-labelledby="modalModuloVeiculoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="modalModuloVeiculoLabel">
+                    <i class="bi bi-car-front me-2"></i>Módulo de Cadastro de Veículos
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- ABAS DE NAVEGAÇÃO -->
+                <ul class="nav nav-tabs" id="veiculoTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="criar-tab" data-bs-toggle="tab" data-bs-target="#criar-veiculo" type="button" role="tab">
+                            <i class="bi bi-plus-circle me-1"></i>Criar Novo Veículo
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="modificar-tab" data-bs-toggle="tab" data-bs-target="#modificar-veiculo" type="button" role="tab">
+                            <i class="bi bi-pencil-square me-1"></i>Modificar Veículo
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- CONTEÚDO DAS ABAS -->
+                <div class="tab-content mt-3" id="veiculoTabsContent">
+
+                    <!-- ABA CRIAR NOVO VEÍCULO -->
+                    <div class="tab-pane fade show active" id="criar-veiculo" role="tabpanel">
+                        <form id="form-criar-veiculo">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                    <label for="veiculo-placa" class="form-label">Placa *</label>
+                                    <input type="text" class="form-control" id="veiculo-placa" placeholder="ABC1234" maxlength="8" required>
+                                        <div class="form-text">Formato: ABC1234 ou ABC1D23</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="criar-cor" class="form-label">Cor *</label>
+                                        <select class="form-select" id="criar-cor" required>
+                                            <option value="">Selecione uma cor</option>
+                                            <option value="Amarelo">Amarelo</option>
+                                            <option value="Azul">Azul</option>
+                                            <option value="Bege">Bege</option>
+                                            <option value="Branco">Branco</option>
+                                            <option value="Cinza">Cinza</option>
+                                            <option value="Dourado">Dourado</option>
+                                            <option value="Laranja">Laranja</option>
+                                            <option value="Marrom">Marrom</option>
+                                            <option value="Prata">Prata</option>
+                                            <option value="Preto">Preto</option>
+                                            <option value="Rosa">Rosa</option>
+                                            <option value="Roxo">Roxo</option>
+                                            <option value="Verde">Verde</option>
+                                            <option value="Vermelho">Vermelho</option>
+                                            <option value="Vinho">Vinho</option>
+                                            <option value="Outro">Outro</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="criar-marca" class="form-label">Marca *</label>
+                                        <select class="form-select" id="criar-marca" required>
+                                            <option value="">Carregando marcas...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="criar-modelo" class="form-label">Modelo *</label>
+                                        <select class="form-select" id="criar-modelo" required disabled>
+                                            <option value="">Primeiro selecione uma marca</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert alert-danger d-none" id="criar-error"></div>
+                            <div class="alert alert-success d-none" id="criar-success"></div>
+                        </form>
+                    </div>
+
+                    <!-- ABA MODIFICAR VEÍCULO -->
+                    <div class="tab-pane fade" id="modificar-veiculo" role="tabpanel">
+                        <!-- BUSCA POR PLACA -->
+                        <div id="busca-veiculo">
+                            <div class="mb-3">
+                                <label for="buscar-placa" class="form-label">Placa do Veículo *</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="buscar-placa" placeholder="ABC1234" maxlength="8">
+                                    <button class="btn btn-primary" type="button" id="btn-buscar-veiculo">
+                                        <i class="bi bi-search me-1"></i>Buscar
+                                    </button>
+                                </div>
+                                <div class="form-text">Digite a placa do veículo que deseja modificar</div>
+                            </div>
+                            <div class="alert alert-danger d-none" id="busca-error"></div>
+                        </div>
+
+                        <!-- FORMULÁRIO DE MODIFICAÇÃO (inicialmente oculto) -->
+                        <div id="form-modificar-container" style="display: none;">
+                            <hr>
+                            <h6><i class="bi bi-pencil-square me-1"></i>Modificar Dados do Veículo</h6>
+                            <form id="form-modificar-veiculo">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Placa</label>
+                                            <input type="text" class="form-control" id="modificar-placa-display" readonly>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="modificar-cor" class="form-label">Cor *</label>
+                                            <select class="form-select" id="modificar-cor" required>
+                                                <option value="">Selecione uma cor</option>
+                                                <option value="Amarelo">Amarelo</option>
+                                                <option value="Azul">Azul</option>
+                                                <option value="Bege">Bege</option>
+                                                <option value="Branco">Branco</option>
+                                                <option value="Cinza">Cinza</option>
+                                                <option value="Dourado">Dourado</option>
+                                                <option value="Laranja">Laranja</option>
+                                                <option value="Marrom">Marrom</option>
+                                                <option value="Prata">Prata</option>
+                                                <option value="Preto">Preto</option>
+                                                <option value="Rosa">Rosa</option>
+                                                <option value="Roxo">Roxo</option>
+                                                <option value="Verde">Verde</option>
+                                                <option value="Vermelho">Vermelho</option>
+                                                <option value="Vinho">Vinho</option>
+                                                <option value="Outro">Outro</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="modificar-marca" class="form-label">Marca *</label>
+                                            <select class="form-select" id="modificar-marca" required>
+                                                <option value="">Carregando marcas...</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="modificar-modelo" class="form-label">Modelo *</label>
+                                            <select class="form-select" id="modificar-modelo" required disabled>
+                                                <option value="">Primeiro selecione uma marca</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="alert alert-danger d-none" id="modificar-error"></div>
+                                <div class="alert alert-success d-none" id="modificar-success"></div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <!-- Botões dinâmicos baseados na aba ativa -->
+                <button type="button" class="btn btn-success" id="btn-salvar-criar" style="display: none;">
+                    <i class="bi bi-save me-1"></i>Criar Veículo
+                </button>
+                <button type="button" class="btn btn-warning" id="btn-salvar-modificar" style="display: none;">
+                    <i class="bi bi-save me-1"></i>Salvar Modificações
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let veiculosData = [];
+    let condominioId = null;
+    let condominioNome = '';
+    let refreshInterval;
+    const REFRESH_INTERVAL = 60000; // 1 minuto
+
+    function formatarData(dataString) {
+        if (!dataString) {
+            return "Sem registro";
+        }
+
+        const data = new Date(dataString);
+
+        // Verificar se a data é válida e não é anterior a 2000
+        if (isNaN(data.getTime()) || data.getFullYear() < 2000) {
+            return "Sem registro";
+        }
+
+        return data.toLocaleString('pt-BR');
+    }
+
+    function calcularTempo(dataString) {
+        if (!dataString) {
+            return "N/A";
+        }
+
+        const data = new Date(dataString);
+
+        // Verificar se a data é válida e não é anterior a 2000
+        if (isNaN(data.getTime()) || data.getFullYear() < 2000) {
+            return "N/A";
+        }
+
+        const agora = new Date();
+        const diff = Math.abs(agora - data);
+
+        const minutos = Math.floor(diff / 60000);
+        const horas = Math.floor(minutos / 60);
+        const dias = Math.floor(horas / 24);
+
+        if (dias > 0) {
+            return `${dias} dia(s)`;
+        } else if (horas > 0) {
+            return `${horas} hora(s)`;
+        } else {
+            return `${minutos} minuto(s)`;
+        }
+    }
+
+    function formatarPermanencia(veiculo) {
+        // Para veículos não cadastrados
+        if (veiculo.origem === 'Detectado' || veiculo.status_permissao === 'NAO_CADASTRADO') {
+            return '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>NÃO CADASTRADO</span>';
+        }
+
+        // Para veículos cadastrados, usar o status_permissao
+        const status = veiculo.status_permissao;
+
+        switch(status) {
+            case 'INDEFINIDA':
+                return '<span class="badge bg-primary"><i class="bi bi-infinity me-1"></i>INDEFINIDA</span>';
+            case 'VIGENTE':
+                return '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>VIGENTE</span>';
+            case 'VENCIDA':
+                return '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>VENCIDA</span>';
+            default:
+                return '<span class="badge bg-secondary"><i class="bi bi-question-circle me-1"></i>SEM PERMISSÃO</span>';
+        }
+    }
+
+    function determinarStatus(veiculo) {
+        if (!veiculo.ultima) return 'Sem registro';
+
+        // Usar o status retornado pela API
+        if (veiculo.status) {
+            if (veiculo.status === 'Entrada') {
+                return '<span class="status-entrada"><i class="bi bi-box-arrow-in-right me-1"></i>Entrada</span>';
+            } else if (veiculo.status === 'Saída') {
+                return '<span class="status-saida"><i class="bi bi-box-arrow-right me-1"></i>Saída</span>';
+            } else if (veiculo.status === 'Sem movimento') {
+                return '<span class="text-muted"><i class="bi bi-dash-circle me-1"></i>Sem movimento</span>';
+            }
+        }
+
+        // Fallback para "Cadastrado" se não houver status específico
+        return '<span class="status-entrada"><i class="bi bi-check-circle me-1"></i>Cadastrado</span>';
+    }
+
+    function carregarVeiculos(filtros = {}) {
+        $('#btn-atualizar').prop('disabled', true);
+        $('.refresh-icon').show();
+
+        $.ajax({
+            url: `/api/veiculos/${condominioId}`,
+            type: 'GET',
+            data: filtros,
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    veiculosData = response.data;
+                    atualizarTabelaVeiculos();
+
+                    // Atualizar timestamp
+                    const agora = new Date();
+                    $('#ultima-atualizacao .timestamp').text(agora.toLocaleTimeString('pt-BR'));
+
+                    // Atualizar total de registros
+                    $('#total-registros').text(veiculosData.length);
+                } else {
+                    $('#veiculos-tbody').html('<tr><td colspan="5" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+                }
+            },
+            error: function() {
+                $('#veiculos-tbody').html('<tr><td colspan="5" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+            },
+            complete: function() {
+                $('#btn-atualizar').prop('disabled', false);
+                $('.refresh-icon').hide();
+            }
+        });
+    }
+
+    function atualizarTabelaVeiculos() {
+        if (veiculosData.length === 0) {
+            $('#veiculos-tbody').html('<tr><td colspan="5" class="text-center">Nenhum veículo encontrado</td></tr>');
+            return;
+        }
+
+        let html = '';
+        veiculosData.forEach(function(veiculo, index) {
+            // Determinar classes CSS para destaque
+            let rowClass = '';
+            let badge = '';
+
+            if (veiculo.ultimo_cadastrado) {
+                rowClass = 'table-success'; // Linha verde para último cadastrado
+                badge = '<span class="badge bg-success ms-2">ÚLTIMO CADASTRADO</span>';
+            }
+
+            // Determinar classe CSS para status da vaga
+            const classeStatusVaga = obterClasseStatusVaga(veiculo.status_vaga);
+            const statusVagaHtml = classeStatusVaga ? 
+                `<span class="${classeStatusVaga}">${veiculo.status_vaga}</span>` : 
+                veiculo.status_vaga;
+            
+            html += `<tr class="${rowClass}" data-placa="${veiculo.placa}" data-bs-toggle="modal" data-bs-target="#veiculoModal">
+                <td>${veiculo.carrocompleto}${badge}</td>
+                <td>${veiculo.unidade}</td>
+                <td>${statusVagaHtml}</td>
+                <td>${formatarData(veiculo.ultima)}</td>
+                <td>${determinarStatus(veiculo)}</td>
+                <td>${calcularTempo(veiculo.ultima)}</td>
+                <td>${formatarPermanencia(veiculo)}</td>
+            </tr>`;
+        });
+
+        $('#veiculos-tbody').html(html);
+    }
+
+    function carregarDetalhesVeiculo(placa) {
+        // Limpar dados anteriores para evitar herança
+        $('#modal-placa').text('');
+        $('#modal-unidade').text('Carregando...');
+        $('#modal-cor').text('Carregando...');
+        $('#modal-marca').text('Carregando...');
+        $('#modal-modelo').text('Carregando...');
+        $('#modal-movimentacoes').html('<li class="list-group-item">Carregando movimentações...</li>');
+
+        $.ajax({
+            url: `/api/veiculo/${condominioId}/${placa}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success && response.data && response.data.veiculo) {
+                    const veiculo = response.data.veiculo;
+                    const movimentacoes = response.data.movimentacoes || [];
+
+                    // Preencher dados básicos com validação
+                    $('#modal-placa').text(veiculo.placa || 'N/I');
+                    $('#modal-unidade').text(`Unidade: ${veiculo.unidade || 'N/I'}`);
+                    $('#modal-cor').text(`Cor: ${veiculo.cor || 'N/I'}`);
+                    $('#modal-marca').text(`Marca: ${veiculo.marca || 'N/I'}`);
+                    $('#modal-modelo').text(`Modelo: ${veiculo.modelo || 'N/I'}`);
+
+                    // Preencher movimentações
+                    let htmlMovimentacoes = '';
+                    movimentacoes.forEach(function(mov) {
+                        const status = mov.tipo === 'Entrada' ?
+                            '<span class="status-entrada"><i class="bi bi-box-arrow-in-right me-1"></i>Entrada</span>' :
+                            '<span class="status-saida"><i class="bi bi-box-arrow-right me-1"></i>Saída</span>';
+
+                        htmlMovimentacoes += `<li class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>${formatarData(mov.data)}</span>
+                                <span>${status}</span>
+                            </div>
+                        </li>`;
+                    });
+
+                    if (movimentacoes.length === 0) {
+                        htmlMovimentacoes = '<li class="list-group-item">Nenhuma movimentação registrada</li>';
+                    }
+
+                    $('#modal-movimentacoes').html(htmlMovimentacoes);
+                } else {
+                    // Tratar erro de dados não encontrados - Veículo não cadastrado
+                    $('#modal-placa').text(placa);
+                    $('#modal-unidade').text('Unidade: N/I');
+                    $('#modal-cor').text('Cor: N/I');
+                    $('#modal-marca').text('Marca: N/I');
+                    $('#modal-modelo').text('Modelo: N/I');
+                    $('#modal-movimentacoes').html('<li class="list-group-item text-warning">Veículo não cadastrado no sistema</li>');
+                    
+                    // Adicionar botão de cadastro no footer do modal
+                    mostrarBotaoCadastroVeiculo(placa);
+                }
+            },
+            error: function() {
+                // Tratar erro de conexão
+                $('#modal-placa').text(placa);
+                $('#modal-unidade').text('Unidade: Erro ao carregar');
+                $('#modal-cor').text('Cor: Erro ao carregar');
+                $('#modal-marca').text('Marca: Erro ao carregar');
+                $('#modal-modelo').text('Modelo: Erro ao carregar');
+                $('#modal-movimentacoes').html('<li class="list-group-item text-danger">Erro de conexão ao carregar detalhes</li>');
+            }
+        });
+    }
+
+    function carregarMarcas() {
+        $.ajax({
+            url: '/api/marcas',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    const marcaSelect = $('#cadastro-marca');
+                    marcaSelect.empty().append('<option value="">Selecione uma marca</option>');
+
+                    response.data.forEach(function(marca) {
+                        marcaSelect.append(`<option value="${marca.marca}">${marca.marca}</option>`);
+                    });
+                }
+            },
+            error: function() {
+                console.error('Erro ao carregar marcas');
+            }
+        });
+    }
+
+    function carregarModelos(marca) {
+        const modeloSelect = $('#cadastro-modelo');
+
+        if (!marca) {
+            modeloSelect.empty().append('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+            return;
+        }
+
+        $.ajax({
+            url: `/api/modelos/${encodeURIComponent(marca)}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    modeloSelect.empty().append('<option value="">Selecione um modelo</option>').prop('disabled', false);
+
+                    response.data.forEach(function(modelo) {
+                        modeloSelect.append(`<option value="${modelo.modelo}">${modelo.modelo}</option>`);
+                    });
+                }
+            },
+            error: function() {
+                console.error('Erro ao carregar modelos');
+                modeloSelect.empty().append('<option value="">Erro ao carregar modelos</option>').prop('disabled', true);
+            }
+        });
+    }
+
+    function cadastrarVeiculo() {
+        const marca = $('#cadastro-marca').val();
+        const modelo = $('#cadastro-modelo').val();
+        const placa = $('#cadastro-placa').val().toUpperCase();
+        const unidade = $('#cadastro-unidade').val();
+        const cor = $('#cadastro-cor').val();
+        const dataInicio = $('#cadastro-data-inicio').val();
+        const dataFim = $('#cadastro-data-fim').val();
+        const tempoIndeterminado = $('#cadastro-tempo-indeterminado').is(':checked');
+
+          // NOVO: pegar horários
+        const horaInicio = $('#cadastro-hora-inicio').val() || '08:00';
+        const horaFim = $('#cadastro-hora-fim').val() || '17:00';
+        console.log('Enviando horários:', horaInicio, horaFim);
+
+        // Validação básica
+        if (!marca || !modelo || !placa || !unidade || !cor || !dataInicio) {
+            $('#cadastro-error').removeClass('d-none').text('Todos os campos obrigatórios devem ser preenchidos.');
+            return;
+        }
+
+        // Validação de formato de placa (Antigo: ABC1234 | Mercosul: ABC1D23)
+        const placaRegex = /^[A-Z]{3}[0-9]{4}$|^[A-Z]{3}[0-9][A-Z][0-9]{2}$/;
+        if (!placaRegex.test(placa)) {
+            $('#cadastro-error').removeClass('d-none').text('Formato de placa inválido. Use formato antigo (ABC1234) ou Mercosul (ABC1D23).');
+            return;
+        }
+
+        // Validação de datas
+        if (!tempoIndeterminado && dataFim) {
+            const inicio = new Date(dataInicio);
+            const fim = new Date(dataFim);
+
+            if (fim <= inicio) {
+                $('#cadastro-error').removeClass('d-none').text('A data de fim deve ser posterior à data de início.');
+                return;
+            }
+        }
+
+        // Preparar dados para envio
+        const dadosVeiculo = {
+            marca: marca,
+            modelo: modelo,
+            placa: placa,
+            unidade: unidade,
+            cor: cor,
+            data_inicio: dataInicio,
+            data_fim: tempoIndeterminado ? null : dataFim,
+            tempo_indeterminado: tempoIndeterminado,
+            hora_inicio: horaInicio, // NOVO
+            hora_fim: horaFim        // NOVO
+        };
+
+        $.ajax({
+            url: `/api/veiculo/${condominioId}`,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(dadosVeiculo),
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    // Fechar modal e recarregar veículos
+                    $('#cadastroVeiculoModal').modal('hide');
+                    carregarVeiculos();
+
+                    // Limpar formulário
+                    $('#cadastro-marca').val('');
+                    $('#cadastro-modelo').empty().append('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+                    $('#cadastro-placa').val('');
+                    $('#cadastro-unidade').val('');
+                    $('#cadastro-cor').val('');
+                    $('#cadastro-data-inicio').val('');
+                    $('#cadastro-data-fim').val('');
+                    $('#cadastro-tempo-indeterminado').prop('checked', false);
+                    $('#cadastro-error').addClass('d-none');
+                } else {
+                    $('#cadastro-error').removeClass('d-none').text(response.message || 'Erro ao cadastrar veículo.');
+                }
+            },
+            error: function() {
+                $('#cadastro-error').removeClass('d-none').text('Erro ao cadastrar veículo. Tente novamente mais tarde.');
+            }
+        });
+    }
+
+    function iniciarAtualizacaoAutomatica() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+
+        if ($('#auto-refresh').is(':checked')) {
+            refreshInterval = setInterval(function() {
+                const filtros = {
+                    placa: $('#filtro-placa').val(),
+                    unidade: $('#filtro-unidade').val()
+                };
+                carregarVeiculos(filtros);
+            }, REFRESH_INTERVAL);
+        }
+    }
+
+    function carregarDadosCondominio() {
+        $.ajax({
+            url: `/api/condominio/${condominioId}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    condominioNome = response.data.nmcond;
+                    $('#nome-condominio').text(condominioNome);
+                    document.title = `ParkVision - ${condominioNome}`;
+
+                    // Atualizar link do mapa de vagas
+                    $('#btn-mapa-vagas').attr('href', `/mapa-vagas/${condominioId}`);
+                } else {
+                    $('#nome-condominio').text('Erro ao carregar dados');
+                }
+            },
+            error: function() {
+                $('#nome-condominio').text('Erro ao carregar dados');
+            }
+        });
+    }
+
+    // Função para determinar a classe CSS do status da vaga
+    function obterClasseStatusVaga(statusVaga) {
+        if (!statusVaga || typeof statusVaga !== 'string') {
+            return '';
+        }
+        
+        const primeirapalavra = statusVaga.trim().split(' ')[0].toLowerCase();
+        
+        switch (primeirapalavra) {
+            case 'disponível':
+            case 'disponivel':
+                return 'status-disponivel';
+            case 'completo':
+                return 'status-completo';
+            case 'excesso':
+                return 'status-excesso';
+            default:
+                return '';
+        }
+    }
+
+    // Aplicar permissões baseadas no tipo de usuário
+    function aplicarPermissoesPorTipoUsuario(usuario) {
+        // Para usuários SINDICO, ocultar botões de edição
+        if (usuario.tipo_usuario === 'SINDICO') {
+            // Ocultar botões de edição/criação
+            $('#btn-cadastrar-veiculo').hide(); // + Veículo + Permissão
+            $('#btn-criar-permissao').hide();   // + Permissão
+            $('#btn-modulo-veiculo').hide();    // Veículo
+            
+            // Opcional: Adicionar tooltip explicativo nos botões ocultos
+            $('#btn-cadastrar-veiculo, #btn-criar-permissao, #btn-modulo-veiculo').attr('title', 'Funcionalidade disponível apenas para Administradores e Monitores');
+            
+            console.log('Permissões aplicadas: Usuário SINDICO - botões de edição ocultados');
+        } else {
+            // Para ADM e MONITOR, garantir que os botões estejam visíveis
+            $('#btn-cadastrar-veiculo').show();
+            $('#btn-criar-permissao').show();
+            $('#btn-modulo-veiculo').show();
+            
+            console.log('Permissões aplicadas: Usuário ' + usuario.tipo_usuario + ' - todos os botões visíveis');
+        }
+    }
+
+    // Inicializar página
+    $(document).ready(function() {
+        // Obter ID do condomínio da URL
+        const pathParts = window.location.pathname.split('/');
+        condominioId = pathParts[pathParts.length - 1];
+
+        // Verificar se o usuário está autenticado
+        $.ajax({
+            url: '/api/auth/status',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (!response.authenticated || !response.usuario) {
+                    // Não autenticado - redirecionar para login
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const usuario = response.usuario;
+                
+                // Verificar se usuário tem acesso ao condomínio
+                if (usuario.tipo_usuario !== 'ADM') {
+                    // Para usuários não-ADM, verificar se tem acesso ao condomínio específico
+                    const condominiosPermitidos = usuario.condominios || [];
+                    const temAcesso = condominiosPermitidos.some(c => c.idcond == condominioId);
+                    
+                    if (!temAcesso) {
+                        // Sem acesso - redirecionar para página de condomínios
+                        window.location.href = '/condominios';
+                        return;
+                    }
+                }
+                // Usuários ADM têm acesso a todos os condomínios
+
+                // Aplicar permissões baseadas no tipo de usuário
+                aplicarPermissoesPorTipoUsuario(usuario);
+
+                // Carregar dados do condomínio
+                carregarDadosCondominio();
+
+                // Carregar marcas para o formulário de cadastro
+                carregarMarcas();
+
+                // Carregar veículos
+                carregarVeiculos();
+
+                // Configurar atualização automática
+                iniciarAtualizacaoAutomatica();
+            },
+            error: function() {
+                // Erro na verificação - redirecionar para login
+                window.location.href = '/login';
+            }
+        });
+
+        // Botão de atualização manual
+        $('#btn-atualizar').click(function() {
+            const filtros = {
+                placa: $('#filtro-placa').val(),
+                unidade: $('#filtro-unidade').val()
+            };
+            carregarVeiculos(filtros);
+        });
+
+        // Toggle de atualização automática
+        $('#auto-refresh').change(function() {
+            iniciarAtualizacaoAutomatica();
+        });
+
+        // Aplicar filtros
+        $('#btn-aplicar-filtros').click(function() {
+            const filtros = {
+                placa: $('#filtro-placa').val(),
+                unidade: $('#filtro-unidade').val()
+            };
+            carregarVeiculos(filtros);
+        });
+
+        // Limpar filtros
+        $('#btn-limpar-filtros').click(function() {
+            $('#filtro-placa').val('');
+            $('#filtro-unidade').val('');
+            carregarVeiculos();
+        });
+
+        // Abrir modal com detalhes do veículo
+        $('#veiculoModal').on('show.bs.modal', function(event) {
+            const placa = $(event.relatedTarget).data('placa');
+            carregarDetalhesVeiculo(placa);
+            // Ocultar botão de cadastro ao abrir o modal
+            $('#btn-cadastrar-nao-cadastrado').hide();
+        });
+
+        // Event handler para o botão de cadastro de veículo não cadastrado
+        $(document).on('click', '#btn-cadastrar-nao-cadastrado', function() {
+            const placa = $(this).data('placa');
+            abrirModalCadastroComPlaca(placa);
+        });
+
+        // Abrir modal de cadastro de veículo
+        $('#btn-cadastrar-veiculo').click(function() {
+            $('#cadastro-marca').val('');
+            $('#cadastro-modelo').empty().append('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+            $('#cadastro-placa').val('');
+            $('#cadastro-unidade').val('');
+            $('#cadastro-cor').val('');
+            $('#cadastro-data-inicio').val('');
+            $('#cadastro-data-fim').val('');
+            $('#cadastro-tempo-indeterminado').prop('checked', false);
+            $('#cadastro-error').addClass('d-none');
+
+            // Definir data de início como hoje
+            const hoje = new Date().toISOString().split('T')[0];
+            $('#cadastro-data-inicio').val(hoje);
+
+            // Carregar unidades do condomínio para o modal de cadastro
+            carregarUnidadesCadastro();
+
+            const cadastroModal = new bootstrap.Modal(document.getElementById('cadastroVeiculoModal'));
+            cadastroModal.show();
+        });
+
+        // Controle do checkbox "Tempo Indeterminado"
+        $('#cadastro-tempo-indeterminado').change(function() {
+            const isChecked = $(this).is(':checked');
+            $('#cadastro-data-fim').prop('disabled', isChecked);
+            if (isChecked) {
+                $('#cadastro-data-fim').val('');
+            }
+        });
+
+        // Validação de data mínima para data de fim
+        $('#cadastro-data-inicio').change(function() {
+            const dataInicio = $(this).val();
+            if (dataInicio) {
+                $('#cadastro-data-fim').attr('min', dataInicio);
+            }
+        });
+
+        // Evento de mudança de marca para carregar modelos
+        $('#cadastro-marca').change(function() {
+            const marcaSelecionada = $(this).val();
+            carregarModelos(marcaSelecionada);
+        });
+
+        // Salvar novo veículo
+        $('#btn-salvar-veiculo').click(function() {
+            cadastrarVeiculo();
+        });
+    });
+
+    // ===== JAVASCRIPT COMPLETO PARA MÓDULO DE PERMISSÕES =====
+// Substitua o JavaScript existente do botão permissão por este código
+
+$(document).ready(function() {
+    // Event handlers para o módulo de permissões
+
+    // Abrir modal de permissões
+    $('#btn-criar-permissao').click(function() {
+        $('#modalCriarPermissao').modal('show');
+        limparFormulariosPermissao();
+        // Definir data de início como hoje
+        const hoje = new Date().toISOString().split('T')[0];
+        $('#criar-data-inicio').val(hoje);
+        // Carregar unidades do condomínio
+        carregarUnidadesCondominio();
+    });
+
+    // Controle das abas - mostrar botões corretos
+    $('#criar-permissao-tab').click(function() {
+        $('#btn-salvar-criar-permissao').show();
+        $('#btn-salvar-modificar-permissao').hide();
+    });
+
+    $('#modificar-permissao-tab').click(function() {
+        $('#btn-salvar-criar-permissao').hide();
+        $('#btn-salvar-modificar-permissao').show();
+    });
+
+    // Formatação automática de placa
+    $('#criar-placa, #buscar-permissao-placa').on('input', function() {
+        let valor = $(this).val().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        $(this).val(valor);
+    });
+
+    // Controle do checkbox tempo indeterminado - CRIAR
+    $('#criar-tempo-indeterminado').change(function() {
+        const isChecked = $(this).is(':checked');
+        $('#criar-data-fim').prop('disabled', isChecked);
+        if (isChecked) {
+            $('#criar-data-fim').val('');
+        }
+    });
+
+    // NOVO: Validação em tempo real de horários
+    $('#criar-hora-inicio, #criar-hora-fim').on('change', function() {
+    const horaInicio = $('#criar-hora-inicio').val();
+    const horaFim = $('#criar-hora-fim').val();
+
+    if (horaInicio && horaFim && horaFim <= horaInicio) {
+        $('#criar-permissao-error').removeClass('d-none').text('Horário de fim deve ser posterior ao horário de início.');
+        } else {
+            $('#criar-permissao-error').addClass('d-none');
+        }
+    });
+
+    // Controle do checkbox tempo indeterminado - MODIFICAR
+    $('#modificar-tempo-indeterminado').change(function() {
+        const isChecked = $(this).is(':checked');
+        $('#modificar-data-fim').prop('disabled', isChecked);
+        if (isChecked) {
+            $('#modificar-data-fim').val('');
+        }
+    });
+
+    // Buscar permissão para modificação
+    $('#btn-buscar-permissao').click(function() {
+        buscarPermissaoParaModificacao();
+    });
+
+    // Enter na busca de permissão
+    $('#buscar-permissao-placa').keypress(function(e) {
+        if (e.which === 13) {
+            buscarPermissaoParaModificacao();
+        }
+    });
+
+    // Salvar nova permissão
+    $('#btn-salvar-criar-permissao').click(function() {
+        criarNovaPermissao();
+    });
+
+    // Salvar modificações de permissão
+    $('#btn-salvar-modificar-permissao').click(function() {
+        salvarModificacaoPermissao();
+    });
+
+    // Limpar formulários ao fechar modal
+    $('#modalCriarPermissao').on('hidden.bs.modal', function() {
+        limparFormulariosPermissao();
+    });
+});
+
+// Função para criar nova permissão
+function criarNovaPermissao() {
+   const placa = $('#criar-placa').val().trim().toUpperCase();
+    const unidade = $('#criar-unidade').val().trim();
+    const dataInicio = $('#criar-data-inicio').val();
+    const dataFim = $('#criar-tempo-indeterminado').is(':checked') ? null : $('#criar-data-fim').val();
+
+    // NOVOS CAMPOS DE HORÁRIO
+    const horaInicio = $('#criar-hora-inicio').val() || '08:00';
+    const horaFim = $('#criar-hora-fim').val() || '17:00';
+
+    // Limpar mensagens anteriores
+    $('#criar-permissao-error').addClass('d-none');
+    $('#criar-permissao-success').addClass('d-none');
+
+    // Validações básicas
+    if (!placa || !unidade || !dataInicio) {
+        $('#criar-permissao-error').removeClass('d-none').text('Placa, unidade e data de início são obrigatórios.');
+        return;
+    }
+
+    // VALIDAÇÃO DE HORÁRIOS
+    if (horaFim <= horaInicio) {
+        $('#criar-permissao-error').removeClass('d-none').text('Horário de fim deve ser posterior ao horário de início.');
+        return;
+    }
+
+    // Validação de datas
+    if (dataFim && dataFim <= dataInicio) {
+        $('#criar-permissao-error').removeClass('d-none').text('Data de fim deve ser posterior à data de início.');
+        return;
+    }
+
+    // Enviar para o servidor COM HORÁRIOS
+    $.ajax({
+        url: '/api/criar-permissao',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            placa: placa,
+            unidade: unidade,
+            dataInicio: dataInicio,
+            dataFim: dataFim,
+            hora_inicio: horaInicio,  // NOVO
+            hora_fim: horaFim         // NOVO
+        }),
+        success: function(response) {
+            if (response.success) {
+                $('#criar-permissao-success').removeClass('d-none').text(response.message);
+                // Recarregar lista de veículos
+                carregarVeiculos();
+            } else {
+                $('#criar-permissao-error').removeClass('d-none').text(response.message);
+            }
+        },
+        error: function() {
+            $('#criar-permissao-error').removeClass('d-none').text('Erro ao criar permissão.');
+        }
+    });
+}
+
+// Função para buscar permissão para modificação
+function buscarPermissaoParaModificacao() {
+    const placa = $('#buscar-permissao-placa').val().trim().toUpperCase();
+    const errorDiv = $('#busca-permissao-error');
+
+    errorDiv.addClass('d-none');
+
+    if (!placa) {
+        errorDiv.removeClass('d-none').text('Digite uma placa para buscar');
+        return;
+    }
+
+    if (placa.length < 7 || placa.length > 8) {
+        errorDiv.removeClass('d-none').text('Formato de placa inválido');
+        return;
+    }
+
+    $.ajax({
+        url: `/api/permissao/${encodeURIComponent(placa)}`,
+        type: 'GET',
+        success: function(response) {
+            if (response.success) {
+                preencherFormularioModificacaoPermissao(response.data);
+                $('#form-modificar-permissao-container').show();
+                errorDiv.addClass('d-none');
+            } else {
+                errorDiv.removeClass('d-none').text(response.message);
+                $('#form-modificar-permissao-container').hide();
+            }
+        },
+        error: function() {
+            errorDiv.removeClass('d-none').text('Erro ao buscar permissão');
+            $('#form-modificar-permissao-container').hide();
+        }
+    });
+}
+
+// Função para preencher formulário de modificação
+function preencherFormularioModificacaoPermissao(permissao) {
+    $('#modificar-placa-display').val(permissao.placa);
+    $('#modificar-unidade-display').val(permissao.unidade);
+    $('#modificar-data-inicio-display').val(permissao.data_inicio);
+    $('#modificar-data-fim').val(permissao.data_fim || '');
+
+    // PREENCHER HORÁRIOS
+    $('#modificar-hora-inicio').val(permissao.hora_inicio || '08:00');
+    $('#modificar-hora-fim').val(permissao.hora_fim || '17:00');
+
+    // Configurar checkbox tempo indeterminado
+    const tempoIndeterminado = !permissao.data_fim;
+    $('#modificar-tempo-indeterminado').prop('checked', tempoIndeterminado);
+    $('#modificar-data-fim').prop('disabled', tempoIndeterminado);
+    //
+     $('#form-modificar-permissao-container').show();
+
+    // Limpar mensagens
+    $('#modificar-permissao-error, #modificar-permissao-success').addClass('d-none');
+}
+
+// Função para salvar modificação de permissão
+function salvarModificacaoPermissao() {
+    const placa = $('#modificar-placa-display').val();
+    const dataFim = $('#modificar-tempo-indeterminado').is(':checked') ? null : $('#modificar-data-fim').val();
+    const dataInicio = $('#modificar-data-inicio-display').val();
+
+    const errorDiv = $('#modificar-permissao-error');
+    const successDiv = $('#modificar-permissao-success');
+
+    // NOVOS CAMPOS DE HORÁRIO
+    const horaInicio = $('#modificar-hora-inicio').val();
+    const horaFim = $('#modificar-hora-fim').val();
+
+    // Limpar mensagens anteriores
+    $('#modificar-permissao-error').addClass('d-none');
+    $('#modificar-permissao-success').addClass('d-none');
+
+    // VALIDAÇÃO DE HORÁRIOS (se ambos fornecidos)
+    if (horaInicio && horaFim && horaFim <= horaInicio) {
+        $('#modificar-permissao-error').removeClass('d-none').text('Horário de fim deve ser posterior ao horário de início.');
+        return;
+    }
+
+    // Validação de datas
+    if (dataFim && dataFim <= dataInicio) {
+        $('#modificar-permissao-error').removeClass('d-none').text('Data de fim deve ser posterior à data de início.');
+        return;
+    }
+
+    // Preparar dados para envio
+    const dadosModificacao = {
+        placa: placa,
+        dataFim: dataFim
+    };
+
+    // ADICIONAR HORÁRIOS SE FORNECIDOS
+    if (horaInicio) {
+        dadosModificacao.horaInicio = horaInicio;
+    }
+    if (horaFim) {
+        dadosModificacao.horaFim = horaFim;
+    }
+
+    // Enviar para o servidor
+    $.ajax({
+        url: '/api/modificar-permissao',
+        type: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(dadosModificacao),
+        success: function(response) {
+            if (response.success) {
+                $('#modificar-permissao-success').removeClass('d-none').text(response.message);
+                // Recarregar lista de veículos
+                carregarVeiculos();
+            } else {
+                $('#modificar-permissao-error').removeClass('d-none').text(response.message);
+            }
+        },
+        error: function() {
+            $('#modificar-permissao-error').removeClass('d-none').text('Erro ao modificar permissão.');
+        }
+    });
+}
+
+// Função para limpar formulários de permissão
+function limparFormulariosPermissao() {
+    // Limpar aba criar
+    $('#formCriarPermissao')[0].reset();
+    $('#criar-data-fim').prop('disabled', false);
+    $('#criar-permissao-error, #criar-permissao-success').addClass('d-none');
+
+    // Limpar aba modificar
+    $('#buscar-permissao-placa').val('');
+    $('#formModificarPermissao')[0].reset();
+    $('#form-modificar-permissao-container').hide();
+    $('#modificar-data-fim').prop('disabled', false);
+    $('#busca-permissao-error, #modificar-permissao-error, #modificar-permissao-success').addClass('d-none');
+
+    // Voltar para primeira aba
+    $('#criar-permissao-tab').tab('show');
+    $('#btn-salvar-criar-permissao').show();
+    $('#btn-salvar-modificar-permissao').hide();
+}
+
+// ===== JAVASCRIPT PARA MÓDULO CADASTRO DE VEÍCULOS =====
+// Adicionar este código ao final do arquivo veiculos.html, dentro da seção <script>
+
+$(document).ready(function() {
+    // Event handlers para o módulo de veículos
+
+    // Abrir modal do módulo veículo
+    $('#btn-modulo-veiculo').click(function() {
+        $('#modalModuloVeiculo').modal('show');
+        // Carregar marcas para ambas as abas
+        carregarMarcasModulo('criar-marca');
+        carregarMarcasModulo('modificar-marca');
+        // Limpar formulários
+        limparFormularios();
+    });
+
+    // Controle das abas - mostrar botões corretos
+    $('#criar-tab').click(function() {
+        $('#btn-salvar-criar').show();
+        $('#btn-salvar-modificar').hide();
+    });
+
+    $('#modificar-tab').click(function() {
+        $('#btn-salvar-criar').hide();
+        $('#btn-salvar-modificar').show();
+    });
+
+    // Event handlers para mudança de marca (carregar modelos)
+    $('#criar-marca').change(function() {
+        const marca = $(this).val();
+        carregarModelosModulo(marca, 'criar-modelo');
+    });
+
+    $('#modificar-marca').change(function() {
+        const marca = $(this).val();
+        carregarModelosModulo(marca, 'modificar-modelo');
+    });
+
+    // Formatação automática de placa
+    $('#veiculo-placa, #buscar-placa').on('input', function() {
+        let valor = $(this).val().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        $(this).val(valor);
+    });
+
+    // Buscar veículo para modificação
+    $('#btn-buscar-veiculo').click(function() {
+        buscarVeiculoParaModificacao();
+    });
+
+    // Enter na busca de placa
+    $('#buscar-placa').keypress(function(e) {
+        if (e.which === 13) {
+            buscarVeiculoParaModificacao();
+        }
+    });
+
+    // Salvar novo veículo
+    $('#btn-salvar-criar').click(function() {
+        criarNovoVeiculo();
+    });
+
+    // Salvar modificações
+    $('#btn-salvar-modificar').click(function() {
+        salvarModificacoes();
+    });
+
+    // Limpar formulários ao fechar modal
+    $('#modalModuloVeiculo').on('hidden.bs.modal', function() {
+        limparFormularios();
+    });
+});
+
+// Função para carregar marcas no módulo
+function carregarMarcasModulo(selectId) {
+    $.ajax({
+        url: '/api/marcas',
+        type: 'GET',
+        success: function(response) {
+            if (response.success) {
+                let options = '<option value="">Selecione uma marca</option>';
+                response.data.forEach(function(marca) {
+                    options += `<option value="${marca.marca}">${marca.marca}</option>`;
+                });
+                $(`#${selectId}`).html(options);
+            } else {
+                $(`#${selectId}`).html('<option value="">Erro ao carregar marcas</option>');
+            }
+        },
+        error: function() {
+            $(`#${selectId}`).html('<option value="">Erro ao carregar marcas</option>');
+        }
+    });
+}
+
+// Função para carregar modelos no módulo
+function carregarModelosModulo(marca, selectId) {
+    const modeloSelect = $(`#${selectId}`);
+
+    if (!marca) {
+        modeloSelect.html('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+        return;
+    }
+
+    modeloSelect.html('<option value="">Carregando modelos...</option>').prop('disabled', true);
+
+    $.ajax({
+        url: `/api/modelos/${encodeURIComponent(marca)}`,
+        type: 'GET',
+        success: function(response) {
+            if (response.success) {
+                let options = '<option value="">Selecione um modelo</option>';
+                response.data.forEach(function(modelo) {
+                    options += `<option value="${modelo.modelo}">${modelo.modelo}</option>`;
+                });
+                modeloSelect.html(options).prop('disabled', false);
+            } else {
+                modeloSelect.html('<option value="">Erro ao carregar modelos</option>');
+            }
+        },
+        error: function() {
+            modeloSelect.html('<option value="">Erro ao carregar modelos</option>');
+        }
+    });
+}
+
+// Função para buscar veículo para modificação
+function buscarVeiculoParaModificacao() {
+    const placa = $('#buscar-placa').val().trim().toUpperCase();
+    const errorDiv = $('#busca-error');
+
+    errorDiv.addClass('d-none');
+
+    if (!placa) {
+        errorDiv.removeClass('d-none').text('Digite uma placa para buscar');
+        return;
+    }
+
+    // Validação básica de formato de placa
+    if (placa.length < 7 || placa.length > 8) {
+        errorDiv.removeClass('d-none').text('Formato de placa inválido');
+        return;
+    }
+
+    $.ajax({
+        url: `/api/cadveiculo/${encodeURIComponent(placa)}`,
+        type: 'GET',
+        success: function(response) {
+            if (response.success) {
+                preencherFormularioModificacao(response.data);
+                $('#form-modificar-container').show();
+                errorDiv.addClass('d-none');
+            } else {
+                errorDiv.removeClass('d-none').text(response.message || 'Veículo não encontrado');
+                $('#form-modificar-container').hide();
+            }
+        },
+        error: function() {
+            errorDiv.removeClass('d-none').text('Erro ao buscar veículo');
+            $('#form-modificar-container').hide();
+        }
+    });
+}
+
+// Função para preencher formulário de modificação
+function preencherFormularioModificacao(veiculo) {
+    $('#modificar-placa-display').val(veiculo.placa);
+    $('#modificar-cor').val(veiculo.cor || '');
+
+    // Aguardar marcas carregarem e selecionar
+    setTimeout(function() {
+        $('#modificar-marca').val(veiculo.marca || '');
+        if (veiculo.marca) {
+            carregarModelosModulo(veiculo.marca, 'modificar-modelo');
+            // Aguardar modelos carregarem e selecionar
+            setTimeout(function() {
+                $('#modificar-modelo').val(veiculo.modelo || '');
+            }, 500);
+        }
+    }, 300);
+}
+
+// Função para criar novo veículo
+function criarNovoVeiculo() {
+    const placa = $('#veiculo-placa').val().trim().toUpperCase();
+    const marca = $('#criar-marca').val();
+    const modelo = $('#criar-modelo').val();
+    const cor = $('#criar-cor').val();
+
+    const errorDiv = $('#criar-error');
+    const successDiv = $('#criar-success');
+
+    errorDiv.addClass('d-none');
+    successDiv.addClass('d-none');
+
+    // Validações
+
+
+    if (!marca) {errorDiv.removeClass('d-none').text('A marca está vazia!');
+        return;
+    }
+
+
+    if (!placa) {errorDiv.removeClass('d-none').text('A placa está vazia!');
+        return;
+    }
+
+
+    if (!modelo) {errorDiv.removeClass('d-none').text('O modelo está vazia!');
+        return;
+    }
+
+    if (!cor) {errorDiv.removeClass('d-none').text('A cor está vazia!');
+    return;
+    }
+
+
+
+
+    if (!placa || !marca || !modelo || !cor) {
+        errorDiv.removeClass('d-none').text('Todos os campos são obrigatórios');
+        return;
+    }
+
+    if (placa.length < 7 || placa.length > 8) {
+        errorDiv.removeClass('d-none').text('Formato de placa inválido');
+        return;
+    }
+
+    const dados = {
+        placa: placa,
+        marca: marca,
+        modelo: modelo,
+        cor: cor
+    };
+
+    $.ajax({
+        url: '/api/cadveiculo',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                successDiv.removeClass('d-none').text(response.message);
+                $('#form-criar-veiculo')[0].reset();
+                $('#criar-modelo').html('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+            } else {
+                errorDiv.removeClass('d-none').text(response.message);
+            }
+        },
+        error: function() {
+            errorDiv.removeClass('d-none').text('Erro ao criar veículo');
+        }
+    });
+}
+
+// Função para salvar modificações
+function salvarModificacoes() {
+    const placa = $('#modificar-placa-display').val();
+    const marca = $('#modificar-marca').val();
+    const modelo = $('#modificar-modelo').val();
+    const cor = $('#modificar-cor').val();
+
+    const errorDiv = $('#modificar-error');
+    const successDiv = $('#modificar-success');
+
+    errorDiv.addClass('d-none');
+    successDiv.addClass('d-none');
+
+    // Validações
+    if (!marca || !modelo || !cor) {
+        errorDiv.removeClass('d-none').text('Todos os campos são obrigatórios');
+        return;
+    }
+
+    const dados = {
+        marca: marca,
+        modelo: modelo,
+        cor: cor
+    };
+
+    $.ajax({
+        url: `/api/cadveiculo/${encodeURIComponent(placa)}`,
+        type: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                successDiv.removeClass('d-none').text(response.message);
+            } else {
+                errorDiv.removeClass('d-none').text(response.message);
+            }
+        },
+        error: function() {
+            errorDiv.removeClass('d-none').text('Erro ao modificar veículo');
+        }
+    });
+}
+
+// Função para limpar formulários
+function limparFormularios() {
+    // Limpar aba criar
+    $('#form-criar-veiculo')[0].reset();
+    $('#criar-modelo').html('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+    $('#criar-error, #criar-success').addClass('d-none');
+
+    // Limpar aba modificar
+    $('#buscar-placa').val('');
+    $('#form-modificar-veiculo')[0].reset();
+    $('#modificar-modelo').html('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+    $('#form-modificar-container').hide();
+    $('#busca-error, #modificar-error, #modificar-success').addClass('d-none');
+
+    // Voltar para primeira aba
+    $('#criar-tab').tab('show');
+    $('#btn-salvar-criar').show();
+    $('#btn-salvar-modificar').hide();
+}
+
+
+function atualizarTotalNaoCadastrados() {
+    $.ajax({
+        url: `/api/mapa-vagas/${condominioId}`,
+        type: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                $('#total-nao-cadastrados-header').text(response.data.total_nao_cadastrados || 0);
+            } else {
+                $('#total-nao-cadastrados-header').text('0');
+            }
+        },
+        error: function() {
+            $('#total-nao-cadastrados-header').text('0');
+        }
+    });
+}
+
+$(document).ready(function() {
+    // ...existing code...
+
+    // Atualizar número ao carregar página
+    atualizarTotalNaoCadastrados();
+
+    // Atualizar número ao clicar em atualizar
+    $('#btn-atualizar').click(function() {
+        atualizarTotalNaoCadastrados();
+    });
+
+    // Link dinâmico para veículos não cadastrados
+    $('#link-nao-cadastrados').click(function(e) {
+        e.preventDefault();
+        window.location.href = `/veiculos-nao-cadastrados/${condominioId}`;
+    });
+});
+
+
+//botão não cadastrados
+$('#btn-nao-cadastrados').click(function() {
+    window.location.href = `/veiculos-nao-cadastrados/${condominioId}`;
+});
+
+//botão relatórios
+$('#btn-relatorios').click(function() {
+    window.location.href = `/relatorios/${condominioId}`;
+});
+
+// Função para carregar unidades do condomínio
+function carregarUnidadesCondominio() {
+    const selectUnidade = $('#criar-unidade');
+    
+    console.log('DEBUG: Iniciando carregamento de unidades para condomínio:', condominioId);
+    
+    // Mostrar loading
+    selectUnidade.html('<option value="">Carregando unidades...</option>');
+    
+    $.ajax({
+        url: `/api/unidades-condominio/${condominioId}`,
+        type: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            console.log('DEBUG: Resposta da API de unidades:', response);
+            
+            if (response.success && Array.isArray(response.data)) {
+                // Limpar select
+                selectUnidade.empty();
+                selectUnidade.append('<option value="">Selecione a unidade</option>');
+                
+                // Adicionar cada unidade
+                response.data.forEach(function(unidade) {
+                    selectUnidade.append(`<option value="${unidade}">${unidade}</option>`);
+                });
+                
+                console.log('DEBUG: Unidades carregadas com sucesso:', response.data.length);
+                console.log('DEBUG: Lista de unidades:', response.data);
+            } else {
+                selectUnidade.html('<option value="">Erro ao carregar unidades</option>');
+                console.error('DEBUG: Erro na resposta da API de unidades:', response);
+            }
+        },
+        error: function(xhr, status, error) {
+            selectUnidade.html('<option value="">Erro ao carregar unidades</option>');
+            console.error('DEBUG: Erro AJAX ao carregar unidades:', error);
+            console.error('DEBUG: Status:', status);
+            console.error('DEBUG: Response:', xhr.responseText);
+        }
+    });
+}
+
+// Função para carregar unidades no modal de cadastro de veículo
+function carregarUnidadesCadastro() {
+    const selectUnidade = $('#cadastro-unidade');
+    
+    console.log('DEBUG CADASTRO: Iniciando carregamento de unidades para condomínio:', condominioId);
+    
+    // Mostrar loading
+    selectUnidade.html('<option value="">Carregando unidades...</option>');
+    
+    $.ajax({
+        url: `/api/unidades-condominio/${condominioId}`,
+        type: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            console.log('DEBUG CADASTRO: Resposta da API de unidades:', response);
+            
+            if (response.success && Array.isArray(response.data)) {
+                // Limpar select
+                selectUnidade.empty();
+                selectUnidade.append('<option value="">Selecione a unidade</option>');
+                
+                // Adicionar cada unidade
+                response.data.forEach(function(unidade) {
+                    selectUnidade.append(`<option value="${unidade}">${unidade}</option>`);
+                });
+                
+                console.log('DEBUG CADASTRO: Unidades carregadas com sucesso:', response.data.length);
+                console.log('DEBUG CADASTRO: Lista de unidades:', response.data);
+            } else {
+                selectUnidade.html('<option value="">Erro ao carregar unidades</option>');
+                console.error('DEBUG CADASTRO: Erro na resposta da API de unidades:', response);
+            }
+        },
+        error: function(xhr, status, error) {
+            selectUnidade.html('<option value="">Erro ao carregar unidades</option>');
+            console.error('DEBUG CADASTRO: Erro AJAX ao carregar unidades:', error);
+            console.error('DEBUG CADASTRO: Status:', status);
+            console.error('DEBUG CADASTRO: Response:', xhr.responseText);
+        }
+    });
+}
+
+// Função para mostrar botão de cadastro no modal de detalhes
+function mostrarBotaoCadastroVeiculo(placa) {
+    const botao = $('#btn-cadastrar-nao-cadastrado');
+    
+    // Configurar a placa no botão e exibi-lo
+    botao.data('placa', placa);
+    botao.show();
+    
+    console.log('Botão de cadastro exibido para placa:', placa);
+}
+
+// Função para abrir modal de cadastro com placa pré-preenchida
+function abrirModalCadastroComPlaca(placa) {
+    // Fechar modal de detalhes primeiro
+    $('#veiculoModal').modal('hide');
+    
+    // Aguardar um pouco para o modal fechar completamente
+    setTimeout(function() {
+        // Limpar formulário de cadastro
+        $('#cadastro-marca').val('');
+        $('#cadastro-modelo').empty().append('<option value="">Primeiro selecione uma marca</option>').prop('disabled', true);
+        $('#cadastro-unidade').val('');
+        $('#cadastro-cor').val('');
+        $('#cadastro-data-inicio').val('');
+        $('#cadastro-data-fim').val('');
+        $('#cadastro-tempo-indeterminado').prop('checked', false);
+        $('#cadastro-error').addClass('d-none');
+
+        // Preencher placa
+        $('#cadastro-placa').val(placa.toUpperCase());
+
+        // Definir data de início como hoje
+        const hoje = new Date().toISOString().split('T')[0];
+        $('#cadastro-data-inicio').val(hoje);
+
+        // Carregar unidades do condomínio
+        carregarUnidadesCadastro();
+        
+        // Abrir modal de cadastro
+        $('#cadastroVeiculoModal').modal('show');
+        
+        console.log('Modal de cadastro aberto com placa:', placa);
+    }, 300); // Aguardar 300ms para o modal anterior fechar
+}
+
+</script>
+{% endblock %}

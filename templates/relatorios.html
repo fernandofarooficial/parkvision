@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision - Relatórios{% endblock %}
+
+{% block extra_css %}
+<style>
+    .relatorio-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+    }
+    
+    .relatorio-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    .relatorio-icon {
+        font-size: 3rem;
+        color: #0d6efd;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2><i class="bi bi-file-earmark-bar-graph me-2"></i>Relatórios</h2>
+        <p class="lead">Condomínio: <span id="nome-condominio">Carregando...</span></p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="#" id="btn-mapa-vagas" class="btn btn-warning me-2">
+            <i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas
+        </a>
+        <a href="#" id="btn-voltar-veiculos" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Voltar ao Monitoramento de Veículos
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Selecione o Tipo de Relatório</h2>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    Escolha o tipo de relatório que deseja visualizar para este condomínio.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="relatorios-container">
+    <div class="col-12 text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+        <p>Carregando tipos de relatórios...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let condominioId = null;
+    let condominioNome = '';
+
+    // Configuração dos tipos de relatório
+    const tiposRelatorios = [
+        {
+            id: 'permissoes-validas',
+            titulo: 'Veículos com Permissão Válida',
+            descricao: 'Lista de veículos com permissões vigentes e indefinidas',
+            icone: 'bi-shield-check',
+            url: '/relatorio-permissoes-validas/'
+        },
+        {
+            id: 'movimento-veiculos',
+            titulo: 'Movimento de Veículos',
+            descricao: 'Histórico de entradas e saídas de veículos',
+            icone: 'bi-arrow-left-right',
+            url: '/relatorio-movimento-veiculos/'
+        },
+        {
+            id: 'mapa-vagas',
+            titulo: 'Mapa de Vagas Atual',
+            descricao: 'Status atual das vagas por unidade',
+            icone: 'bi-grid-3x3-gap',
+            url: '/relatorio-mapa-vagas/'
+        },
+        {
+            id: 'veiculos-condominio',
+            titulo: 'Veículos do Condomínio',
+            descricao: 'Lista completa de veículos cadastrados',
+            icone: 'bi-car-front',
+            url: '/relatorio-veiculos-condominio/'
+        },
+        {
+            id: 'nao-cadastrados',
+            titulo: 'Veículos Não Cadastrados',
+            descricao: 'Veículos detectados sem cadastro no sistema',
+            icone: 'bi-exclamation-triangle',
+            url: '/relatorio-nao-cadastrados/'
+        },
+        {
+            id: 'veiculos-estacionados',
+            titulo: 'Veículos Estacionados',
+            descricao: 'Veículos que estão atualmente estacionados no condomínio',
+            icone: 'bi-car-front-fill',
+            url: '/relatorio-veiculos-estacionados/'
+        }
+    ];
+
+    function carregarDadosCondominio() {
+        $.ajax({
+            url: `/api/condominio/${condominioId}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    condominioNome = response.data.nmcond;
+                    $('#nome-condominio').text(condominioNome);
+                    document.title = `ParkVision - Relatórios - ${condominioNome}`;
+                    
+                    // Atualizar links de navegação
+                    $('#btn-voltar-veiculos').attr('href', `/veiculos/${condominioId}`);
+                    $('#btn-mapa-vagas').attr('href', `/mapa-vagas/${condominioId}`);
+                } else {
+                    $('#nome-condominio').text('Erro ao carregar dados');
+                }
+            },
+            error: function() {
+                $('#nome-condominio').text('Erro ao carregar dados');
+            }
+        });
+    }
+
+    function renderizarRelatorios() {
+        let html = '';
+        
+        tiposRelatorios.forEach(function(relatorio) {
+            html += `
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card relatorio-card h-100" data-url="${relatorio.url}${condominioId}">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="${relatorio.icone} relatorio-icon"></i>
+                            </div>
+                            <h4 class="card-title">${relatorio.titulo}</h4>
+                            <p class="card-text text-muted">${relatorio.descricao}</p>
+                        </div>
+                        <div class="card-footer bg-transparent text-center">
+                            <button class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-file-earmark-text me-1"></i>Visualizar Relatório
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        $('#relatorios-container').html(html);
+        
+        // Adicionar evento de clique nos cards
+        $('.relatorio-card').click(function() {
+            const url = $(this).data('url');
+            window.location.href = url;
+        });
+    }
+
+    // Inicializar página
+    $(document).ready(function() {
+        // Obter ID do condomínio da URL
+        const pathParts = window.location.pathname.split('/');
+        condominioId = pathParts[pathParts.length - 1];
+
+        // Verificar se o usuário está autenticado
+        $.ajax({
+            url: '/api/auth/status',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (!response.authenticated || !response.usuario) {
+                    // Não autenticado - redirecionar para login
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const usuario = response.usuario;
+                
+                // Verificar se usuário tem acesso ao condomínio
+                if (usuario.tipo_usuario !== 'ADM') {
+                    // Para usuários não-ADM, verificar se tem acesso ao condomínio específico
+                    const condominiosPermitidos = usuario.condominios || [];
+                    const temAcesso = condominiosPermitidos.some(c => c.idcond == condominioId);
+                    
+                    if (!temAcesso) {
+                        // Sem acesso - redirecionar para página de condomínios
+                        window.location.href = '/condominios';
+                        return;
+                    }
+                }
+                // Usuários ADM têm acesso a todos os condomínios
+
+                // Carregar dados do condomínio
+                carregarDadosCondominio();
+                
+                // Renderizar cards de relatórios
+                renderizarRelatorios();
+            },
+            error: function() {
+                // Redirecionar para a página de seleção de condomínio
+                window.location.href = '/condominios';
+            }
+        });
+    });
+</script>
+{% endblock %}

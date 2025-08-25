@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Login - ParkVision{% endblock %}
+
+{% block extra_css %}
+<style>
+.login-container {
+    max-width: 400px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.login-header h2 {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+.form-floating {
+    margin-bottom: 1rem;
+}
+
+.btn-login {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.login-links {
+    text-align: center;
+    margin-top: 1.5rem;
+}
+
+.login-links a {
+    color: #6c757d;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.login-links a:hover {
+    color: #0d6efd;
+    text-decoration: underline;
+}
+
+.divider {
+    margin: 1.5rem 0;
+    text-align: center;
+    position: relative;
+}
+
+.divider:before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #dee2e6;
+}
+
+.divider span {
+    background: white;
+    padding: 0 15px;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-header">
+        <i class="bi bi-shield-check text-primary" style="font-size: 3rem;"></i>
+        <h2>Entrar no Sistema</h2>
+        <p class="text-muted">Acesse sua conta ParkVision</p>
+    </div>
+
+    <div id="alert-container"></div>
+
+    <form id="loginForm">
+        <div class="form-floating">
+            <input type="email" class="form-control" id="email" name="email" placeholder="nome@exemplo.com" required>
+            <label for="email">Email</label>
+        </div>
+
+        <div class="form-floating">
+            <input type="password" class="form-control" id="senha" name="senha" placeholder="Senha" required>
+            <label for="senha">Senha</label>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="lembrarMe">
+                <label class="form-check-label" for="lembrarMe">
+                    Lembrar de mim
+                </label>
+            </div>
+            <a href="/recuperar-senha" class="text-decoration-none">Esqueci minha senha</a>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-login" id="btnLogin">
+            <i class="bi bi-box-arrow-in-right me-2"></i>Entrar
+        </button>
+    </form>
+
+    <div class="divider">
+        <span>Não tem conta?</span>
+    </div>
+
+    <div class="text-center">
+        <a href="/solicitar-inscricao" class="btn btn-outline-secondary w-100">
+            <i class="bi bi-person-plus me-2"></i>Solicitar Cadastro
+        </a>
+    </div>
+
+    <div class="login-links">
+        <a href="/">← Voltar ao Início</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('#loginForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const email = $('#email').val();
+        const senha = $('#senha').val();
+        
+        if (!email || !senha) {
+            showAlert('Por favor, preencha todos os campos', 'warning');
+            return;
+        }
+        
+        // Alterar botão para loading
+        const btnLogin = $('#btnLogin');
+        const btnText = btnLogin.html();
+        btnLogin.html('<span class="spinner-border spinner-border-sm me-2"></span>Entrando...').prop('disabled', true);
+        
+        $.ajax({
+            url: '/api/auth/login',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                email: email,
+                senha: senha
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Login realizado com sucesso! Redirecionando...', 'success');
+                    
+                    // Verificar tipo de usuário e redirecionar adequadamente
+                    setTimeout(function() {
+                        if (response.usuario && response.usuario.tipo_usuario === 'ADM') {
+                            window.location.href = '/admin/dashboard';
+                        } else {
+                            window.location.href = '/condominios';
+                        }
+                    }, 1500);
+                } else {
+                    showAlert(response.message || 'Erro no login', 'danger');
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                showAlert(response?.message || 'Erro interno do servidor', 'danger');
+            },
+            complete: function() {
+                btnLogin.html(btnText).prop('disabled', false);
+            }
+        });
+    });
+    
+    function showAlert(message, type) {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        $('#alert-container').html(alertHtml);
+        
+        // Auto dismiss after 5 seconds
+        if (type === 'success') {
+            setTimeout(function() {
+                $('.alert').alert('close');
+            }, 5000);
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision - Relatório de Veículos Não Cadastrados{% endblock %}
+
+{% block extra_css %}
+<style>
+    .timestamp {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+    
+    .btn-export-pdf {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-export-pdf:hover {
+        background-color: #c82333;
+        border-color: #c82333;
+        color: white;
+    }
+    
+    .btn-export-excel {
+        background-color: #198754;
+        border-color: #198754;
+        color: white;
+    }
+    
+    .btn-export-excel:hover {
+        background-color: #157347;
+        border-color: #157347;
+        color: white;
+    }
+    
+    .placa-badge {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+        font-size: 1rem;
+    }
+    
+    .table-container {
+        min-height: 400px;
+    }
+    
+    .info-container {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .alert-warning {
+        border-left: 4px solid #ffc107;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h2><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Relatório de Veículos Não Cadastrados</h2>
+        <p class="lead">Condomínio: <span id="nome-condominio">Carregando...</span></p>
+    </div>
+    <div class="col-md-4 text-end">
+        <div class="d-flex justify-content-end align-items-center">
+            <span id="ultima-atualizacao" class="me-2">Última atualização: <span class="timestamp">--:--:--</span></span>
+            <button id="btn-atualizar" class="btn btn-primary">
+                <i class="bi bi-arrow-clockwise me-1"></i>
+                Atualizar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex gap-2">
+                <a href="#" id="btn-voltar-relatorios" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left me-2"></i>Voltar aos Relatórios
+                </a>
+                <a href="#" id="btn-mapa-vagas" class="btn btn-warning">
+                    <i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas
+                </a>
+                <a href="#" id="btn-veiculos" class="btn btn-info">
+                    <i class="bi bi-car-front me-2"></i>Monitoramento de Veículos
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alerta Informativo -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>Atenção:</strong> Este relatório exibe veículos detectados pelo sistema mas que não possuem cadastro. 
+            Considere cadastrá-los ou verificar se são veículos autorizados.
+        </div>
+    </div>
+</div>
+
+<!-- Informações Gerais -->
+<div class="info-container">
+    <div class="row text-center">
+        <div class="col-md-4">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h4 id="total-nao-cadastrados">0</h4>
+                    <p class="mb-0">Total Não Cadastrados</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h4 id="total-ocorrencias">0</h4>
+                    <p class="mb-0">Total de Ocorrências</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-secondary text-white">
+                <div class="card-body">
+                    <h4 id="ultima-deteccao">--</h4>
+                    <p class="mb-0">Última Detecção</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Área do Relatório -->
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-table me-2"></i>Veículos Detectados Sem Cadastro
+        </h5>
+        <div class="d-flex">
+            <button class="btn btn-export-pdf btn-sm me-2" id="btn-export-pdf">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Exportar PDF
+            </button>
+            <button class="btn btn-export-excel btn-sm" id="btn-export-excel">
+                <i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Loading State -->
+        <div id="loading-relatorio" class="text-center py-5">
+            <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p class="mt-2">Carregando relatório...</p>
+        </div>
+
+        <!-- Tabela de Dados -->
+        <div id="tabela-container" class="d-none table-container">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Placa</th>
+                            <th>Última Ocorrência</th>
+                            <th>Total de Ocorrências</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-dados">
+                        <!-- Dados serão gerados dinamicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Estado Vazio -->
+        <div id="empty-state" class="d-none text-center py-5">
+            <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+            <h4 class="text-success mt-3">Nenhum veículo não cadastrado encontrado</h4>
+            <p class="text-muted">Todos os veículos detectados estão devidamente cadastrados no sistema!</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- jsPDF para exportação PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- SheetJS para exportação Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+    let condominioId = null;
+    let condominioNome = '';
+    let dadosRelatorio = [];
+
+    function carregarDadosCondominio() {
+        $.ajax({
+            url: `/api/condominio/${condominioId}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    condominioNome = response.data.nmcond;
+                    $('#nome-condominio').text(condominioNome);
+                    document.title = `ParkVision - Não Cadastrados - ${condominioNome}`;
+                    
+                    // Atualizar links de navegação
+                    $('#btn-voltar-relatorios').attr('href', `/relatorios/${condominioId}`);
+                    $('#btn-mapa-vagas').attr('href', `/mapa-vagas/${condominioId}`);
+                    $('#btn-veiculos').attr('href', `/veiculos/${condominioId}`);
+                } else {
+                    $('#nome-condominio').text('Erro ao carregar dados');
+                }
+            },
+            error: function() {
+                $('#nome-condominio').text('Erro ao carregar dados');
+            }
+        });
+    }
+
+    function carregarRelatorio() {
+        $('#btn-atualizar').prop('disabled', true);
+        $('#loading-relatorio').removeClass('d-none');
+        $('#tabela-container, #empty-state').addClass('d-none');
+
+        $.ajax({
+            url: `/api/relatorio/nao-cadastrados/${condominioId}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success && response.data.length > 0) {
+                    dadosRelatorio = response.data;
+                    renderizarTabela();
+                    atualizarResumo();
+                    $('#tabela-container').removeClass('d-none');
+                    
+                    // Atualizar timestamp
+                    const agora = new Date();
+                    $('#ultima-atualizacao .timestamp').text(agora.toLocaleTimeString('pt-BR'));
+                } else {
+                    $('#empty-state').removeClass('d-none');
+                    if (response.message) {
+                        console.error('Erro na API:', response.message);
+                    }
+                }
+            },
+            error: function(xhr, status, error) {
+                $('#empty-state').removeClass('d-none');
+                console.error('Erro ao carregar relatório:', error);
+            },
+            complete: function() {
+                $('#loading-relatorio').addClass('d-none');
+                $('#btn-atualizar').prop('disabled', false);
+            }
+        });
+    }
+
+    function renderizarTabela() {
+        let html = '';
+        
+        dadosRelatorio.forEach(function(row) {
+            html += `<tr>
+                <td><span class="badge bg-dark placa-badge">${row[0]}</span></td>
+                <td><i class="bi bi-clock me-1"></i>${row[1]}</td>
+                <td><span class="badge bg-warning text-dark">${row[2]}</span></td>
+            </tr>`;
+        });
+        
+        $('#tabela-dados').html(html);
+    }
+
+    function atualizarResumo() {
+        const totalNaoCadastrados = dadosRelatorio.length;
+        let totalOcorrencias = 0;
+        let ultimaDeteccao = '';
+        
+        // Calcular total de ocorrências e encontrar a última detecção
+        dadosRelatorio.forEach(function(row) {
+            totalOcorrencias += parseInt(row[2]);
+            // A primeira linha tem a detecção mais recente (ORDER BY MAX(idseq) DESC)
+            if (!ultimaDeteccao) {
+                ultimaDeteccao = row[1];
+            }
+        });
+        
+        $('#total-nao-cadastrados').text(totalNaoCadastrados);
+        $('#total-ocorrencias').text(totalOcorrencias);
+        $('#ultima-deteccao').text(ultimaDeteccao || '--');
+    }
+
+    function exportarPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Configurar fonte para suportar caracteres acentuados
+        doc.setFont("helvetica");
+        
+        // Título
+        doc.setFontSize(16);
+        doc.text('Relatório de Veículos Não Cadastrados', 20, 20);
+        
+        doc.setFontSize(12);
+        doc.text(`Condomínio: ${condominioNome}`, 20, 30);
+        doc.text(`Data de Geração: ${new Date().toLocaleDateString('pt-BR')}`, 20, 40);
+        doc.text(`Total de Veículos: ${dadosRelatorio.length}`, 20, 50);
+        
+        // Cabeçalhos da tabela
+        let y = 70;
+        doc.setFontSize(10);
+        doc.text('Placa', 20, y);
+        doc.text('Última Ocorrência', 60, y);
+        doc.text('Total Ocorrências', 130, y);
+        
+        // Linha separadora
+        y += 5;
+        doc.line(20, y, 190, y);
+        y += 10;
+        
+        // Dados
+        dadosRelatorio.forEach((row, index) => {
+            if (y > 270) { // Nova página
+                doc.addPage();
+                y = 20;
+            }
+            
+            doc.text(row[0] || '', 20, y);
+            doc.text(row[1] || '', 60, y);
+            doc.text(row[2] || '', 130, y);
+            
+            y += 8;
+        });
+        
+        const agora = new Date();
+        const ano = agora.getFullYear();
+        const mes = String(agora.getMonth() + 1).padStart(2, '0');
+        const dia = String(agora.getDate()).padStart(2, '0');
+        const hora = String(agora.getHours()).padStart(2, '0');
+        const minuto = String(agora.getMinutes()).padStart(2, '0');
+        const dataHoraAtual = `_${ano}_${mes}_${dia}_${hora}_${minuto}`;
+        doc.save(`veiculos_nao_cadastrados_${condominioNome}${dataHoraAtual}.pdf`);
+    }
+
+    function exportarExcel() {
+        // Preparar dados com cabeçalhos
+        const headers = ['Placa', 'Última Ocorrência', 'Total de Ocorrências'];
+        const wsData = [headers, ...dadosRelatorio];
+        
+        // Criar workbook
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        
+        // Configurar largura das colunas
+        ws['!cols'] = [
+            { width: 12 }, // Placa
+            { width: 20 }, // Última Ocorrência
+            { width: 18 }  // Total de Ocorrências
+        ];
+        
+        XLSX.utils.book_append_sheet(wb, ws, "Veículos Não Cadastrados");
+        
+        // Salvar arquivo
+        const agora = new Date();
+        const ano = agora.getFullYear();
+        const mes = String(agora.getMonth() + 1).padStart(2, '0');
+        const dia = String(agora.getDate()).padStart(2, '0');
+        const hora = String(agora.getHours()).padStart(2, '0');
+        const minuto = String(agora.getMinutes()).padStart(2, '0');
+        const dataHoraAtual = `_${ano}_${mes}_${dia}_${hora}_${minuto}`;
+        XLSX.writeFile(wb, `veiculos_nao_cadastrados_${condominioNome}${dataHoraAtual}.xlsx`);
+    }
+
+    // Event Listeners
+    $(document).ready(function() {
+        // Obter ID do condomínio da URL
+        const pathParts = window.location.pathname.split('/');
+        condominioId = pathParts[pathParts.length - 1];
+
+        // Verificar autenticação
+        $.ajax({
+            url: '/api/auth/status',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (!response.authenticated || !response.usuario) {
+                    // Não autenticado - redirecionar para login
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const usuario = response.usuario;
+                
+                // Verificar se usuário tem acesso ao condomínio
+                if (usuario.tipo_usuario !== 'ADM') {
+                    // Para usuários não-ADM, verificar se tem acesso ao condomínio específico
+                    const condominiosPermitidos = usuario.condominios || [];
+                    const temAcesso = condominiosPermitidos.some(c => c.idcond == condominioId);
+                    
+                    if (!temAcesso) {
+                        // Sem acesso - redirecionar para página de condomínios
+                        window.location.href = '/condominios';
+                        return;
+                    }
+                }
+                // Usuários ADM têm acesso a todos os condomínios
+
+                carregarDadosCondominio();
+                carregarRelatorio();
+            },
+            error: function() {
+                // Erro na verificação - redirecionar para login
+                window.location.href = '/login';
+            }
+        });
+
+        // Atualizar relatório
+        $('#btn-atualizar').click(function() {
+            carregarRelatorio();
+        });
+
+        // Exportações
+        $('#btn-export-pdf').click(function() {
+            if (dadosRelatorio.length > 0) {
+                exportarPDF();
+            } else {
+                alert('Não há dados para exportar');
+            }
+        });
+
+        $('#btn-export-excel').click(function() {
+            if (dadosRelatorio.length > 0) {
+                exportarExcel();
+            } else {
+                alert('Não há dados para exportar');
+            }
+        });
+    });
+</script>
+{% endblock %}

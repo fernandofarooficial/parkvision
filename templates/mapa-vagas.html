@@ -1,0 +1,468 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision - Mapa de Vagas{% endblock %}
+
+{% block extra_css %}
+<style>
+    .mapa-vagas-container {
+        margin-top: 20px;
+    }
+    
+    .mapa-titulo {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    
+    .vaga-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 5px;
+    }
+    
+    .vaga-table th, .vaga-table td {
+        text-align: center;
+        padding: 8px;
+        border-radius: 4px;
+    }
+    
+    .vaga-table th {
+        background-color: #f8f9fa;
+        font-weight: normal;
+    }
+    
+    .vaga-cell {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        transition: all 0.2s;
+    }
+    
+    .vaga-ocupada {
+        background-color: #ffcccc;
+        color: #dc3545;
+        font-weight: bold;
+    }
+    
+    .vaga-livre {
+        background-color: #d1e7dd;
+        color: #198754;
+    }
+    
+    .vaga-esgotada {
+        background-color: #f8d7da;
+        color: #842029;
+        font-style: italic;
+    }
+    
+    .legenda-item {
+        display: inline-block;
+        margin-right: 20px;
+        margin-bottom: 10px;
+    }
+    
+    .legenda-cor {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        margin-right: 5px;
+        vertical-align: middle;
+        border-radius: 3px;
+    }
+    
+    .legenda-texto {
+        display: inline-block;
+        vertical-align: middle;
+    }
+    
+    .legenda-livre {
+        background-color: #d1e7dd;
+    }
+    
+    .legenda-ocupada {
+        background-color: #ffcccc;
+    }
+    
+    .legenda-esgotada {
+        background-color: #f8d7da;
+    }
+    
+    .destaque-vermelho {
+        color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h2><i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas</h2>
+        <p class="lead">Condomínio: <span id="nome-condominio">Carregando...</span></p>
+    </div>
+    <div class="col-md-4 text-end">
+        <div class="d-flex justify-content-end align-items-center">
+            <span id="ultima-atualizacao" class="me-2">Última atualização: <span class="timestamp">--:--:--</span></span>
+            <button id="btn-atualizar" class="btn btn-primary">
+                <i class="bi bi-arrow-clockwise me-1"></i>
+                Atualizar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <a href="#" id="btn-voltar" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Voltar ao Monitoramento de Veículos
+        </a>
+    </div>
+    <div class="col-md-6 text-end">
+        <button id="btn-relatorios" class="btn btn-info me-2">
+            <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatórios
+        </button>
+        <button id="btn-nao-cadastrados" class="btn btn-warning me-2">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Veículos não cadastrados: <span id="total-nao-cadastrados-header">0</span>
+        </button>
+        <br>
+        <br>
+                
+                </a> | 
+                Total de vagas permitidas: <span id="total-vagas-permitidas-header">0</span> | <br>
+                Total de Unidades: <span id="total-unidades">0</span> | <br>
+                Vagas Ocupadas: <span id="total-ocupadas">0</span>|
+            </span>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">MAPA DE VAGAS</h5>
+    </div>
+    <div class="card-body">
+        <div class="mapa-titulo">
+            <h4>Condomínio: <span id="titulo-condominio">Carregando...</span> | Total de Unidades: <span id="titulo-total-unidades">0</span></h4>
+        </div>
+        
+        <div class="mapa-vagas-container table-responsive">
+            <div id="mapa-loading" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                </div>
+                <p>Carregando mapa de vagas...</p>
+            </div>
+            
+            <div id="mapa-container" class="d-none">
+                <!-- O mapa será gerado dinamicamente via JavaScript -->
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h5>Legenda:</h5>
+            <div class="legenda-container">
+                <div class="legenda-item">
+                    <div class="legenda-cor" style="background-color: #dc3545;"></div>
+                    <div class="legenda-texto">Vermelho = Excesso de ocupação (mais carros que vagas permitidas)</div>
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-cor" style="background-color: #0d6efd;"></div>
+                    <div class="legenda-texto">Azul = Totalmente ocupado (vagas permitidas = vagas ocupadas)</div>
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-cor" style="background-color: #f8f9fa; border: 1px solid #dee2e6;"></div>
+                    <div class="legenda-texto">Branco = Vagas disponíveis (vagas livres)</div>
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-texto"><strong>P</strong> = Vagas Permitidas | <strong>O</strong> = Vagas Ocupadas</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para detalhes da unidade -->
+<div class="modal fade" id="modalDetalhesUnidade" tabindex="-1" aria-labelledby="modalDetalhesUnidadeLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal-unidade-titulo">Detalhes da Unidade</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modal-unidade-conteudo">
+                <!-- Conteúdo será carregado dinamicamente -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let condominioId = null;
+    let condominioNome = '';
+    
+    function carregarDadosCondominio() {
+        $.ajax({
+            url: `/api/condominio/${condominioId}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    condominioNome = response.data.nmcond;
+                    $('#nome-condominio').text(condominioNome);
+                    $('#titulo-condominio').text(condominioNome);
+                    document.title = `ParkVision - Mapa de Vagas - ${condominioNome}`;
+                    
+                    // Atualizar link de voltar
+                    $('#btn-voltar').attr('href', `/veiculos/${condominioId}`);
+                } else {
+                    $('#nome-condominio').text('Erro ao carregar dados');
+                }
+            },
+            error: function() {
+                $('#nome-condominio').text('Erro ao carregar dados');
+            }
+        });
+    }
+    
+    function carregarMapaVagas() {
+        $('#btn-atualizar').prop('disabled', true);
+        $('#mapa-loading').removeClass('d-none');
+        $('#mapa-container').addClass('d-none');
+        
+        $.ajax({
+            url: `/api/mapa-vagas/${condominioId}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    renderizarMapaVagas(response.data);
+                    
+                    // Atualizar timestamp
+                    const agora = new Date();
+                    $('#ultima-atualizacao .timestamp').text(agora.toLocaleTimeString('pt-BR'));
+                    
+                    // Atualizar totais
+                    $('#total-unidades').text(response.data.total_unidades);
+                    $('#titulo-total-unidades').text(response.data.total_unidades);
+                    $('#total-ocupadas').text(response.data.total_ocupadas);
+                    $('#total-nao-cadastrados-header').text(response.data.total_nao_cadastrados || 0);
+                    $('#total-vagas-permitidas-header').text(response.data.total_vagas_permitidas || 0);
+                } else {
+                    $('#mapa-container').html('<div class="alert alert-danger">Erro ao carregar mapa de vagas</div>').removeClass('d-none');
+                    $('#mapa-loading').addClass('d-none');
+                }
+            },
+            error: function() {
+                $('#mapa-container').html('<div class="alert alert-danger">Erro ao carregar mapa de vagas</div>').removeClass('d-none');
+                $('#mapa-loading').addClass('d-none');
+            },
+            complete: function() {
+                $('#btn-atualizar').prop('disabled', false);
+                $('#mapa-loading').addClass('d-none');
+            }
+        });
+    }
+    
+    function renderizarMapaVagas(data) {
+        const vagas = data.vagas;
+        const colunasPorLinha = data.colunas_linha;
+        
+        // Agrupar vagas em blocos para exibição
+        const blocos = [];
+        let bloco = [];
+        
+        for (let i = 0; i < vagas.length; i++) {
+            bloco.push(vagas[i]);
+            
+            if (bloco.length === colunasPorLinha || i === vagas.length - 1) {
+                blocos.push(bloco);
+                bloco = [];
+            }
+        }
+        
+        // Criar tabela única mais limpa
+        let html = '<table class="vaga-table">';
+        
+        // Cabeçalho simplificado
+        html += '<thead><tr>';
+        for (let i = 0; i < colunasPorLinha; i++) {
+            html += '<th style="text-align: center; padding: 5px;">Unidade</th>';
+        }
+        html += '</tr></thead>';
+        
+        html += '<tbody>';
+        
+        for (let i = 0; i < blocos.length; i++) {
+            html += '<tr>';
+            
+            for (let j = 0; j < colunasPorLinha; j++) {
+                if (j < blocos[i].length) {
+                    const vaga = blocos[i][j];
+                    
+                    // Determinar cor baseada na lógica de ocupação
+                    let corFundo = '#f8f9fa'; // Branco padrão (vagas disponíveis)
+                    let corTexto = '#000';
+                    
+                    if (vaga.vocup > vaga.vperm) {
+                        // Vermelho: Excesso de ocupação
+                        corFundo = '#dc3545';
+                        corTexto = '#fff';
+                    } else if (vaga.vocup === vaga.vperm && vaga.vperm > 0) {
+                        // Azul: Totalmente ocupado
+                        corFundo = '#0d6efd';
+                        corTexto = '#fff';
+                    }
+                    // Caso contrário, mantém branco (vagas disponíveis)
+                    
+                    // Formato mais limpo: apenas número da unidade e status das vagas
+                    html += `<td class="vaga-cell" style="text-align: center; padding: 8px; border: 1px solid #ddd; background-color: ${corFundo}; color: ${corTexto}; cursor: pointer;" onclick="mostrarDetalhesUnidade(${vaga.unidade})">`;
+                    html += `<div style="font-weight: bold; font-size: 14px;">${vaga.unidade}</div>`;
+                    html += `<div style="font-size: 12px; margin-top: 2px;">P:${vaga.vperm} O:${vaga.vocup}</div>`;
+                    html += `</td>`;
+                } else {
+                    html += '<td style="border: none;"></td>';
+                }
+            }
+            
+            html += '</tr>';
+        }
+        
+        html += '</tbody></table>';
+        
+        $('#mapa-container').html(html).removeClass('d-none');
+    }
+    
+    // Função para mostrar detalhes da unidade
+    function mostrarDetalhesUnidade(unidade) {
+        $('#modal-unidade-titulo').text(`Veículos Estacionados - Unidade ${unidade}`);
+        $('#modal-unidade-conteudo').html('<div class="text-center"><div class="spinner-border" role="status"></div><p class="mt-2">Carregando...</p></div>');
+        
+        const modal = new bootstrap.Modal(document.getElementById('modalDetalhesUnidade'));
+        modal.show();
+        
+        // Buscar veículos da unidade
+        $.ajax({
+            url: `/api/unidade/${condominioId}/${unidade}`,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    let html = '';
+                    
+                    if (response.data.veiculos && response.data.veiculos.length > 0) {
+                        html += '<div class="mb-3"><h6>Veículos Estacionados:</h6><ul class="list-group">';
+                        response.data.veiculos.forEach(function(veiculo) {
+                            // Construir descrição do veículo - SEMPRE começar com a placa
+                            let descricaoVeiculo = veiculo.placa;
+                            
+                            // Verificar se tem marca e modelo válidos (não genéricos)
+                            const temMarcaModelo = veiculo.marca && veiculo.modelo && 
+                                                 veiculo.marca !== 'N/I' && veiculo.modelo !== 'N/I' &&
+                                                 !(veiculo.marca === 'Agrale' && veiculo.modelo === 'Marruá');
+                            
+                            if (temMarcaModelo) {
+                                // Formato: "STB0I25 Ford Ka Prata"
+                                descricaoVeiculo += ` ${veiculo.marca} ${veiculo.modelo}`;
+                            }
+                            
+                            // Adicionar cor se disponível e válida
+                            if (veiculo.cor && veiculo.cor !== 'N/I' && veiculo.cor !== 'invisivel') {
+                                descricaoVeiculo += ` ${veiculo.cor}`;
+                            }
+                            
+                            html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span><strong>${descricaoVeiculo}</strong></span>
+                            </li>`;
+                        });
+                        html += '</ul></div>';
+                    } else {
+                        html += '<div class="alert alert-info">Nenhum veículo estacionado nesta unidade.</div>';
+                    }
+                    
+                    html += `<div class="row">
+                        <div class="col-md-12">
+                            <p><strong>Vagas Permitidas:</strong> ${response.data.vagas_permitidas || 0}</p>
+                            <p><strong>Vagas Ocupadas:</strong> ${response.data.vagas_ocupadas || 0}</p>
+                        </div>
+                    </div>`;
+                    
+                    $('#modal-unidade-conteudo').html(html);
+                } else {
+                    $('#modal-unidade-conteudo').html('<div class="alert alert-danger">Erro ao carregar informações da unidade.</div>');
+                }
+            },
+            error: function() {
+                $('#modal-unidade-conteudo').html('<div class="alert alert-danger">Erro ao carregar informações da unidade.</div>');
+            }
+        });
+    }
+    
+    // Inicializar página
+    $(document).ready(function() {
+        // Obter ID do condomínio da URL
+        const pathParts = window.location.pathname.split('/');
+        condominioId = pathParts[pathParts.length - 1];
+        
+        // Verificar se o usuário está autenticado
+        $.ajax({
+            url: '/api/auth/status',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (!response.authenticated || !response.usuario) {
+                    // Não autenticado - redirecionar para login
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const usuario = response.usuario;
+                
+                // Verificar se usuário tem acesso ao condomínio
+                if (usuario.tipo_usuario !== 'ADM') {
+                    // Para usuários não-ADM, verificar se tem acesso ao condomínio específico
+                    const condominiosPermitidos = usuario.condominios || [];
+                    const temAcesso = condominiosPermitidos.some(c => c.idcond == condominioId);
+                    
+                    if (!temAcesso) {
+                        // Sem acesso - redirecionar para página de condomínios
+                        window.location.href = '/condominios';
+                        return;
+                    }
+                }
+                // Usuários ADM têm acesso a todos os condomínios
+                
+                // Carregar dados do condomínio
+                carregarDadosCondominio();
+                
+                // Carregar mapa de vagas
+                carregarMapaVagas();
+            },
+            error: function() {
+                // Erro na verificação - redirecionar para login
+                window.location.href = '/condominios';
+            }
+        });
+        
+        // Link para veículos não cadastrados
+        $('#link-nao-cadastrados').click(function(e) {
+            e.preventDefault();
+            window.location.href = `/veiculos-nao-cadastrados/${condominioId}`;
+        });
+        
+        // Botão de atualização manual
+        $('#btn-atualizar').click(function() {
+            carregarMapaVagas();
+        });
+    });
+
+    //botão não cadastrados
+$('#btn-nao-cadastrados').click(function() {
+    window.location.href = `/veiculos-nao-cadastrados/${condominioId}`;
+});
+
+//botão relatórios
+$('#btn-relatorios').click(function() {
+    window.location.href = `/relatorios/${condominioId}`;
+});
+
+</script>
+{% endblock %}

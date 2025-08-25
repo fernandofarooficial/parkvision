@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+
+{% block title %}Alterar Senha - ParkVision{% endblock %}
+
+{% block extra_css %}
+<style>
+.senha-container {
+    max-width: 500px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.senha-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.senha-header h2 {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+.form-floating {
+    margin-bottom: 1rem;
+}
+
+.password-strength {
+    margin-top: 0.5rem;
+}
+
+.strength-bar {
+    height: 4px;
+    background: #e9ecef;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.strength-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 2px;
+}
+
+.strength-weak { 
+    background: #dc3545; 
+    width: 25%; 
+}
+
+.strength-fair { 
+    background: #ffc107; 
+    width: 50%; 
+}
+
+.strength-good { 
+    background: #28a745; 
+    width: 75%; 
+}
+
+.strength-strong { 
+    background: #20c997; 
+    width: 100%; 
+}
+
+.requirements {
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+
+.requirement {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.requirement.valid {
+    color: #28a745;
+}
+
+.requirement.invalid {
+    color: #6c757d;
+}
+
+.requirement i {
+    margin-right: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.btn-alterar {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="senha-container">
+    <div class="senha-header">
+        <i class="bi bi-shield-lock text-primary" style="font-size: 3rem;"></i>
+        <h2>Alterar Senha</h2>
+        <p class="text-muted">Mantenha sua conta segura com uma senha forte</p>
+    </div>
+
+    <div id="alert-container"></div>
+
+    <form id="alterarSenhaForm">
+        <div class="form-floating">
+            <input type="password" class="form-control" id="senha_atual" name="senha_atual" placeholder="Senha atual" required>
+            <label for="senha_atual">Senha Atual</label>
+        </div>
+
+        <div class="form-floating">
+            <input type="password" class="form-control" id="nova_senha" name="nova_senha" placeholder="Nova senha" required>
+            <label for="nova_senha">Nova Senha</label>
+            
+            <div class="password-strength">
+                <div class="strength-bar">
+                    <div class="strength-fill" id="strength-fill"></div>
+                </div>
+                <small class="text-muted" id="strength-text">Digite sua nova senha</small>
+            </div>
+            
+            <div class="requirements" id="password-requirements">
+                <div class="requirement" id="req-length">
+                    <i class="bi bi-circle"></i>
+                    Mínimo 8 caracteres
+                </div>
+                <div class="requirement" id="req-upper">
+                    <i class="bi bi-circle"></i>
+                    Pelo menos uma letra maiúscula
+                </div>
+                <div class="requirement" id="req-lower">
+                    <i class="bi bi-circle"></i>
+                    Pelo menos uma letra minúscula
+                </div>
+                <div class="requirement" id="req-number">
+                    <i class="bi bi-circle"></i>
+                    Pelo menos um número
+                </div>
+                <div class="requirement" id="req-special">
+                    <i class="bi bi-circle"></i>
+                    Pelo menos um caractere especial
+                </div>
+            </div>
+        </div>
+
+        <div class="form-floating">
+            <input type="password" class="form-control" id="confirmar_senha" name="confirmar_senha" placeholder="Confirmar nova senha" required>
+            <label for="confirmar_senha">Confirmar Nova Senha</label>
+            <div class="form-text" id="confirm-feedback"></div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-alterar" id="btnAlterar" disabled>
+            <i class="bi bi-shield-check me-2"></i>Alterar Senha
+        </button>
+    </form>
+
+    <div class="text-center mt-3">
+        <a href="javascript:history.back()" class="text-decoration-none">← Voltar</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    let senhaValida = false;
+    let senhasIguais = false;
+
+    // Validação em tempo real da nova senha
+    $('#nova_senha').on('input', function() {
+        const senha = $(this).val();
+        validarSenha(senha);
+        verificarConfirmacao();
+    });
+
+    // Verificação de confirmação de senha
+    $('#confirmar_senha').on('input', function() {
+        verificarConfirmacao();
+    });
+
+    // Validação do formulário
+    $('#senha_atual, #nova_senha, #confirmar_senha').on('input', function() {
+        atualizarBotao();
+    });
+
+    $('#alterarSenhaForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const senhaAtual = $('#senha_atual').val();
+        const novaSenha = $('#nova_senha').val();
+        const confirmarSenha = $('#confirmar_senha').val();
+        
+        if (!senhaAtual || !novaSenha || !confirmarSenha) {
+            showAlert('Por favor, preencha todos os campos', 'warning');
+            return;
+        }
+        
+        if (!senhaValida) {
+            showAlert('A nova senha não atende aos requisitos de segurança', 'warning');
+            return;
+        }
+        
+        if (novaSenha !== confirmarSenha) {
+            showAlert('A confirmação de senha não confere', 'warning');
+            return;
+        }
+        
+        // Alterar botão para loading
+        const btnAlterar = $('#btnAlterar');
+        const btnText = btnAlterar.html();
+        btnAlterar.html('<span class="spinner-border spinner-border-sm me-2"></span>Alterando...').prop('disabled', true);
+        
+        $.ajax({
+            url: '/api/auth/alterar-senha',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                senha_atual: senhaAtual,
+                nova_senha: novaSenha
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Senha alterada com sucesso!', 'success');
+                    $('#alterarSenhaForm')[0].reset();
+                    resetarValidacoes();
+                    
+                    // Redirecionar após 2 segundos
+                    setTimeout(function() {
+                        window.history.back();
+                    }, 2000);
+                } else {
+                    showAlert(response.message || 'Erro ao alterar senha', 'danger');
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                showAlert(response?.message || 'Erro interno do servidor', 'danger');
+            },
+            complete: function() {
+                btnAlterar.html(btnText).prop('disabled', false);
+                atualizarBotao();
+            }
+        });
+    });
+
+    function validarSenha(senha) {
+        const requisitos = {
+            length: senha.length >= 8,
+            upper: /[A-Z]/.test(senha),
+            lower: /[a-z]/.test(senha),
+            number: /\d/.test(senha),
+            special: /[!@#$%^&*(),.?":{}|<>]/.test(senha)
+        };
+
+        // Atualizar indicadores visuais dos requisitos
+        Object.keys(requisitos).forEach(req => {
+            const elemento = $(`#req-${req}`);
+            if (requisitos[req]) {
+                elemento.addClass('valid').removeClass('invalid');
+                elemento.find('i').removeClass('bi-circle').addClass('bi-check-circle-fill');
+            } else {
+                elemento.addClass('invalid').removeClass('valid');
+                elemento.find('i').removeClass('bi-check-circle-fill').addClass('bi-circle');
+            }
+        });
+
+        // Calcular força da senha
+        const validCount = Object.values(requisitos).filter(Boolean).length;
+        senhaValida = validCount === 5;
+
+        let strengthClass = '';
+        let strengthText = '';
+
+        if (senha.length === 0) {
+            strengthText = 'Digite sua nova senha';
+            strengthClass = '';
+        } else if (validCount <= 2) {
+            strengthText = 'Senha muito fraca';
+            strengthClass = 'strength-weak';
+        } else if (validCount === 3) {
+            strengthText = 'Senha fraca';
+            strengthClass = 'strength-fair';
+        } else if (validCount === 4) {
+            strengthText = 'Senha boa';
+            strengthClass = 'strength-good';
+        } else {
+            strengthText = 'Senha forte';
+            strengthClass = 'strength-strong';
+        }
+
+        $('#strength-fill').removeClass('strength-weak strength-fair strength-good strength-strong').addClass(strengthClass);
+        $('#strength-text').text(strengthText);
+    }
+
+    function verificarConfirmacao() {
+        const novaSenha = $('#nova_senha').val();
+        const confirmarSenha = $('#confirmar_senha').val();
+        const feedback = $('#confirm-feedback');
+
+        if (confirmarSenha.length === 0) {
+            feedback.text('').removeClass('text-success text-danger');
+            senhasIguais = false;
+        } else if (novaSenha === confirmarSenha) {
+            feedback.text('✓ Senhas conferem').removeClass('text-danger').addClass('text-success');
+            senhasIguais = true;
+        } else {
+            feedback.text('✗ Senhas não conferem').removeClass('text-success').addClass('text-danger');
+            senhasIguais = false;
+        }
+    }
+
+    function atualizarBotao() {
+        const senhaAtual = $('#senha_atual').val().trim();
+        const novaSenha = $('#nova_senha').val().trim();
+        const confirmarSenha = $('#confirmar_senha').val().trim();
+
+        const podeAlterar = senhaAtual && novaSenha && confirmarSenha && senhaValida && senhasIguais;
+        $('#btnAlterar').prop('disabled', !podeAlterar);
+    }
+
+    function resetarValidacoes() {
+        senhaValida = false;
+        senhasIguais = false;
+        
+        // Resetar indicadores visuais
+        $('.requirement').removeClass('valid').addClass('invalid');
+        $('.requirement i').removeClass('bi-check-circle-fill').addClass('bi-circle');
+        
+        $('#strength-fill').removeClass('strength-weak strength-fair strength-good strength-strong');
+        $('#strength-text').text('Digite sua nova senha');
+        $('#confirm-feedback').text('').removeClass('text-success text-danger');
+        
+        atualizarBotao();
+    }
+
+    function showAlert(message, type) {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        $('#alert-container').html(alertHtml);
+        
+        // Auto dismiss após 5 segundos para alertas de sucesso
+        if (type === 'success') {
+            setTimeout(function() {
+                $('.alert').alert('close');
+            }, 5000);
+        }
+    }
+});
+</script>
+{% endblock %}

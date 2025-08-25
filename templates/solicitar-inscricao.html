@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Solicitar Cadastro - ParkVision{% endblock %}
+
+{% block extra_css %}
+<style>
+.inscricao-container {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.inscricao-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.inscricao-header h2 {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+.form-floating {
+    margin-bottom: 1rem;
+}
+
+.btn-solicitar {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.info-card {
+    background: #f8f9fa;
+    border-left: 4px solid #0d6efd;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    border-radius: 0 8px 8px 0;
+}
+
+.tipo-usuario-info {
+    background: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.tipo-usuario-info h6 {
+    color: #1976d2;
+    margin-bottom: 0.5rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="inscricao-container">
+    <div class="inscricao-header">
+        <i class="bi bi-person-plus text-primary" style="font-size: 3rem;"></i>
+        <h2>Solicitar Cadastro</h2>
+        <p class="text-muted">Preencha os dados para solicitar acesso ao sistema</p>
+    </div>
+
+    <div class="info-card">
+        <h6><i class="bi bi-info-circle me-2"></i>Processo de Cadastro</h6>
+        <p class="mb-0">Sua solicitação será analisada por um administrador. Você receberá um retorno em até 48 horas no email informado.</p>
+    </div>
+
+    <div id="alert-container"></div>
+
+    <form id="inscricaoForm">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="form-floating">
+                    <input type="text" class="form-control" id="nome_completo" name="nome_completo" placeholder="Nome completo" required maxlength="100">
+                    <label for="nome_completo">Nome Completo</label>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-floating">
+                    <input type="text" class="form-control" id="nome_curto" name="nome_curto" placeholder="Nome" required maxlength="50">
+                    <label for="nome_curto">Nome Curto</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-7">
+                <div class="form-floating">
+                    <input type="email" class="form-control" id="email" name="email" placeholder="nome@exemplo.com" required maxlength="100">
+                    <label for="email">Email</label>
+                </div>
+            </div>
+            <div class="col-md-5">
+                <div class="form-floating">
+                    <input type="tel" class="form-control" id="telefone" name="telefone" placeholder="(11) 99999-9999" maxlength="20">
+                    <label for="telefone">Telefone</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-floating">
+            <select class="form-select" id="tipo_usuario_solicitado" name="tipo_usuario_solicitado" required>
+                <option value="">Selecione o tipo de acesso</option>
+                <option value="SINDICO">Síndico</option>
+                <option value="MONITOR">Monitor</option>
+            </select>
+            <label for="tipo_usuario_solicitado">Tipo de Usuário</label>
+        </div>
+
+        <div id="tipo-info" class="d-none">
+            <div id="info-sindico" class="tipo-usuario-info d-none">
+                <h6><i class="bi bi-eye me-2"></i>Síndico</h6>
+                <p class="mb-0">Acesso de visualização e relatórios nos condomínios autorizados. Ideal para síndicos e administradores prediais.</p>
+            </div>
+            <div id="info-monitor" class="tipo-usuario-info d-none">
+                <h6><i class="bi bi-pencil-square me-2"></i>Monitor</h6>
+                <p class="mb-0">Acesso para edição, relatórios e visualização nos condomínios autorizados. Ideal para porteiros e funcionários operacionais.</p>
+            </div>
+        </div>
+
+        <div class="form-floating">
+            <textarea class="form-control" id="justificativa" name="justificativa" style="height: 120px" placeholder="Descreva o motivo da solicitação..." required maxlength="500"></textarea>
+            <label for="justificativa">Justificativa</label>
+            <div class="form-text">Explique brevemente por que precisa de acesso ao sistema</div>
+        </div>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="aceito_termos" required>
+            <label class="form-check-label" for="aceito_termos">
+                Aceito os <a href="#" data-bs-toggle="modal" data-bs-target="#termosModal">termos de uso</a> e política de privacidade
+            </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-solicitar" id="btnSolicitar">
+            <i class="bi bi-send me-2"></i>Enviar Solicitação
+        </button>
+
+        <div class="text-center mt-3">
+            <a href="/login" class="text-decoration-none">← Voltar para Login</a>
+        </div>
+    </form>
+</div>
+
+<!-- Modal de Termos -->
+<div class="modal fade" id="termosModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Termos de Uso</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>1. Uso do Sistema</h6>
+                <p>O acesso ao ParkVision é restrito a usuários autorizados e deve ser usado exclusivamente para fins profissionais relacionados ao monitoramento de estacionamentos.</p>
+                
+                <h6>2. Responsabilidades</h6>
+                <p>O usuário é responsável por manter a confidencialidade de suas credenciais de acesso e por todas as ações realizadas em sua conta.</p>
+                
+                <h6>3. Privacidade</h6>
+                <p>Seus dados pessoais serão tratados conforme nossa política de privacidade e não serão compartilhados com terceiros sem autorização.</p>
+                
+                <h6>4. Aprovação</h6>
+                <p>Todas as solicitações de cadastro passam por análise administrativa. O acesso pode ser negado sem necessidade de justificativa.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Mostrar informações do tipo de usuário
+    $('#tipo_usuario_solicitado').on('change', function() {
+        const tipo = $(this).val();
+        $('#tipo-info .tipo-usuario-info').addClass('d-none');
+        
+        if (tipo) {
+            $('#tipo-info').removeClass('d-none');
+            $(`#info-${tipo.toLowerCase()}`).removeClass('d-none');
+        } else {
+            $('#tipo-info').addClass('d-none');
+        }
+    });
+
+    // Máscara para telefone
+    $('#telefone').on('input', function() {
+        let value = this.value.replace(/\D/g, '');
+        if (value.length >= 11) {
+            value = value.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+        } else if (value.length >= 7) {
+            value = value.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+        } else if (value.length >= 3) {
+            value = value.replace(/(\d{2})(\d{0,5})/, '($1) $2');
+        }
+        this.value = value;
+    });
+
+    // Contador de caracteres para justificativa
+    $('#justificativa').on('input', function() {
+        const max = 500;
+        const atual = $(this).val().length;
+        const restante = max - atual;
+        
+        $(this).next('.form-text').text(`${atual}/${max} caracteres`);
+        
+        if (restante < 50) {
+            $(this).next('.form-text').addClass('text-warning');
+        } else {
+            $(this).next('.form-text').removeClass('text-warning');
+        }
+    });
+
+    $('#inscricaoForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = {
+            nome_completo: $('#nome_completo').val().trim(),
+            nome_curto: $('#nome_curto').val().trim(),
+            email: $('#email').val().trim().toLowerCase(),
+            telefone: $('#telefone').val().trim(),
+            tipo_usuario_solicitado: $('#tipo_usuario_solicitado').val(),
+            justificativa: $('#justificativa').val().trim()
+        };
+        
+        // Validações
+        if (!formData.nome_completo || !formData.nome_curto || !formData.email || 
+            !formData.tipo_usuario_solicitado || !formData.justificativa) {
+            showAlert('Por favor, preencha todos os campos obrigatórios', 'warning');
+            return;
+        }
+        
+        if (!$('#aceito_termos').is(':checked')) {
+            showAlert('Você deve aceitar os termos de uso', 'warning');
+            return;
+        }
+        
+        // Alterar botão para loading
+        const btnSolicitar = $('#btnSolicitar');
+        const btnText = btnSolicitar.html();
+        btnSolicitar.html('<span class="spinner-border spinner-border-sm me-2"></span>Enviando...').prop('disabled', true);
+        
+        $.ajax({
+            url: '/api/solicitar-inscricao',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                if (response.success) {
+                    showAlert(response.message, 'success');
+                    $('#inscricaoForm')[0].reset();
+                    $('#tipo-info').addClass('d-none');
+                    
+                    // Mostrar mensagem de sucesso por mais tempo
+                    setTimeout(function() {
+                        window.location.href = '/login';
+                    }, 3000);
+                } else {
+                    showAlert(response.message || 'Erro ao enviar solicitação', 'danger');
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                showAlert(response?.message || 'Erro interno do servidor', 'danger');
+            },
+            complete: function() {
+                btnSolicitar.html(btnText).prop('disabled', false);
+            }
+        });
+    });
+    
+    function showAlert(message, type) {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        $('#alert-container').html(alertHtml);
+        
+        // Scroll to top to show alert
+        $('html, body').animate({
+            scrollTop: $('#alert-container').offset().top - 100
+        }, 500);
+    }
+});
+</script>
+{% endblock %}

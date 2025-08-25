@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision - Seleção de Condomínio{% endblock %}
+
+{% block extra_css %}
+<style>
+    .condominio-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+    }
+    
+    .condominio-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    .condominio-icon {
+        font-size: 3rem;
+        color: #0d6efd;
+    }
+    
+    .user-info-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+    }
+    
+    .access-denied-card {
+        border-left: 4px solid #dc3545;
+        background: #f8d7da;
+    }
+    
+    .no-access-icon {
+        font-size: 2rem;
+        color: #721c24;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4" id="user-info-section">
+    <!-- Informações do usuário serão carregadas via JavaScript -->
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0"><i class="bi bi-building me-2"></i>Meus Condomínios</h2>
+            </div>
+            <div class="card-body">
+                <p class="lead" id="condominio-description">
+                    Selecione o condomínio que deseja acessar.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="condominios-container">
+    <div class="col-12 text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+        <p>Carregando condomínios...</p>
+    </div>
+</div>
+
+<!-- Nenhum modal necessário - acesso direto baseado em permissões -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    verificarAutenticacao();
+});
+
+function verificarAutenticacao() {
+    $.ajax({
+        url: '/api/auth/status',
+        method: 'GET',
+        success: function(response) {
+            if (response.authenticated && response.usuario) {
+                mostrarInfoUsuario(response.usuario);
+                carregarCondominiosDoUsuario(response.usuario);
+            } else {
+                // Não autenticado - redirecionar para login
+                window.location.href = '/login';
+            }
+        },
+        error: function() {
+            // Erro na verificação - redirecionar para login
+            window.location.href = '/login';
+        }
+    });
+}
+
+function mostrarInfoUsuario(usuario) {
+    const tipoUsuarioLabel = {
+        'ADM': 'Administrador',
+        'MONITOR': 'Monitor',  
+        'SINDICO': 'Síndico'
+    }[usuario.tipo_usuario] || usuario.tipo_usuario;
+    
+    const badgeColor = {
+        'ADM': 'danger',
+        'MONITOR': 'primary',
+        'SINDICO': 'success'
+    }[usuario.tipo_usuario] || 'secondary';
+    
+    let acessoText = '';
+    if (usuario.tipo_usuario === 'ADM') {
+        acessoText = 'Você tem acesso total a todos os condomínios do sistema.';
+    } else {
+        const totalCondominios = usuario.condominios ? usuario.condominios.length : 0;
+        if (totalCondominios === 0) {
+            acessoText = 'Você ainda não tem acesso liberado a nenhum condomínio. Entre em contato com o administrador.';
+        } else if (totalCondominios === 1) {
+            acessoText = 'Você tem acesso a 1 condomínio.';
+        } else {
+            acessoText = `Você tem acesso a ${totalCondominios} condomínios.`;
+        }
+    }
+    
+    const userInfoHtml = `
+        <div class="col-12">
+            <div class="card user-info-card shadow">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h4 class="mb-2">
+                                <i class="bi bi-person-circle me-2"></i>
+                                Bem-vindo, ${usuario.nome_curto}!
+                                <span class="badge bg-light text-dark ms-2">${tipoUsuarioLabel}</span>
+                            </h4>
+                            <p class="mb-0">${acessoText}</p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div class="d-flex flex-column align-items-end">
+                                <small class="mb-1">Nível de Acesso:</small>
+                                <span class="badge bg-${badgeColor} fs-6">${usuario.tipo_usuario}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    $('#user-info-section').html(userInfoHtml);
+}
+
+function carregarCondominiosDoUsuario(usuario) {
+    if (usuario.tipo_usuario === 'ADM') {
+        // Administradores podem ver todos os condomínios
+        carregarTodosCondominios();
+    } else {
+        // Outros usuários veem apenas os permitidos
+        renderizarCondominiosPermitidos(usuario.condominios || []);
+    }
+}
+
+function carregarTodosCondominios() {
+    $.ajax({
+        url: '/api/condominios',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                renderizarCondominios(response.data, true); // true = é admin
+            } else {
+                mostrarErroCarregamento('Erro ao carregar condomínios: ' + response.message);
+            }
+        },
+        error: function() {
+            mostrarErroCarregamento('Erro ao conectar com o servidor. Tente novamente mais tarde.');
+        }
+    });
+}
+
+function renderizarCondominiosPermitidos(condominiosPermitidos) {
+    if (condominiosPermitidos.length === 0) {
+        const semAcessoHtml = `
+            <div class="col-12">
+                <div class="card access-denied-card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-shield-exclamation no-access-icon mb-3"></i>
+                        <h4 class="text-danger">Acesso Restrito</h4>
+                        <p class="mb-3">
+                            Você ainda não tem permissão para acessar nenhum condomínio. 
+                            Entre em contato com o administrador do sistema para solicitar acesso.
+                        </p>
+                        <a href="/solicitar-inscricao" class="btn btn-outline-primary">
+                            <i class="bi bi-envelope me-2"></i>Solicitar Acesso
+                        </a>
+                    </div>
+                </div>
+            </div>
+        `;
+        $('#condominios-container').html(semAcessoHtml);
+        return;
+    }
+    
+    // Renderizar condomínios com dados básicos
+    const condominiosComDados = condominiosPermitidos.map(cond => ({
+        idcond: cond.idcond,
+        nmcond: cond.nmcond,
+        nrcond: 'N/A' // Não temos nrcond nos dados de permissão
+    }));
+    
+    renderizarCondominios(condominiosComDados, false);
+}
+
+function renderizarCondominios(condominios, isAdmin) {
+    if (condominios.length === 0) {
+        const alertType = isAdmin ? 'warning' : 'info';
+        const message = isAdmin ? 
+            'Nenhum condomínio cadastrado no sistema.' : 
+            'Você não tem acesso a nenhum condomínio.';
+            
+        $('#condominios-container').html(`
+            <div class="col-12 text-center">
+                <div class="alert alert-${alertType}">
+                    <i class="bi bi-info-circle me-2"></i>${message}
+                </div>
+            </div>
+        `);
+        return;
+    }
+    
+    let html = '';
+    
+    condominios.forEach(function(condominio) {
+        const adminBadge = isAdmin ? '<span class="badge bg-danger ms-2">ADMIN</span>' : '';
+        
+        html += `
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card condominio-card h-100" onclick="acessarCondominio(${condominio.idcond}, '${condominio.nmcond}')">
+                    <div class="card-body text-center">
+                        <div class="mb-3">
+                            <i class="bi bi-building condominio-icon"></i>
+                        </div>
+                        <h4 class="card-title">${condominio.nmcond}${adminBadge}</h4>
+                        ${condominio.nrcond !== 'N/A' ? `<p class="card-text text-muted">Código: ${condominio.nrcond}</p>` : ''}
+                    </div>
+                    <div class="card-footer bg-transparent text-center">
+                        <button class="btn btn-primary btn-sm">
+                            <i class="bi bi-arrow-right me-1"></i>Acessar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    $('#condominios-container').html(html);
+}
+
+function acessarCondominio(id, nome) {
+    // Mostrar feedback visual
+    event.target.closest('.card').style.opacity = '0.7';
+    
+    // Redirecionar diretamente para o condomínio
+    window.location.href = '/veiculos/' + id;
+}
+
+function mostrarErroCarregamento(mensagem) {
+    $('#condominios-container').html(`
+        <div class="col-12 text-center">
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                ${mensagem}
+                <br><br>
+                <button class="btn btn-outline-danger btn-sm" onclick="location.reload()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Tentar Novamente
+                </button>
+            </div>
+        </div>
+    `);
+}
+</script>
+{% endblock %}

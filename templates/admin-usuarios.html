@@ -1,0 +1,1268 @@
+{% extends "base.html" %}
+
+{% block title %}Gestão de Usuários - ParkVision{% endblock %}
+
+{% block extra_css %}
+<style>
+.admin-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem 0;
+    margin: -1.5rem -15px 2rem -15px;
+}
+
+.admin-header h1 {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.stats-card {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1.5rem;
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.stats-card h3 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.btn-action {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    margin-right: 0.25rem;
+}
+
+.usuario-card {
+    transition: transform 0.2s;
+}
+
+.usuario-card:hover {
+    transform: translateY(-2px);
+}
+
+.badge-tipo {
+    font-size: 0.75rem;
+    padding: 0.35em 0.6em;
+}
+
+.condominios-list {
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 0.875rem;
+}
+
+.modal-lg {
+    max-width: 800px;
+}
+
+.form-floating {
+    margin-bottom: 1rem;
+}
+
+.solicitacao-card {
+    border-left: 4px solid #ffc107;
+    background: #fff9c4;
+}
+
+.solicitacao-aprovada {
+    border-left-color: #28a745;
+    background: #d4edda;
+}
+
+.solicitacao-rejeitada {
+    border-left-color: #dc3545;
+    background: #f8d7da;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="bi bi-people me-2"></i>Gestão de Usuários</h1>
+                <p class="mb-0">Administre usuários, permissões e solicitações de cadastro</p>
+            </div>
+            <div class="col-md-4">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="stats-card">
+                            <h3 id="total-usuarios">0</h3>
+                            <small>Usuários Ativos</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stats-card">
+                            <h3 id="total-solicitacoes">0</h3>
+                            <small>Pendentes</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Navegação por abas -->
+    <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="usuarios-tab" data-bs-toggle="tab" data-bs-target="#usuarios" type="button" role="tab">
+                <i class="bi bi-people me-2"></i>Usuários
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="solicitacoes-tab" data-bs-toggle="tab" data-bs-target="#solicitacoes" type="button" role="tab">
+                <i class="bi bi-envelope-exclamation me-2"></i>Solicitações
+                <span class="badge bg-warning ms-1" id="badge-solicitacoes">0</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="relatorios-tab" data-bs-toggle="tab" data-bs-target="#relatorios" type="button" role="tab">
+                <i class="bi bi-graph-up me-2"></i>Relatórios
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="adminTabsContent">
+        <!-- Aba Usuários -->
+        <div class="tab-pane fade show active" id="usuarios" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Usuários do Sistema</h4>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#novoUsuarioModal">
+                    <i class="bi bi-person-plus me-2"></i>Novo Usuário
+                </button>
+            </div>
+
+            <div id="alert-usuarios"></div>
+
+            <!-- Filtros -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="filtro-nome" placeholder="Buscar por nome ou email...">
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="filtro-tipo">
+                        <option value="">Todos os tipos</option>
+                        <option value="ADM">Administrador</option>
+                        <option value="MONITOR">Monitor</option>
+                        <option value="SINDICO">Síndico</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-secondary w-100" onclick="limparFiltros()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Limpar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Lista de usuários -->
+            <div id="usuarios-lista" class="row"></div>
+        </div>
+
+        <!-- Aba Solicitações -->
+        <div class="tab-pane fade" id="solicitacoes" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Solicitações de Cadastro</h4>
+                <button class="btn btn-outline-primary" onclick="carregarSolicitacoes()">
+                    <i class="bi bi-arrow-clockwise me-2"></i>Atualizar
+                </button>
+            </div>
+
+            <div id="alert-solicitacoes"></div>
+            <div id="solicitacoes-lista"></div>
+        </div>
+
+        <!-- Aba Relatórios -->
+        <div class="tab-pane fade" id="relatorios" role="tabpanel">
+            <h4>Relatórios de Usuários</h4>
+            <p class="text-muted">Relatórios e estatísticas sobre o uso do sistema.</p>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6><i class="bi bi-bar-chart me-2"></i>Usuários por Tipo</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="grafico-tipos"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6><i class="bi bi-activity me-2"></i>Atividade Recente</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="atividades-recentes"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Novo Usuário -->
+<div class="modal fade" id="novoUsuarioModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Criar Novo Usuário</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formNovoUsuario">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="novo-nome-completo" required maxlength="100">
+                                <label>Nome Completo</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="novo-nome-curto" required maxlength="50">
+                                <label>Nome Curto</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <input type="email" class="form-control" id="novo-email" required maxlength="100">
+                                <label>Email</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <input type="tel" class="form-control" id="novo-telefone" maxlength="20">
+                                <label>Telefone</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <select class="form-select" id="novo-tipo-usuario" required>
+                                    <option value="">Selecione o tipo</option>
+                                    <option value="ADM">Administrador</option>
+                                    <option value="MONITOR">Monitor</option>
+                                    <option value="SINDICO">Síndico</option>
+                                </select>
+                                <label>Tipo de Usuário</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <input type="password" class="form-control" id="novo-senha" required minlength="8">
+                                <label>Senha Inicial</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        A senha deve ter no mínimo 8 caracteres, incluindo maiúsculas, minúsculas, números e símbolos.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Criar Usuário</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Usuário -->
+<div class="modal fade" id="editarUsuarioModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Usuário</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formEditarUsuario">
+                <div class="modal-body">
+                    <input type="hidden" id="edit-idgente">
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="edit-nome-completo" required maxlength="100">
+                                <label>Nome Completo</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="edit-nome-curto" required maxlength="50">
+                                <label>Nome Curto</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <input type="email" class="form-control" id="edit-email" required maxlength="100">
+                                <label>Email</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <input type="tel" class="form-control" id="edit-telefone" maxlength="20">
+                                <label>Telefone</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <select class="form-select" id="edit-tipo-usuario" required>
+                                    <option value="">Selecione o tipo</option>
+                                    <option value="ADM">Administrador</option>
+                                    <option value="MONITOR">Monitor</option>
+                                    <option value="SINDICO">Síndico</option>
+                                </select>
+                                <label>Tipo de Usuário</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch" style="margin-top: 1.5rem;">
+                                <input class="form-check-input" type="checkbox" id="edit-alterar-senha">
+                                <label class="form-check-label" for="edit-alterar-senha">
+                                    Alterar senha do usuário
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Campos de senha (inicialmente ocultos) -->
+                    <div id="edit-senha-fields" class="row" style="display: none;">
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <input type="password" class="form-control" id="edit-nova-senha" minlength="8">
+                                <label>Nova Senha</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                <input type="password" class="form-control" id="edit-confirmar-senha" minlength="8">
+                                <label>Confirmar Nova Senha</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Atenção:</strong> Alterações no tipo de usuário podem afetar as permissões de acesso.
+                    </div>
+                    
+                    <div id="alert-editar-usuario"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <span class="spinner-border spinner-border-sm me-2" id="edit-loading" style="display: none;"></span>
+                        Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Gerenciar Condomínios -->
+<div class="modal fade" id="gerenciarCondominiosModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Gerenciar Condomínios do Usuário</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="gerenciar-idgente">
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Usuário:</strong> <span id="gerenciar-usuario-nome"></span><br>
+                    <strong>Tipo:</strong> <span id="gerenciar-usuario-tipo"></span>
+                </div>
+                
+                <div class="row">
+                    <!-- Coluna dos Condomínios Disponíveis -->
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-building me-2"></i>Condomínios Disponíveis
+                        </h6>
+                        
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="filtro-disponiveis" 
+                                   placeholder="Filtrar condomínios disponíveis...">
+                        </div>
+                        
+                        <div id="condominios-disponiveis" class="border rounded p-2" style="height: 300px; overflow-y: auto;">
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                    <span class="visually-hidden">Carregando...</span>
+                                </div>
+                                <p class="mt-2 mb-0">Carregando condomínios...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Coluna dos Condomínios do Usuário -->
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-check-circle me-2"></i>Condomínios do Usuário
+                        </h6>
+                        
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="filtro-usuario" 
+                                   placeholder="Filtrar condomínios do usuário...">
+                        </div>
+                        
+                        <div id="condominios-usuario" class="border rounded p-2" style="height: 300px; overflow-y: auto;">
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                    <span class="visually-hidden">Carregando...</span>
+                                </div>
+                                <p class="mt-2 mb-0">Carregando condomínios...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="alert-condominios" class="mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let usuarios = [];
+let solicitacoes = [];
+
+$(document).ready(function() {
+    carregarUsuarios();
+    carregarSolicitacoes();
+    
+    // Filtros de usuários
+    $('#filtro-nome, #filtro-tipo').on('input change', function() {
+        filtrarUsuarios();
+    });
+    
+    // Form novo usuário
+    $('#formNovoUsuario').on('submit', function(e) {
+        e.preventDefault();
+        criarUsuario();
+    });
+});
+
+function carregarUsuarios() {
+    $.ajax({
+        url: '/api/admin/usuarios',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                usuarios = response.data;
+                $('#total-usuarios').text(usuarios.filter(u => u.ativo).length);
+                renderizarUsuarios(usuarios);
+            } else {
+                showAlert('usuarios', response.message || 'Erro ao carregar usuários', 'danger');
+            }
+        },
+        error: function(xhr) {
+            showAlert('usuarios', 'Erro ao carregar usuários', 'danger');
+        }
+    });
+}
+
+function renderizarUsuarios(lista) {
+    const container = $('#usuarios-lista');
+    container.empty();
+    
+    lista.forEach(usuario => {
+        const badgeColor = {
+            'ADM': 'danger',
+            'MONITOR': 'primary', 
+            'SINDICO': 'success'
+        }[usuario.tipo_usuario] || 'secondary';
+        
+        const condominiosText = usuario.condominios_permitidos || 'Nenhum';
+        
+        const card = $(`
+            <div class="col-md-6 mb-3">
+                <div class="card usuario-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h6 class="card-title mb-1">${usuario.nome_completo}</h6>
+                                <p class="text-muted mb-0">${usuario.email}</p>
+                            </div>
+                            <span class="badge bg-${badgeColor} badge-tipo">${usuario.tipo_usuario}</span>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <small class="text-muted">
+                                <i class="bi bi-telephone me-1"></i>${usuario.telefone || 'N/I'}
+                            </small>
+                        </div>
+                        
+                        <div class="condominios-list mb-2">
+                            <small class="text-muted">
+                                <i class="bi bi-building me-1"></i>
+                                ${condominiosText}
+                            </small>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                Desde: ${usuario.data_criacao}
+                            </small>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary btn-action" onclick="editarUsuario(${usuario.idgente})">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning btn-action" onclick="gerenciarCondominios(${usuario.idgente})">
+                                    <i class="bi bi-building"></i>
+                                </button>
+                                ${usuario.tipo_usuario !== 'ADM' ? `
+                                <button class="btn btn-sm btn-outline-danger btn-action" onclick="desativarUsuario(${usuario.idgente})">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+        
+        container.append(card);
+    });
+    
+    if (lista.length === 0) {
+        container.html(`
+            <div class="col-12">
+                <div class="alert alert-info text-center">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Nenhum usuário encontrado com os filtros aplicados.
+                </div>
+            </div>
+        `);
+    }
+}
+
+function filtrarUsuarios() {
+    const filtroNome = $('#filtro-nome').val().toLowerCase();
+    const filtroTipo = $('#filtro-tipo').val();
+    
+    const usuariosFiltrados = usuarios.filter(usuario => {
+        const matchNome = !filtroNome || 
+            usuario.nome_completo.toLowerCase().includes(filtroNome) ||
+            usuario.email.toLowerCase().includes(filtroNome);
+        const matchTipo = !filtroTipo || usuario.tipo_usuario === filtroTipo;
+        
+        return matchNome && matchTipo;
+    });
+    
+    renderizarUsuarios(usuariosFiltrados);
+}
+
+function limparFiltros() {
+    $('#filtro-nome, #filtro-tipo').val('');
+    renderizarUsuarios(usuarios);
+}
+
+function criarUsuario() {
+    const dados = {
+        nome_completo: $('#novo-nome-completo').val(),
+        nome_curto: $('#novo-nome-curto').val(),
+        email: $('#novo-email').val(),
+        telefone: $('#novo-telefone').val(),
+        tipo_usuario: $('#novo-tipo-usuario').val(),
+        senha: $('#novo-senha').val()
+    };
+    
+    $.ajax({
+        url: '/api/admin/usuarios',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                showAlert('usuarios', response.message, 'success');
+                $('#novoUsuarioModal').modal('hide');
+                $('#formNovoUsuario')[0].reset();
+                carregarUsuarios();
+            } else {
+                showAlert('usuarios', response.message, 'danger');
+            }
+        },
+        error: function(xhr) {
+            showAlert('usuarios', 'Erro ao criar usuário', 'danger');
+        }
+    });
+}
+
+function carregarSolicitacoes() {
+    $.ajax({
+        url: '/api/admin/solicitacoes',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                solicitacoes = response.data;
+                $('#total-solicitacoes').text(solicitacoes.length);
+                $('#badge-solicitacoes').text(solicitacoes.length);
+                renderizarSolicitacoes(solicitacoes);
+            }
+        },
+        error: function(xhr) {
+            showAlert('solicitacoes', 'Erro ao carregar solicitações', 'danger');
+        }
+    });
+}
+
+function renderizarSolicitacoes(lista) {
+    const container = $('#solicitacoes-lista');
+    container.empty();
+    
+    if (lista.length === 0) {
+        container.html(`
+            <div class="alert alert-info text-center">
+                <i class="bi bi-check-circle me-2"></i>
+                Não há solicitações pendentes no momento.
+            </div>
+        `);
+        return;
+    }
+    
+    lista.forEach(solicitacao => {
+        const badgeColor = {
+            'SINDICO': 'success',
+            'MONITOR': 'primary'
+        }[solicitacao.tipo_usuario_solicitado] || 'secondary';
+        
+        const card = $(`
+            <div class="card solicitacao-card mb-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6 class="card-title mb-2">
+                                ${solicitacao.nome_completo}
+                                <span class="badge bg-${badgeColor} ms-2">${solicitacao.tipo_usuario_solicitado}</span>
+                            </h6>
+                            <p class="text-muted mb-1">
+                                <i class="bi bi-envelope me-1"></i>${solicitacao.email}
+                                ${solicitacao.telefone ? `<span class="ms-3"><i class="bi bi-telephone me-1"></i>${solicitacao.telefone}</span>` : ''}
+                            </p>
+                            <p class="mb-2">
+                                <strong>Justificativa:</strong><br>
+                                ${solicitacao.justificativa}
+                            </p>
+                            <small class="text-muted">
+                                Solicitado em: ${solicitacao.data_solicitacao} 
+                                (${solicitacao.dias_pendente} dias atrás)
+                            </small>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-success btn-sm mb-2" onclick="aprovarSolicitacao(${solicitacao.id})">
+                                <i class="bi bi-check-lg me-1"></i>Aprovar
+                            </button>
+                            <button class="btn btn-danger btn-sm mb-2" onclick="rejeitarSolicitacao(${solicitacao.id})">
+                                <i class="bi bi-x-lg me-1"></i>Rejeitar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+        
+        container.append(card);
+    });
+}
+
+function aprovarSolicitacao(id) {
+    const senha = prompt('Digite a senha inicial para o usuário:');
+    if (!senha) return;
+    
+    $.ajax({
+        url: `/api/admin/solicitacoes/${id}/responder`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            aprovado: true,
+            senha_inicial: senha,
+            observacoes: 'Aprovado pelo administrador'
+        }),
+        success: function(response) {
+            if (response.success) {
+                showAlert('solicitacoes', response.message, 'success');
+                carregarSolicitacoes();
+                carregarUsuarios();
+            } else {
+                showAlert('solicitacoes', response.message, 'danger');
+            }
+        },
+        error: function(xhr) {
+            showAlert('solicitacoes', 'Erro ao processar solicitação', 'danger');
+        }
+    });
+}
+
+function rejeitarSolicitacao(id) {
+    const motivo = prompt('Motivo da rejeição (opcional):');
+    
+    $.ajax({
+        url: `/api/admin/solicitacoes/${id}/responder`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            aprovado: false,
+            observacoes: motivo || 'Rejeitado pelo administrador'
+        }),
+        success: function(response) {
+            if (response.success) {
+                showAlert('solicitacoes', response.message, 'success');
+                carregarSolicitacoes();
+            } else {
+                showAlert('solicitacoes', response.message, 'danger');
+            }
+        },
+        error: function(xhr) {
+            showAlert('solicitacoes', 'Erro ao processar solicitação', 'danger');
+        }
+    });
+}
+
+function showAlert(container, message, type) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $(`#alert-${container}`).html(alertHtml);
+    
+    setTimeout(function() {
+        $('.alert').alert('close');
+    }, 5000);
+}
+
+// Função para editar usuário
+function editarUsuario(idgente) {
+    const usuario = usuarios.find(u => u.idgente === idgente);
+    if (!usuario) {
+        showAlert('usuarios', 'Usuário não encontrado', 'danger');
+        return;
+    }
+    
+    // Preencher dados do usuário no modal de edição
+    $('#edit-idgente').val(usuario.idgente);
+    $('#edit-nome-completo').val(usuario.nome_completo);
+    $('#edit-nome-curto').val(usuario.nome_curto);
+    $('#edit-email').val(usuario.email);
+    $('#edit-telefone').val(usuario.telefone || '');
+    $('#edit-tipo-usuario').val(usuario.tipo_usuario);
+    
+    // Resetar campos de senha
+    $('#edit-alterar-senha').prop('checked', false);
+    $('#edit-senha-fields').hide();
+    $('#edit-nova-senha, #edit-confirmar-senha').val('');
+    
+    // Limpar alertas
+    $('#alert-editar-usuario').html('');
+    
+    // Mostrar modal
+    $('#editarUsuarioModal').modal('show');
+}
+
+// Função para gerenciar condomínios do usuário
+function gerenciarCondominios(idgente) {
+    const usuario = usuarios.find(u => u.idgente === idgente);
+    if (!usuario) {
+        showAlert('usuarios', 'Usuário não encontrado', 'danger');
+        return;
+    }
+    
+    // Verificar se usuário é ADM
+    if (usuario.tipo_usuario === 'ADM') {
+        showAlert('usuarios', 'Usuários ADM têm acesso a todos os condomínios automaticamente', 'info');
+        return;
+    }
+    
+    // Preencher dados do usuário no modal
+    $('#gerenciar-idgente').val(idgente);
+    $('#gerenciar-usuario-nome').text(usuario.nome_completo);
+    $('#gerenciar-usuario-tipo').text(usuario.tipo_usuario);
+    
+    // Limpar filtros
+    $('#filtro-disponiveis, #filtro-usuario').val('');
+    
+    // Mostrar modal
+    $('#gerenciarCondominiosModal').modal('show');
+    
+    // Carregar dados
+    carregarCondominiosDisponiveis();
+    carregarCondominiosUsuario(idgente);
+}
+
+// Função para desativar usuário
+function desativarUsuario(idgente) {
+    if (confirm('Tem certeza que deseja desativar este usuário?')) {
+        $.ajax({
+            url: `/api/admin/usuarios/${idgente}/desativar`,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            success: function(response) {
+                if (response.success) {
+                    showAlert('usuarios', 'Usuário desativado com sucesso!', 'success');
+                    carregarUsuarios(); // Recarregar lista
+                } else {
+                    showAlert('usuarios', 'Erro ao desativar usuário: ' + response.message, 'danger');
+                }
+            },
+            error: function() {
+                showAlert('usuarios', 'Erro ao conectar com o servidor.', 'danger');
+            }
+        });
+    }
+}
+
+// Função para aprovar solicitação
+function aprovarSolicitacao(solicitacaoId) {
+    if (confirm('Tem certeza que deseja aprovar esta solicitação?')) {
+        $.ajax({
+            url: `/api/admin/solicitacoes/${solicitacaoId}/responder`,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify({
+                acao: 'aprovar'
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert('solicitacoes', 'Solicitação aprovada com sucesso!', 'success');
+                    carregarSolicitacoes(); // Recarregar lista
+                } else {
+                    showAlert('solicitacoes', 'Erro ao aprovar solicitação: ' + response.message, 'danger');
+                }
+            },
+            error: function() {
+                showAlert('solicitacoes', 'Erro ao conectar com o servidor.', 'danger');
+            }
+        });
+    }
+}
+
+// Função para rejeitar solicitação
+function rejeitarSolicitacao(solicitacaoId) {
+    const motivo = prompt('Digite o motivo da rejeição (opcional):');
+    if (motivo !== null) { // Não foi cancelado
+        $.ajax({
+            url: `/api/admin/solicitacoes/${solicitacaoId}/responder`,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify({
+                acao: 'rejeitar',
+                motivo: motivo
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert('solicitacoes', 'Solicitação rejeitada com sucesso!', 'success');
+                    carregarSolicitacoes(); // Recarregar lista
+                } else {
+                    showAlert('solicitacoes', 'Erro ao rejeitar solicitação: ' + response.message, 'danger');
+                }
+            },
+            error: function() {
+                showAlert('solicitacoes', 'Erro ao conectar com o servidor.', 'danger');
+            }
+        });
+    }
+}
+
+// Função para limpar filtros
+function limparFiltros() {
+    $('#filtro-tipo').val('');
+    $('#filtro-status').val('');
+    carregarUsuarios();
+}
+
+// ===== FUNÇÕES PARA GERENCIAMENTO DE CONDOMÍNIOS =====
+
+let condominiosDisponiveis = [];
+let condominiosUsuario = [];
+
+function carregarCondominiosDisponiveis() {
+    $('#condominios-disponiveis').html(`
+        <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p class="mt-2 mb-0">Carregando condomínios...</p>
+        </div>
+    `);
+    
+    $.ajax({
+        url: '/api/admin/condominios',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                condominiosDisponiveis = response.data;
+                renderizarCondominiosDisponiveis();
+            } else {
+                $('#condominios-disponiveis').html(`
+                    <div class="text-center py-3 text-muted">
+                        <i class="bi bi-exclamation-circle"></i>
+                        <p class="mt-2 mb-0">Erro ao carregar condomínios</p>
+                    </div>
+                `);
+            }
+        },
+        error: function() {
+            $('#condominios-disponiveis').html(`
+                <div class="text-center py-3 text-muted">
+                    <i class="bi bi-exclamation-circle"></i>
+                    <p class="mt-2 mb-0">Erro ao carregar condomínios</p>
+                </div>
+            `);
+        }
+    });
+}
+
+function carregarCondominiosUsuario(idgente) {
+    $('#condominios-usuario').html(`
+        <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p class="mt-2 mb-0">Carregando condomínios...</p>
+        </div>
+    `);
+    
+    $.ajax({
+        url: `/api/admin/usuarios/${idgente}/condominios`,
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                condominiosUsuario = response.data;
+                renderizarCondominiosUsuario();
+            } else {
+                $('#condominios-usuario').html(`
+                    <div class="text-center py-3 text-muted">
+                        <i class="bi bi-exclamation-circle"></i>
+                        <p class="mt-2 mb-0">Erro ao carregar condomínios do usuário</p>
+                    </div>
+                `);
+            }
+        },
+        error: function() {
+            $('#condominios-usuario').html(`
+                <div class="text-center py-3 text-muted">
+                    <i class="bi bi-exclamation-circle"></i>
+                    <p class="mt-2 mb-0">Erro ao carregar condomínios do usuário</p>
+                </div>
+            `);
+        }
+    });
+}
+
+function renderizarCondominiosDisponiveis() {
+    const filtro = $('#filtro-disponiveis').val().toLowerCase();
+    const idgente = $('#gerenciar-idgente').val();
+    
+    // Filtrar condomínios que o usuário NÃO possui acesso
+    const condominiosUsuarioIds = condominiosUsuario.map(c => c.idcond);
+    const disponiveisFiltrados = condominiosDisponiveis.filter(c => 
+        !condominiosUsuarioIds.includes(c.idcond) &&
+        (!filtro || c.nmcond.toLowerCase().includes(filtro) || 
+         c.cicond.toLowerCase().includes(filtro))
+    );
+    
+    if (disponiveisFiltrados.length === 0) {
+        $('#condominios-disponiveis').html(`
+            <div class="text-center py-3 text-muted">
+                <i class="bi bi-info-circle"></i>
+                <p class="mt-2 mb-0">Nenhum condomínio disponível</p>
+            </div>
+        `);
+        return;
+    }
+    
+    let html = '';
+    disponiveisFiltrados.forEach(condominio => {
+        html += `
+            <div class="border-bottom py-2 mb-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${condominio.nmcond}</strong>
+                        <br>
+                        <small class="text-muted">
+                            <i class="bi bi-geo-alt me-1"></i>${condominio.cicond}
+                            ${condominio.nrcond ? ` • Nº ${condominio.nrcond}` : ''}
+                        </small>
+                    </div>
+                    <button class="btn btn-success btn-sm" onclick="adicionarCondominio(${condominio.idcond})">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    $('#condominios-disponiveis').html(html);
+}
+
+function renderizarCondominiosUsuario() {
+    const filtro = $('#filtro-usuario').val().toLowerCase();
+    
+    const usuarioFiltrados = condominiosUsuario.filter(c => 
+        !filtro || c.nmcond.toLowerCase().includes(filtro) || 
+        c.cicond.toLowerCase().includes(filtro)
+    );
+    
+    if (usuarioFiltrados.length === 0) {
+        $('#condominios-usuario').html(`
+            <div class="text-center py-3 text-muted">
+                <i class="bi bi-info-circle"></i>
+                <p class="mt-2 mb-0">Usuário não possui acesso a nenhum condomínio</p>
+            </div>
+        `);
+        return;
+    }
+    
+    let html = '';
+    usuarioFiltrados.forEach(condominio => {
+        html += `
+            <div class="border-bottom py-2 mb-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${condominio.nmcond}</strong>
+                        <br>
+                        <small class="text-muted">
+                            <i class="bi bi-geo-alt me-1"></i>${condominio.cicond}
+                            ${condominio.nrcond ? ` • Nº ${condominio.nrcond}` : ''}
+                            <br>
+                            <i class="bi bi-calendar me-1"></i>Liberado em: ${condominio.data_liberacao}
+                        </small>
+                    </div>
+                    <button class="btn btn-danger btn-sm" onclick="removerCondominio(${condominio.idcond})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    $('#condominios-usuario').html(html);
+}
+
+function adicionarCondominio(idcond) {
+    const idgente = $('#gerenciar-idgente').val();
+    const condominio = condominiosDisponiveis.find(c => c.idcond === idcond);
+    
+    if (!condominio) return;
+    
+    if (!confirm(`Tem certeza que deseja dar acesso ao condomínio "${condominio.nmcond}" para este usuário?`)) {
+        return;
+    }
+    
+    $.ajax({
+        url: `/api/admin/usuarios/${idgente}/condominios/gerenciar`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        data: JSON.stringify({
+            acao: 'adicionar',
+            idcond: idcond
+        }),
+        success: function(response) {
+            if (response.success) {
+                showAlertCondominios('Condomínio adicionado com sucesso!', 'success');
+                // Recarregar listas
+                carregarCondominiosUsuario(idgente);
+                carregarUsuarios(); // Atualizar lista principal
+            } else {
+                showAlertCondominios('Erro ao adicionar condomínio: ' + response.message, 'danger');
+            }
+        },
+        error: function() {
+            showAlertCondominios('Erro ao conectar com o servidor.', 'danger');
+        }
+    });
+}
+
+function removerCondominio(idcond) {
+    const idgente = $('#gerenciar-idgente').val();
+    const condominio = condominiosUsuario.find(c => c.idcond === idcond);
+    
+    if (!condominio) return;
+    
+    if (!confirm(`Tem certeza que deseja remover o acesso ao condomínio "${condominio.nmcond}" deste usuário?`)) {
+        return;
+    }
+    
+    $.ajax({
+        url: `/api/admin/usuarios/${idgente}/condominios/gerenciar`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        data: JSON.stringify({
+            acao: 'remover',
+            idcond: idcond
+        }),
+        success: function(response) {
+            if (response.success) {
+                showAlertCondominios('Condomínio removido com sucesso!', 'success');
+                // Recarregar listas
+                carregarCondominiosUsuario(idgente);
+                carregarUsuarios(); // Atualizar lista principal
+            } else {
+                showAlertCondominios('Erro ao remover condomínio: ' + response.message, 'danger');
+            }
+        },
+        error: function() {
+            showAlertCondominios('Erro ao conectar com o servidor.', 'danger');
+        }
+    });
+}
+
+function showAlertCondominios(message, type) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('#alert-condominios').html(alertHtml);
+    
+    setTimeout(function() {
+        $('#alert-condominios .alert').alert('close');
+    }, 5000);
+}
+
+// Event listeners para filtros de condomínios
+$(document).ready(function() {
+    // Filtros do modal de condomínios
+    $('#filtro-disponiveis').on('input', function() {
+        renderizarCondominiosDisponiveis();
+    });
+    
+    $('#filtro-usuario').on('input', function() {
+        renderizarCondominiosUsuario();
+    });
+    
+    // ===== EVENT LISTENERS PARA EDIÇÃO DE USUÁRIO =====
+    
+    // Toggle de campos de senha
+    $('#edit-alterar-senha').change(function() {
+        if ($(this).is(':checked')) {
+            $('#edit-senha-fields').show();
+            $('#edit-nova-senha, #edit-confirmar-senha').attr('required', true);
+        } else {
+            $('#edit-senha-fields').hide();
+            $('#edit-nova-senha, #edit-confirmar-senha').attr('required', false).val('');
+        }
+    });
+    
+    // Form de edição de usuário
+    $('#formEditarUsuario').on('submit', function(e) {
+        e.preventDefault();
+        salvarEdicaoUsuario();
+    });
+});
+
+function salvarEdicaoUsuario() {
+    // Validar senhas se alterar senha estiver marcado
+    const alterarSenha = $('#edit-alterar-senha').is(':checked');
+    if (alterarSenha) {
+        const novaSenha = $('#edit-nova-senha').val();
+        const confirmarSenha = $('#edit-confirmar-senha').val();
+        
+        if (!novaSenha || novaSenha.length < 8) {
+            showAlertEditarUsuario('A nova senha deve ter pelo menos 8 caracteres', 'danger');
+            return;
+        }
+        
+        if (novaSenha !== confirmarSenha) {
+            showAlertEditarUsuario('As senhas não coincidem', 'danger');
+            return;
+        }
+    }
+    
+    const idgente = $('#edit-idgente').val();
+    const dados = {
+        nome_completo: $('#edit-nome-completo').val(),
+        nome_curto: $('#edit-nome-curto').val(),
+        email: $('#edit-email').val(),
+        telefone: $('#edit-telefone').val(),
+        tipo_usuario: $('#edit-tipo-usuario').val()
+    };
+    
+    // Adicionar senha se necessário
+    if (alterarSenha) {
+        dados.nova_senha = $('#edit-nova-senha').val();
+    }
+    
+    // Mostrar loading
+    $('#edit-loading').show();
+    $('button[type="submit"]').prop('disabled', true);
+    
+    $.ajax({
+        url: `/api/admin/usuarios/${idgente}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                showAlert('usuarios', 'Usuário atualizado com sucesso!', 'success');
+                $('#editarUsuarioModal').modal('hide');
+                carregarUsuarios(); // Recarregar lista
+            } else {
+                showAlertEditarUsuario('Erro ao atualizar usuário: ' + response.message, 'danger');
+            }
+        },
+        error: function(xhr, status, error) {
+            showAlertEditarUsuario('Erro ao conectar com o servidor', 'danger');
+        },
+        complete: function() {
+            $('#edit-loading').hide();
+            $('button[type="submit"]').prop('disabled', false);
+        }
+    });
+}
+
+function showAlertEditarUsuario(message, type) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('#alert-editar-usuario').html(alertHtml);
+    
+    setTimeout(function() {
+        $('#alert-editar-usuario .alert').alert('close');
+    }, 5000);
+}
+</script>
+{% endblock %}

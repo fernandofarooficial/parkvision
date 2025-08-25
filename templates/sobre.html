@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision - Sobre{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0"><i class="bi bi-info-circle me-2"></i>Sobre o ParkVision</h2>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h3>Sistema de Monitoramento de Condomínios</h3>
+                        <p class="lead">
+                            O ParkVision é uma solução completa para monitoramento de entrada e saída de veículos em condomínios.
+                        </p>
+                        
+                        <h4 class="mt-4">Principais Funcionalidades</h4>
+                        <ul>
+                            <li>Monitoramento em tempo real de veículos</li>
+                            <li>Controle de acesso por condomínio</li>
+                            <li>Visualização do mapa de vagas</li>
+                            <li>Cadastro de novos veículos</li>
+                            <li>Histórico de movimentações</li>
+                        </ul>
+                        
+                        <h4 class="mt-4">Tecnologias Utilizadas</h4>
+                        <ul>
+                            <li>Python com Flask para o backend</li>
+                            <li>MySQL para armazenamento de dados</li>
+                            <li>Bootstrap para interface responsiva</li>
+                            <li>jQuery para interações dinâmicas</li>
+                        </ul>
+                        
+                        <h4 class="mt-4">Contato</h4>
+                        <p>
+                            Para mais informações, entre em contato pelo e-mail: <a href="mailto:contato@parkvision.com.br">contato@parkvision.com.br</a>
+                        </p>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-header">
+                                <h4>Versão do Sistema</h4>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>ParkVision</strong></p>
+                                <p>Versão: 1.0.0</p>
+                                <p>Data: Junho/2025</p>
+                                <hr>
+                                <p class="mb-0">Desenvolvido por Rafael Pelosini</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
