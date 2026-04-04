@@ -5,7 +5,6 @@
 import mysql.connector
 from config.database import get_db_connection
 from flask import jsonify, request
-from globals import verificar_autenticacao
 from datetime import datetime
 
 
@@ -46,9 +45,16 @@ def cadastrar_veiculo_nao_cadastrado():
             except ValueError:
                 return jsonify({'success': False, 'message': 'Formato de data inválido'})
 
-        # 1. Inserir dados básicos do veículo em CADVEICULO
+        # 1. Verificar se o veículo já existe em CADVEICULO
+        cursor.execute("SELECT placa FROM cadveiculo WHERE placa = %s", (data['placa'],))
+        veiculo_existente = cursor.fetchone()
+        
+        if veiculo_existente:
+            return jsonify({'success': False, 'message': 'Veículo já cadastrado no sistema'})
+
+        # 2. Inserir dados básicos do veículo em CADVEICULO
         sql_insert_veiculo = """
-        INSERT INTO cadveiculo (placa, idmodelo, cor)
+        INSERT INTO cadveiculo (placa, idmodelo, idcor)
         VALUES (%s, %s, %s)
         """
 
@@ -66,30 +72,10 @@ def cadastrar_veiculo_nao_cadastrado():
         cursor.execute(sql_insert_veiculo, [
             data['placa'],
             idmodelo,
-            data['cor']
+            data['idcor']
         ])
 
-        # Pegar o ultimo movimento, para determinar o sit
-        q = 'SELECT direcao FROM movcar WHERE contav = %s AND placa = %s ORDER BY idmov DESC LIMIT 1;'
-        v = (1, data['placa'])
-        cursor.execute(q, v)
-        direcao = cursor.fetchone()
-        sit_correto = 1 if direcao[0] == 'E' else 0
-
-        # 2. Inserir localização em CADLOCAL
-        sql_insert_local = """
-        INSERT INTO cadlocal (idcond, placa, unidade, sit)
-        VALUES (%s, %s, %s, %s)
-        """
-
-        cursor.execute(sql_insert_local, [
-            data['condominio_id'],
-            data['placa'],
-            data['unidade'],
-            sit_correto
-        ])
-
-        # 3. Inserir permissão em CADPERM com dados de permanência
+        # 4. Inserir permissão em CADPERM com dados de permanência
 
         if tempo_indeterminado:
             sql_insert_perm = """
@@ -139,13 +125,6 @@ def cadastrar_veiculo_nao_cadastrado():
 
         conn.commit()
 
-        # Recebendo a quantidade de vagas do cadlocal
-        cursor.execute('SELECT SUM(sit) FROM cadlocal WHERE idcond = %s AND unidade = %s', (data['condominio_id'], data['unidade']))
-        qtdfinal = int(cursor.fetchone()[0])
-        query = 'UPDATE vagasunidades SET vocup = %s WHERE idcond = %s AND unidade = %s'
-        cursor.execute(query, (qtdfinal, data['condominio_id'], data['unidade']))
-        conn.commit()
-
         return jsonify({
             'success': True,
             'message': 'Veículo cadastrado com sucesso!'
@@ -153,7 +132,7 @@ def cadastrar_veiculo_nao_cadastrado():
 
     except mysql.connector.Error as err:
         conn.rollback()
-        return jsonify({'success': False, 'message': f'Erro ao cadastrar veículo: {err}'})
+        return jsonify({'success': False, 'message': f'Erro ao cadastrar veículo (02): {err}'})
     finally:
         cursor.close()
         conn.close()
@@ -170,10 +149,10 @@ def criar_veiculo_cadveiculo():
     placa = data.get('placa', '').strip().upper()
     marca = data.get('marca', '').strip()
     modelo = data.get('modelo', '').strip()
-    cor = data.get('cor', '').strip()
+    idcor = data.get('idcor')
 
     # Validações
-    if not placa or not marca or not modelo or not cor:
+    if not placa or not marca or not modelo or not idcor:
         return jsonify({'success': False, 'message': 'Todos os campos são obrigatórios'})
 
     conn = get_db_connection()
@@ -200,9 +179,9 @@ def criar_veiculo_cadveiculo():
 
         # Inserir novo veículo
         cursor.execute("""
-            INSERT INTO cadveiculo (placa, idmodelo, cor)
+            INSERT INTO cadveiculo (placa, idmodelo, idcor)
             VALUES (%s, %s, %s)
-        """, (placa, idmodelo, cor))
+        """, (placa, idmodelo, idcor))
 
         conn.commit()
 
@@ -210,7 +189,7 @@ def criar_veiculo_cadveiculo():
 
     except mysql.connector.Error as err:
         conn.rollback()
-        return jsonify({'success': False, 'message': f'Erro ao cadastrar veículo: {err}'})
+        return jsonify({'success': False, 'message': f'Erro ao cadastrar veículo (01): {err}'})
     finally:
         cursor.close()
         conn.close()
@@ -226,10 +205,10 @@ def modificar_veiculo_cadveiculo(placa):
 
     marca = data.get('marca', '').strip()
     modelo = data.get('modelo', '').strip()
-    cor = data.get('cor', '').strip()
+    idcor = data.get('idcor')
 
     # Validações
-    if not marca or not modelo or not cor:
+    if not marca or not modelo or not idcor:
         return jsonify({'success': False, 'message': 'Todos os campos são obrigatórios'})
 
     conn = get_db_connection()
@@ -257,9 +236,9 @@ def modificar_veiculo_cadveiculo(placa):
         # Atualizar veículo
         cursor.execute("""
             UPDATE cadveiculo 
-            SET idmodelo = %s, cor = %s
+            SET idmodelo = %s, idcor = %s
             WHERE placa = %s
-        """, (idmodelo, cor, placa))
+        """, (idmodelo, idcor, placa))
 
         if cursor.rowcount == 0:
             return jsonify({'success': False, 'message': 'Nenhum registro foi atualizado'})
@@ -290,17 +269,17 @@ def obter_veiculos_nao_cadastrados(condominio_id):
     try:
         # Buscar veículos da tabela semcadastro com última movimentação real (sem duplicados)
         sql = """
-        SELECT DISTINCT sc.placa,
-               MAX(sc.lup) as ultima_movimentacao,
-               (SELECT COUNT(*)
-                FROM movcar m 
-                WHERE m.placa = sc.placa AND m.idcond = sc.idcond AND m.contav = 1) as total_movimentacoes,
-                cn.nickcar as apelido
+        SELECT DISTINCT 
+            sc.placa,
+            MAX(sc.lup) AS ultima_movimentacao,
+            COUNT(m.placa) AS total_movimentacoes,
+            cn.nickcar AS apelido
         FROM semcadastro sc
         LEFT JOIN cadnick cn ON cn.placa = sc.placa AND cn.idcond = sc.idcond
+        LEFT JOIN movcar m ON m.placa = sc.placa AND m.idcond = sc.idcond AND m.contav = 1
         WHERE sc.idcond = %s
-        GROUP BY sc.placa
-        ORDER BY ultima_movimentacao DESC
+        GROUP BY sc.placa, cn.nickcar
+        ORDER BY ultima_movimentacao DESC;
         """
 
         cursor.execute(sql, [condominio_id])
@@ -345,13 +324,14 @@ def buscar_veiculo_cadveiculo(placa):
 
     cursor = conn.cursor(dictionary=True)
     try:
-        # Buscar veículo com marca e modelo
+        # Buscar veículo com marca, modelo e cor
         cursor.execute("""
-            SELECT cv.placa, cv.cor, cv.idmodelo,
+            SELECT cv.placa, cv.idcor, co.nmcor as cor, cv.idmodelo,
                    ma.nmmarca as marca, mo.nmmodelo as modelo
             FROM cadveiculo cv
             LEFT JOIN cadmodelo mo ON cv.idmodelo = mo.idmodelo
             LEFT JOIN cadmarca ma ON mo.idmarca = ma.idmarca
+            LEFT JOIN cadcores co ON cv.idcor = co.idcor
             WHERE cv.placa = %s
         """, (placa,))
 
@@ -566,10 +546,11 @@ def corrigir_placa_veiculo():
         
         # 2. Verificar se a placa corrigida existe no cadastro de veículos (cadveiculo)
         cursor.execute("""
-            SELECT cv.placa, cv.cor, ma.nmmarca as marca, mo.nmmodelo as modelo
+            SELECT cv.placa, co.nmcor as cor, ma.nmmarca as marca, mo.nmmodelo as modelo
             FROM cadveiculo cv
             LEFT JOIN cadmodelo mo ON cv.idmodelo = mo.idmodelo
             LEFT JOIN cadmarca ma ON mo.idmarca = ma.idmarca
+            LEFT JOIN cadcores co ON cv.idcor = co.idcor
             WHERE cv.placa = %s
             LIMIT 1
         """, (placa_corrigida,))
@@ -577,9 +558,12 @@ def corrigir_placa_veiculo():
         veiculo_corrigido = cursor.fetchone()
         if not veiculo_corrigido:
             return jsonify({'success': False, 'message': 'Placa corrigida não encontrada no cadastro de veículos'})
-        
+
         # Iniciar transação
         cursor.execute("START TRANSACTION")
+        
+        # Inicializar contador para deparaplacas
+        registros_deparaplacas = 0
         
         # 3. Atualizar a placa na tabela movcar (todos os movimentos)
         cursor.execute("""
@@ -587,24 +571,38 @@ def corrigir_placa_veiculo():
             SET placa = %s
             WHERE placa = %s AND idcond = %s
         """, (placa_corrigida, placa_atual, idcond))
-        
+
         registros_movimentos = cursor.rowcount
-        
+
         # 4. Excluir a placa da tabela semcadastro
         cursor.execute("""
             DELETE FROM semcadastro 
             WHERE placa = %s AND idcond = %s
         """, (placa_atual, idcond))
-        
+
         registros_semcadastro = cursor.rowcount
-        
+
         # 5. Excluir a placa da tabela cadnick (apelidos) se existir
         cursor.execute("""
             DELETE FROM cadnick 
             WHERE placa = %s AND idcond = %s
         """, (placa_atual, idcond))
-        
+
         registros_apelidos = cursor.rowcount
+
+        # 6. Inserir o mapeamento na tabela deparaplacas
+        # placade = placa atual (incorreta), placapara = placa corrigida (correta)
+        try:
+            cursor.execute("""
+                INSERT INTO deparaplacas (placade, placapara)
+                VALUES (%s, %s)
+                ON DUPLICATE KEY UPDATE placapara = VALUES(placapara)
+            """, (placa_atual, placa_corrigida))
+
+            registros_deparaplacas = cursor.rowcount
+
+        except mysql.connector.Error as err:
+            registros_deparaplacas = 0  # Não falhar a operação por causa disso
         
         # Verificar se pelo menos o registro principal foi afetado
         if registros_semcadastro == 0:
@@ -612,7 +610,9 @@ def corrigir_placa_veiculo():
             return jsonify({'success': False, 'message': 'Nenhum registro foi excluído da lista de não cadastrados'})
         
         conn.commit()
-        
+        cursor.close()
+        conn.close()
+
         # Criar mensagem de sucesso detalhada
         veiculo_info = f"{veiculo_corrigido[2]} {veiculo_corrigido[3]}" if veiculo_corrigido[2] and veiculo_corrigido[3] else "veículo"
         message = f'Placa corrigida com sucesso! {placa_atual} → {placa_corrigida} ({veiculo_info}). '
@@ -624,9 +624,27 @@ def corrigir_placa_veiculo():
             detalhes.append(f'{registros_semcadastro} registro(s) excluído(s) da lista de não cadastrados')
         if registros_apelidos > 0:
             detalhes.append(f'{registros_apelidos} apelido(s) excluído(s)')
+        if registros_deparaplacas > 0:
+            detalhes.append('mapeamento salvo para futuras correções automáticas')
         
         if detalhes:
             message += f'{", ".join(detalhes)}.'
+
+        # Corrigir movimentações em duplicatas
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute('SELECT idmov, nowpost, placa, contav from movcar where placa = %s AND contav = %s', (placa_corrigida, 1))
+        movimentos = cursor.fetchall()
+        primeiro = datetime.now()
+        if movimentos:
+            for mov in movimentos:
+                idmov = mov['idmov']
+                deltat = abs(primeiro - mov['nowpost']).total_seconds()
+                if deltat < 180:
+                    cursor.execute('UPDATE movcar SET contav = %s WHERE idmov = %s', (0, idmov))
+                    conn.commit()
+                else:
+                    primeiro = mov['nowpost']
         
         return jsonify({
             'success': True,
@@ -641,7 +659,8 @@ def corrigir_placa_veiculo():
             'registros_processados': {
                 'movimentos_atualizados': registros_movimentos,
                 'semcadastro_excluidos': registros_semcadastro,
-                'apelidos_excluidos': registros_apelidos
+                'apelidos_excluidos': registros_apelidos,
+                'mapeamento_deparaplacas': registros_deparaplacas
             }
         })
         

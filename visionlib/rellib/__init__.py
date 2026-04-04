@@ -107,8 +107,18 @@ def obter_relatorio_movimento_veiculos(condominio_id, data_inicio=None, data_fim
             query_params.append(data_inicio)
         
         if data_fim:
+            # Tornar data_fim inclusiva - incluir todo o dia
+            try:
+                # Se a data_fim tem apenas data (formato YYYY-MM-DD), adicionar fim do dia
+                if len(data_fim.strip()) == 10 and data_fim.count(':') == 0:
+                    data_fim_inclusiva = data_fim + " 23:59:59"
+                else:
+                    data_fim_inclusiva = data_fim
+            except (AttributeError, TypeError):
+                data_fim_inclusiva = data_fim
+            
             where_conditions.append("ultima <= %s")
-            query_params.append(data_fim)
+            query_params.append(data_fim_inclusiva)
         
         where_clause = " AND ".join(where_conditions)
 
@@ -216,21 +226,21 @@ def obter_relatorio_mapa_vagas(condominio_id):
         
         query = """
         SELECT 
-            u.unidade,
-            COALESCE(u.vperm, 1) as vagas_permitidas,
-            COUNT(c.placa) as vagas_ocupadas,
+            vu.unidade, 
+            vu.vperm as vagas_permitidas, 
+            COALESCE(ve.estacionados, 0) as vagas_ocupadas, 
             CASE 
-                WHEN COUNT(c.placa) = 0 THEN 'Vazio'
-                WHEN COUNT(c.placa) > COALESCE(u.vperm, 0) THEN 'Excesso'
-                WHEN COUNT(c.placa) = COALESCE(u.vperm, 0) THEN 'Completo'
+                WHEN ve.estacionados = 0 THEN 'Vazio'
+                WHEN ve.estacionados > COALESCE(vu.vperm, 0) THEN 'Excesso'
+                WHEN ve.estacionados = COALESCE(vu.vperm, 0) THEN 'Completo'
+                WHEN ve.estacionados > 0 AND ve.estacionados < COALESCE(vu.vperm, 0) THEN 'Parcial'
                 ELSE 'Disponível'
             END as status,
-            GROUP_CONCAT(c.placa SEPARATOR ', ') as veiculos_estacionados
-        FROM vagasunidades u
-        LEFT JOIN cadlocal c ON u.unidade = c.unidade AND u.idcond = c.idcond AND c.sit = 1
-        WHERE u.idcond = %s
-        GROUP BY u.unidade, u.vperm
-        ORDER BY u.seqcond;
+            placas as veiculos_estacionados
+        FROM vagasunidades vu
+        LEFT JOIN vw_estacionados ve ON ve.idcond = vu.idcond AND ve.seqcond = vu.seqcond
+        WHERE vu.idcond = %s
+        ORDER BY vu.seqcond;
         """
         
         cursor.execute(query, (condominio_id,))
@@ -379,7 +389,7 @@ def obter_relatorio_nao_cadastrados(condominio_id):
 
 def obter_relatorio_veiculos_estacionados(condominio_id):
     """
-    Relatório de veículos que estão estacionados no condomínio (sit = 1 na cadlocal)
+    Relatório de veículos que estão estacionados no condomínio (Ultimo movcar com direcao = E)
     Colunas: Placa, Unidade, Veículo (marca-modelo-cor), Última Entrada
     Ordenação: Por unidade e depois por última entrada
     """
@@ -388,30 +398,14 @@ def obter_relatorio_veiculos_estacionados(condominio_id):
         cursor = connection.cursor(dictionary=True)
         
         query = """
-        SELECT 
-            cl.placa,
-            cl.unidade,
-            CONCAT(
-                COALESCE(ma.nmmarca, 'N/A'), ' ',
-                COALESCE(mo.nmmodelo, 'N/A'), ' ',
-                COALESCE(cv.cor, 'N/A')
-            ) as veiculo,
-            (
-                SELECT MAX(mc.nowpost)
-                FROM movcar mc 
-                WHERE mc.placa = cl.placa 
-                AND mc.idcond = cl.idcond 
-                AND mc.direcao = 'E'
-                AND mc.contav = 1
-            ) as ultima_entrada,
-            vu.seqcond
-        FROM cadlocal cl
-        LEFT JOIN cadveiculo cv ON cl.placa = cv.placa
-        LEFT JOIN cadmodelo mo ON cv.idmodelo = mo.idmodelo
-        LEFT JOIN cadmarca ma ON mo.idmarca = ma.idmarca
-        LEFT JOIN vagasunidades vu ON cl.unidade = vu.unidade AND cl.idcond = vu.idcond
-        WHERE cl.idcond = %s AND cl.sit = 1
-        ORDER BY vu.seqcond ASC, ultima_entrada DESC
+        SELECT au.placa, au.unidade, 
+        CONCAT(nmmarca, " ", nmmodelo, " ", cor) as veiculo, 
+        lm.nowpost as ultima_entrada, au.seqcond  
+        FROM vw_autorizacoes au 
+        LEFT JOIN vw_last_mov lm on lm.idcond = au.idcond AND au.placa = lm.placa and lm.direcao = 'E'
+        WHERE au.idperm = (SELECT idperm FROM vw_autorizacoes ax WHERE ax.placa = au.placa LIMIT 1)
+        AND lm.direcao = 'E' AND au.idcond = %s
+        ORDER BY au.seqcond ASC, lm.nowpost DESC;
         """
         
         cursor.execute(query, (condominio_id,))

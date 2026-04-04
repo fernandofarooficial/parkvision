@@ -6,7 +6,15 @@ Execute este script após aplicar as migrações SQL
 
 import bcrypt
 import mysql.connector
-from config.database import get_db_connection
+
+DB_CONFIG = {
+    'user': 'fefa_dev',
+    'password': 'Fd7493dt',
+    'host': '72.60.58.241',
+    'database': 'parkvision',
+    'time_zone': '-03:00'
+}
+
 
 def criar_admin():
     print("=== Criando usuário administrador padrão ===")
@@ -26,7 +34,7 @@ def criar_admin():
     
     # Conectar ao banco
     print("Conectando ao banco de dados...")
-    conn = get_db_connection()
+    conn = mysql.connector.connect(**DB_CONFIG)
     if not conn:
         print("❌ Erro: Não foi possível conectar ao banco de dados!")
         print("Verifique as configurações em config/database.py")
@@ -92,7 +100,7 @@ def testar_login():
     email = 'admin@parkvision.com'
     senha = 'admin123'
     
-    conn = get_db_connection()
+    conn = mysql.connector.connect(**DB_CONFIG)
     if not conn:
         print("❌ Erro: Não foi possível conectar ao banco de dados!")
         return False

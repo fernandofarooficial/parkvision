@@ -14,13 +14,19 @@ from datetime import datetime
 # def api_criar_permissao():
 def criar_permissao():
     
-    # Obter condominio_id da sessão
-    autenticado, condominio_id = verificar_autenticacao()
-    if not autenticado:
-        return jsonify({'success': False, 'message': 'Não autorizado'})
-
-    # Dados recebidos no corpo da requisição
+    # Obter dados da requisição primeiro
     data = request.get_json()
+    
+    # Obter condominio_id dos dados da requisição (enviado pelo frontend)
+    condominio_id = data.get('condominio_id')
+    if not condominio_id:
+        return jsonify({'success': False, 'message': 'ID do condomínio é obrigatório'})
+    
+    # Verificar acesso ao condomínio específico
+    from globals import verificar_acesso_condominio
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Não autorizado para este condomínio'})
 
     placa = data.get('placa', '').strip().upper()
     unidade = data.get('unidade', '').strip()
@@ -30,8 +36,11 @@ def criar_permissao():
     formato = "%Y-%m-%d %H:%M"
     data_inicio = datetime.strptime(inicio_str, formato)
     # Data/hora fim
-    fim_str = f"{data.get('dataFim')} {data.get('hora_fim')}"
-    data_fim = datetime.strptime(fim_str, formato)
+    if data.get('dataFim') is None:
+        data_fim = None
+    else:
+        fim_str = f"{data.get('dataFim')} {data.get('hora_fim')}"
+        data_fim = datetime.strptime(fim_str, formato)
 
     # Validações básicas
     if not placa or not unidade or not data_inicio:
@@ -77,8 +86,8 @@ def criar_permissao():
 
         # Se não houver permissão, criar nova
         cursor.execute("""
-            INSERT INTO cadperm (idcond, placa, unidade, data_inicio, data_fim, lup)
-            VALUES (%s, %s, %s, %s, %s, NOW())
+            INSERT INTO cadperm (idcond, placa, unidade, data_inicio, data_fim)
+            VALUES (%s, %s, %s, %s, %s)
         """, (condominio_id, placa, unidade, data_inicio, data_fim))
 
         conn.commit()
@@ -98,19 +107,29 @@ def criar_permissao():
 # @app.route('/api/modificar-permissao', methods=['PUT'])
 # def api_modificar_permissao():
 def modificar_permissao():
-    # CORREÇÃO: Obter condominio_id da sessão
-    autenticado, condominio_id = verificar_autenticacao()
-    if not autenticado:
-        return jsonify({'success': False, 'message': 'Não autorizado'})
 
-    # Dados recebidos no corpo da requisição
+    # Obter dados da requisição primeiro
     data = request.get_json()
+    
+    # Obter condominio_id dos dados da requisição
+    condominio_id = data.get('condominio_id')
+    if not condominio_id:
+        return jsonify({'success': False, 'message': 'ID do condomínio é obrigatório'})
+    
+    # Verificar acesso ao condomínio específico
+    from globals import verificar_acesso_condominio
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Não autorizado para este condomínio'})
     placa = data.get('placa', '').strip().upper()
-    data_str = f"{data.get('dataFim')} {data.get('horaFim')}"
-    formato = "%Y-%m-%d %H:%M"
-    nova_data_fim = datetime.strptime(data_str, formato)
-    hora_nova = int(data.get('horaInicio')[:2])
-    minuto_novo = int(data.get('horaInicio')[-2:])
+    if data.get('dataFim') is None:
+        nova_data_fim = None
+    else:
+        data_str = f"{data.get('dataFim')} {data.get('horaFim')}"
+        formato = "%Y-%m-%d %H:%M"
+        nova_data_fim = datetime.strptime(data_str, formato)
+        hora_nova = int(data.get('horaInicio')[:2])
+        minuto_novo = int(data.get('horaInicio')[-2:])
 
     # Validações básicas
     if not placa:
@@ -157,9 +176,9 @@ def modificar_permissao():
         # Modificar a data_fim da permissão
         cursor.execute("""
             UPDATE cadperm 
-            SET data_inicio = %s, data_fim = %s
+            SET data_fim = %s
             WHERE idperm = %s
-        """, (nova_data_inicio, nova_data_fim, idperm))
+        """, (nova_data_fim, idperm))
 
         if cursor.rowcount == 0:
             return jsonify({'success': False, 'message': 'Nenhuma permissão foi modificada'})
@@ -182,9 +201,30 @@ def modificar_permissao():
 # def api_buscar_permissao(placa):
 def buscar_permissao(placa):
     """Busca permissão vigente ou indefinida por placa para modificação"""
-    autenticado, condominio_id = verificar_autenticacao()
-    if not autenticado:
-        return jsonify({'success': False, 'message': 'Não autorizado'})
+    # Validar placa
+    if not placa or not placa.strip():
+        return jsonify({'success': False, 'message': 'Placa é obrigatória'})
+
+    placa = placa.strip().upper()
+
+    # Esta função é chamada via URL parameter, precisamos obter o condominio_id de outro lugar
+    # Verificar se há dados JSON no body (pode ser chamada via POST/PUT)
+    # silent=True evita exceção se não houver JSON válido
+    data = request.get_json(silent=True) or {}
+    condominio_id = data.get('condominio_id')
+
+    # Se não veio no JSON, tentar obter dos query parameters
+    if not condominio_id:
+        condominio_id = request.args.get('condominio_id')
+
+    if not condominio_id:
+        return jsonify({'success': False, 'message': 'ID do condomínio é obrigatório'})
+
+    # Verificar acesso ao condomínio específico
+    from globals import verificar_acesso_condominio
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Não autorizado para este condomínio'})
 
     conn = get_db_connection()
     if not conn:
@@ -193,6 +233,7 @@ def buscar_permissao(placa):
     cursor = conn.cursor(dictionary=True)
     try:
         # Buscar permissão vigente ou indefinida
+        # Usa a view vw_veiculos_autorizados para obter dados completos
         cursor.execute("""
             SELECT placa, unidade, data_inicio, data_fim
             FROM vw_veiculos_autorizados
@@ -200,7 +241,7 @@ def buscar_permissao(placa):
             AND status_permissao <> 'VENCIDA'
             ORDER BY data_inicio DESC
             LIMIT 1
-        """, (placa.upper(), condominio_id))
+        """, (placa, condominio_id))
 
         permissao = cursor.fetchone()
 
@@ -208,22 +249,27 @@ def buscar_permissao(placa):
             return jsonify(
                 {'success': False, 'message': 'Nenhuma permissão vigente ou indefinida encontrada para esta placa'})
 
-        # Converter datas para string para JSON
+        # Converter datas para string para JSON serialization
+        # Inicializar campos de hora
         permissao['hora_inicio'] = None
         permissao['hora_fim'] = None
-        if permissao['data_inicio']:
+
+        # Processar data_inicio se existir
+        if permissao.get('data_inicio'):
             permissao['hora_inicio'] = permissao['data_inicio'].strftime('%H:%M')
             permissao['data_inicio'] = permissao['data_inicio'].strftime('%Y-%m-%d')
-        if permissao['data_fim']:
+
+        # Processar data_fim se existir
+        if permissao.get('data_fim'):
             permissao['hora_fim'] = permissao['data_fim'].strftime('%H:%M')
             permissao['data_fim'] = permissao['data_fim'].strftime('%Y-%m-%d')
-
-        # Preencher campos de hora (string) para inicio e fim
 
         return jsonify({'success': True, 'data': permissao})
 
     except mysql.connector.Error as err:
         return jsonify({'success': False, 'message': f'Erro ao buscar permissão: {err}'})
+    except Exception as err:
+        return jsonify({'success': False, 'message': f'Erro inesperado ao buscar permissão'})
     finally:
         cursor.close()
         conn.close()
@@ -249,9 +295,9 @@ def obter_unidades_condominio(condominio_id):
         
         # Extrair apenas os valores das unidades
         lista_unidades = [u['unidade'] for u in unidades]
-        
+
         # Adicionar as opções especiais no final
-        lista_unidades.extend(['Avulso', 'Prestador'])
+        lista_unidades.extend(['Avulso', 'Prestador', 'Visitante'])
 
         return jsonify({
             'success': True, 

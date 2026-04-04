@@ -167,6 +167,10 @@
                     <div class="legenda-texto">Azul = Totalmente ocupado (vagas permitidas = vagas ocupadas)</div>
                 </div>
                 <div class="legenda-item">
+                    <div class="legenda-cor" style="background-color: #ffeaa7; border: 1px solid #fdcb6e;"></div>
+                    <div class="legenda-texto">Amarelo = Parcialmente ocupado (pelo menos 1 vaga ocupada)</div>
+                </div>
+                <div class="legenda-item">
                     <div class="legenda-cor" style="background-color: #f8f9fa; border: 1px solid #dee2e6;"></div>
                     <div class="legenda-texto">Branco = Vagas disponíveis (vagas livres)</div>
                 </div>
@@ -310,11 +314,15 @@
                         // Azul: Totalmente ocupado
                         corFundo = '#0d6efd';
                         corTexto = '#fff';
+                    } else if (vaga.vocup > 0 && vaga.vocup < vaga.vperm) {
+                        // Amarelo: Parcialmente ocupado (pelo menos 1 vaga ocupada)
+                        corFundo = '#ffeaa7';
+                        corTexto = '#000';
                     }
-                    // Caso contrário, mantém branco (vagas disponíveis)
+                    // Caso contrário, mantém branco (vagas disponíveis - 0 ocupadas)
                     
                     // Formato mais limpo: apenas número da unidade e status das vagas
-                    html += `<td class="vaga-cell" style="text-align: center; padding: 8px; border: 1px solid #ddd; background-color: ${corFundo}; color: ${corTexto}; cursor: pointer;" onclick="mostrarDetalhesUnidade(${vaga.unidade})">`;
+                    html += `<td class="vaga-cell" style="text-align: center; padding: 8px; border: 1px solid #ddd; background-color: ${corFundo}; color: ${corTexto}; cursor: pointer;" onclick="mostrarDetalhesUnidade('${vaga.unidade}')">`;
                     html += `<div style="font-weight: bold; font-size: 14px;">${vaga.unidade}</div>`;
                     html += `<div style="font-size: 12px; margin-top: 2px;">P:${vaga.vperm} O:${vaga.vocup}</div>`;
                     html += `</td>`;

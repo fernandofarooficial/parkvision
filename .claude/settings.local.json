@@ -1,8 +1,20 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(python:*)"
-    ]
+      "Bash(python:*)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\config/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib\\authlib/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib\\apilib/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib\\dblib/**)",
+      "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib\\vplib/**)",
+      "Bash(tree:*)",
+      "Bash(dir:*)"
+    ],
+    "defaultMode": "acceptEdits"
   }
 }

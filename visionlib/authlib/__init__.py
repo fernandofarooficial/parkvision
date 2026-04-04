@@ -366,6 +366,7 @@ def api_login():
     usuario = login_usuario(email, senha)
     
     if usuario:
+        session.permanent = True  # Tornar sessão permanente
         session['usuario'] = usuario
         session['autenticado'] = True  # Compatibilidade com sistema antigo
         return jsonify({

@@ -1,5 +1,7 @@
 # Arquivos de ambiente - NUNCA COMMITAR!
 .env
+.env.example
+env
 
 # Arquivos Python
 __pycache__/
@@ -7,6 +9,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
+ArquivosApoio
+Testes_Uteis
 build/
 develop-eggs/
 dist/
@@ -27,6 +31,8 @@ wheels/
 venv/
 env/
 ENV/
+.venv
+.vs
 
 # IDE
 .vscode/
@@ -44,3 +50,9 @@ ENV/
 
 # Configurações específicas do ambiente
 config/local.py
+
+# Claude Code
+.claude
+INSTALL_AUTENTICACAO.md
+PADROES_PROJETO.md
+README.md

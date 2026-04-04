@@ -3,7 +3,7 @@
 # --------------------
 
 
-from flask import jsonify
+from flask import jsonify, current_app
 from datetime import datetime
 import globals
 from config.database import get_db_connection
@@ -11,7 +11,11 @@ from visionlib.vplib import process_heimdall_plate
 from visionlib.teleglib import enviar_mensagem_telegram
 
 
+
+
+
 def gravar_movimento(movdic):
+    print(f'[GRAVAMOV] Entrei')
     # Carregar variaveis importantes e criar dicionário de retorno
     placalida = movdic.get('data', {}).get('plate_value', 'N/A')
     inforec = {'placalida': placalida}
@@ -39,11 +43,13 @@ def gravar_movimento(movdic):
     cursor.close()
     connection.close()
     # Log unificado do ciclo de gravação
+    print(f'[GRAVAMOV({log_id})] 🚗 HEIMDALL - IdCam: {cam_id} PlacaLida:{placalida} LogID:{log_id}')
 
     # localizar o código do condomínio
     numerocondominio = int(nome_cam[:4])
     idcond = identificar_condominio(numerocondominio)
     if idcond == 0:
+        print(f'[GRAVAMOV({log_id})] Condomínio não cadastrado: {nome_cam} (número: {numerocondominio})')
         return
     inforec['idcond'] = idcond
 
@@ -64,8 +70,8 @@ def gravar_movimento(movdic):
             elif cam_id == dad_cond['cdup'] or cam_id == dad_cond['vdup']:
                 direcao = 'I'
             else:
-                pass
-            if cam_id in (dad_cond['cent'],dad_cond['cetd'],dad_cond['csai'],dad_cond['cdup']):
+                print(f'[GRAVAMOV({log_id})] Câmera {cam_id} não configurada para condomínio {idcond}')
+            if cam_id in (dad_cond['cent'], dad_cond['cetd'], dad_cond['csai'], dad_cond['cdup']):
                 inforec['cent'] = dad_cond['cent']
                 inforec['csai'] = dad_cond['csai']
                 inforec['cdup'] = dad_cond['cdup']
@@ -78,7 +84,7 @@ def gravar_movimento(movdic):
             break
 
     if not configuracao_encontrada:
-        pass
+        print(f'[GRAVAMOV({log_id})] Configuração não encontrada para condomínio {idcond}')
 
     inforec['direcao'] = direcao
     inforec['tipotratamento'] = tipotratamento
@@ -87,12 +93,16 @@ def gravar_movimento(movdic):
     pulacadastrocarros = False
     verifica_placa = process_heimdall_plate(placalida, idcond, 0.8, pulacadastrocarros)
     placa = verifica_placa['corrected_plate']
+    print(f'[GRAVAMOV({log_id})] Resultado validação - Original: {placalida} -> Corrigida: {placa}')
+    print(
+        f'[GRAVAMOV({log_id})] Match encontrado: {verifica_placa["found_match"]}, Confiança: {verifica_placa["confidence"]}, Método: {verifica_placa["match_method"]}')
     inforec['placa'] = placa
 
     # 🔧 CORREÇÃO: Apenas rejeitar se a placa for realmente inválida (*ERROR*)
     # Placas válidas mas não cadastradas devem ser processadas normalmente
     if not verifica_placa['found_match'] or placa == '*ERROR*':
         placa = '*ERROR*'
+        print(f'[GRAVAMOV({log_id})] ❌ PLACA REJEITADA - {placalida} inconsistente - Condomínio:{idcond}')
         contav = 0
         inforec['contav'] = 0
 
@@ -101,6 +111,7 @@ def gravar_movimento(movdic):
         return inforec
 
     # ✅ Se chegou aqui, a placa é válida (cadastrada ou não)
+    print(f'[GRAVAMOV({log_id})] ✅ PLACA VÁLIDA - {placa} - Método: {verifica_placa["match_method"]}')
 
     # Direcionar para o tipo de tratamento correto
     if tipotratamento == 1:
@@ -118,6 +129,7 @@ def gravar_movimento(movdic):
     elif tipotratamento == 0:
         contav = 1
     else:
+        print(f'[GRAVAMOV({log_id})] ❌ TIPO INVÁLIDO - {tipotratamento} para {placa}')
         contav = 0
     #
     inforec['contav'] = contav
@@ -125,20 +137,23 @@ def gravar_movimento(movdic):
     # gravar o log
     gravar_log(log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav,
                instante, direcao)
+    print(
+        f'[GRAVAMOV({log_id})] Movimento: placa:{placa}; cond:{idcond}; log:{log_id}; Cam:{cam_id}/{nome_cam}; cv:{contav}; dir:{direcao}')
 
     # 🔧 CORREÇÃO: Verificar cadastro SEMPRE para placas válidas, independentemente do contav
     # O contav controla contagem de vagas, mas o registro de placas novas deve ser independente
+    print(f'[GRAVAMOV({log_id})] 🔍 VERIFICANDO CADASTRO DE VEICULOS: {placa}')
     if placadastrada(idcond, placa):
-        pass
+        print(f'[GRAVAMOV({log_id})] 🔍 Placa {placa} já cadastrada')
     else:
-        pass
+        print(f'[GRAVAMOV({log_id})] 🆕 Placa {placa} NOVA - inserida em semcadastro')
 
     # Processar mensagens Telegram apenas para movimentos válidos (contav=1)
     if contav == 1:
         # Trata a mensagem para o Telegram
         mensagem_telegram(idcond, direcao, placa)
     else:
-        pass
+        print(f'[GRAVAMOV({log_id})] Contav = 0, sem notificação Telegram')
 
     return inforec
 
@@ -169,6 +184,7 @@ def tratamentotipo01(inforec):
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
 
+    print(f'[TIPO1({log_heimdall})] Cam:{cam_id} Placa:{placa}')
 
     # Ler os últimos movimentos
     cursor.execute(
@@ -180,34 +196,40 @@ def tratamentotipo01(inforec):
         if movimento['contav'] == 1 and movimento['placa'] == placa:
             tempo_diferenca = abs(momento - movimento['nowpost']).total_seconds()
             if tempo_diferenca < 90:  # Movimento duplicado em 90s
+                print(
+                    f'[TIPO1({log_heimdall})] ⚠️ DUPLICATA - {placa} já processada há {tempo_diferenca:.1f}s')
                 contav = 0  # Não contar esta vaga
                 return contav
 
     # Checar se é camera dupla
     if cam_id == cam_dup:
-        cursor.execute('SELECT direcao from movcar where placa = %s AND contav = 1 ORDER BY nowpost DESC LIMIT 1',(placa,))
+        cursor.execute('SELECT direcao from movcar where placa = %s AND contav = 1 ORDER BY nowpost DESC LIMIT 1',
+                       (placa,))
         retorno = cursor.fetchone()
         if retorno is None:
-            contav = 0 # direção = I
+            contav = 0  # direção = I
             inforec['direcao'] = 'I'
         else:
             ultdir = retorno['direcao']
             if ultdir == 'S':
-                contav = 2 # direcao = E
+                contav = 2  # direcao = E
                 inforec['direcao'] = 'E'
             elif ultdir == 'E':
-                contav = 3 # direcao = S
+                contav = 3  # direcao = S
                 inforec['direcao'] = 'S'
             elif ultdir == 'I':
-                contav = 0 # direcao = I
+                contav = 0  # direcao = I
                 inforec['direcao'] = 'I'
             else:
                 contav = 0
+        print(f'[TIPO1({log_heimdall})] Cam:{cam_id} Placa:{placa} final (CDUP) contav = {contav}')
     else:
         if cam_id == cam_entrada:
             inforec['direcao'] = 'E'
         elif cam_id == cam_saida:
             inforec['direcao'] = 'S'
+        print(
+            f'[TIPO1({log_heimdall})] Cam:{cam_id} Placa:{placa} final (E/S) contav = {contav} e direção: {inforec['direcao']}')
 
     # fechar a conexão com a base de dados
     cursor.close()
@@ -225,6 +247,7 @@ def tratamentotipo02(inforec):
     cam_e = inforec['cent']
     cam_s = inforec['csai']
     cam_x = inforec['cetd']
+    print(f'[TIPO2({log_heimdall})] = Entrei - placa: {placa}')
     # Inicia com a ideia que o movimento será válido
     contav = 1
     if cam_id in (cam_e, cam_s, cam_x):
@@ -233,14 +256,17 @@ def tratamentotipo02(inforec):
         connection = get_db_connection()
         cursor = connection.cursor(dictionary=True)
         cursor.execute(
-            'SELECT nowpost FROM movcar WHERE placa = %s AND contav = 1 ORDER BY nowpost DESC LIMIT 1',(placa,))
+            'SELECT nowpost FROM movcar WHERE placa = %s AND contav = 1 ORDER BY nowpost DESC LIMIT 1', (placa,))
         movimento = cursor.fetchone()
         cursor.close()
         connection.close()
         # verifica se teve algum retorno
+        print(f'[TIPO2({log_heimdall})] = movimento: {movimento}')
         if movimento:
             tempo_diferenca = abs(momento - movimento['nowpost']).total_seconds()
             if tempo_diferenca < 90:  # Movimento duplicado em 90s
+                print(
+                    f'[TIPO2({log_heimdall})] ⚠️ DUPLICATA - {placa} já processada há {tempo_diferenca:.1f}s')
                 contav = 0  # Não contar esta vaga
                 return contav
     else:
@@ -275,6 +301,7 @@ def tratamentotipo03(inforec):
     dir = cursor.fetchone()
     if dir is None:
         return 1, 'I'
+    print(f'[TIPO3] A direção do ultimo movimento é {dir}')
     direcao = dir['direcao']
     if direcao == 'E':
         return 1, 'S'
@@ -286,7 +313,6 @@ def tratamentotipo03(inforec):
 
 def gravar_log(log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav,
                instante, direcao):
-
     # abrir conexão com a base de dados
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -298,10 +324,12 @@ def gravar_log(log_id, idcond, placa, placalida, momento, cor, corconf, adres, n
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
     valor = (
-    log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav, instante, direcao)
+        log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav, instante,
+        direcao)
     cursor.execute(query, valor)
     connection.commit()
 
+    print(f'[GRAVALOG({log_id})] 💾 GRAVADO - {placa} LogID:{log_id} Contav:{contav}')
 
     # fechar conexão com a base de dados
     cursor.close()
@@ -339,6 +367,7 @@ def identificar_condominio(numerocondominio):
 def obter_marcas():
     conn = get_db_connection()
     if not conn:
+        print('[OBTERMARCAS] Banco de dados não conectou!')
         return None
 
     cursor = conn.cursor(dictionary=True)
@@ -351,6 +380,7 @@ def obter_marcas():
             raise Exception("Tabela vazia")
         return marcas
     except:
+        print('[OBTERMARCAS] Problemas para localizar nome da marca no cadastro de marcas')
         return None
 
     finally:
@@ -359,9 +389,9 @@ def obter_marcas():
 
 
 def obter_idmarca(nomemarca):
-
     conn = get_db_connection()
     if not conn:
+        print('[OBTERIDMARCAS] Banco de dados não conectou!')
         return None
 
     cursor = conn.cursor()
@@ -376,7 +406,7 @@ def obter_idmarca(nomemarca):
         return None
 
     cursor.close()
-    return rst[0][0]
+    return rst[0]
 
 
 def obter_modelos(marca):
@@ -386,6 +416,7 @@ def obter_modelos(marca):
 
     conn = get_db_connection()
     if not conn:
+        print('[OBTERMODELO] Banco de dados não conectou!')
         return None
 
     """Versão mais simples da função."""
@@ -401,11 +432,11 @@ def obter_modelos(marca):
             # return {marca.upper(): modelos_formatados}
 
     except Exception as e:
+        print(f'[OBTERMODELO] Erro ao buscar modelos: {e}')
         return []
 
 
 def inserir_carro(idcond, data):
-
     placa = data.get('placa')
     marca = data.get('marca')
     modelo = data.get('modelo')
@@ -498,6 +529,7 @@ def obter_cores():
     """
     conn = get_db_connection()
     if not conn:
+        print('[OBTERCORES] Banco de dados não conectou!')
         return None
 
     cursor = conn.cursor(dictionary=True)
@@ -506,6 +538,7 @@ def obter_cores():
         cores = cursor.fetchall()
         return cores
     except Exception as e:
+        print(f'[OBTERCORES] Erro ao buscar cores: {e}')
         return None
     finally:
         cursor.close()
@@ -517,6 +550,7 @@ def mensagem_telegram(idcond, direcao, placa):
     Atualiza contagem de vagas e verifica se deve enviar notificações
     """
 
+    print(f'[TELEGRAM({placa})] Check de envio de mensagem:Direção: {direcao}')
 
     # abrindo a conexão com a base de dados
     connection = get_db_connection()
@@ -538,9 +572,11 @@ def mensagem_telegram(idcond, direcao, placa):
         vigencia = 'S/I'
         unidade = 'N/A'
 
+    print(f'[TELEGRAM({placa})] Placa:{placa};Direção:{direcao};Unid:{unidade};Vig:{vigencia}')
 
     # Pegar quantidade de vagas realmente ocupadas
-    cursor.execute('SELECT estacionados, placas FROM vw_estacionados WHERE idcond = %s AND unidade = %s', (idcond, unidade))
+    cursor.execute('SELECT estacionados, placas FROM vw_estacionados WHERE idcond = %s AND unidade = %s',
+                   (idcond, unidade))
     linhalida = cursor.fetchone()
     if linhalida:
         qtdfinal = linhalida[0]
@@ -549,12 +585,14 @@ def mensagem_telegram(idcond, direcao, placa):
         qtdfinal = 0
         carrosdentro = "."
 
+    print(f'[TELEGRAM({placa})] Vagas ocupadas: {qtdfinal} e Carros Estacionados: {carrosdentro}')
 
     # Pegar quantidade permitida
     cursor.execute('SELECT vperm FROM vagasunidades WHERE idcond = %s AND unidade = %s', (idcond, unidade))
     resultado_permitidas = cursor.fetchone()
     qtdpermitida = int(resultado_permitidas[0]) if resultado_permitidas else 1
 
+    print(f'[TELEGRAM({placa})] Vagas Permitidas: {qtdpermitida}')
 
     # checa o status - só envia mensagem em caso de excesso
     enviarmensagemvagas = False
@@ -570,7 +608,7 @@ def mensagem_telegram(idcond, direcao, placa):
         textopadrao5 = ''
 
     # checa a vigência - só envia se vencida
-    enviarmensagemvigencia = True if direcao == 'E' and vigencia in ('VENCIDA','S/I') else False
+    enviarmensagemvigencia = True if direcao == 'E' and vigencia in ('VENCIDA', 'S/I') else False
 
     enviarmensagem = True if enviarmensagemvagas or enviarmensagemvigencia else False
 
@@ -585,6 +623,7 @@ def mensagem_telegram(idcond, direcao, placa):
         vmsg = cursor.fetchone()
 
         if enviarmensagemvagas:
+            print('[TELEGRAM({placa})] Envia mensagem de excesso de vagas')
             # montar texto da mensagem
             textopadrao1 = "ParkVision informa: "
             textopadrao3 = f"Condomínio: {nomecond} - Unidade: {unidade} - Permitidas: {qtdpermitida} - Ocupadas: {qtdfinal} - Placa: {placa} ("
@@ -593,10 +632,12 @@ def mensagem_telegram(idcond, direcao, placa):
             msgtxt = f"{textopadrao1}{textopadrao2}{textopadrao3}{textopadrao4}{textopadrao5}"
             try:
                 status_mensagem = enviar_mensagem_telegram(vmsg[3], vmsg[4], msgtxt)
+                print(f'[TELEGRAM({placa})] Status envio Telegram (Excesso): {status_mensagem}')
             except Exception as e:
-                pass
+                print(f'[TELEGRAM({placa})] Erro ao enviar mensagem Telegram (Excesso): {e}')
 
         if enviarmensagemvigencia:
+            print(f'[TELEGRAM({placa})] Envia mensagem de permissão vencida')
             # Formatar texto da mensagem
             if vigencia == 'VENCIDA':
                 msgvigencia = f"ParkVision informa: Condomínio: {nomecond} - Veículo {placa} entrou com permissão vencida, referente a unidade {unidade}"
@@ -604,13 +645,15 @@ def mensagem_telegram(idcond, direcao, placa):
                 msgvigencia = f"ParkVision informa:  Condomínio: {nomecond} - Veículo {placa} entrou sem permissão cadastrada, referente a unidade {unidade}"
             try:
                 status_mensagem = enviar_mensagem_telegram(vmsg[3], vmsg[4], msgvigencia)
+                print(f'[TELEGRAM({placa})] Status envio Telegram (Vigência): {status_mensagem}')
             except Exception as e:
-                pass
+                print(f'[TELEGRAM({placa})] Erro ao enviar mensagem Telegram (Vigência): {e}')
 
     # fechar conexão com a base de dados
     connection.close()
 
     return
+
 
 def placadastrada(cond, pplaca):
     # abrindo a conexão com a base de dados

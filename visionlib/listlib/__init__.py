@@ -5,9 +5,11 @@
 import mysql.connector
 from config.database import get_db_connection
 from flask import jsonify, request
-from globals import verificar_autenticacao
 from datetime import datetime
 import pytz
+
+from visionlib.authlib import verificar_autenticacao_usuario
+from globals import verificar_acesso_condominio
 
 # Definir fuso horário brasileiro
 BRASIL_TZ = pytz.timezone('America/Sao_Paulo')
@@ -27,21 +29,21 @@ def obter_lista_veiculos(condominio_id):
 
     cursor = conn.cursor(dictionary=True)
     try:
-        sql_cadastrados = """
-        SELECT * FROM vw_movimentos WHERE idcond = %s
-        ORDER BY idmov DESC 
-        LIMIT 100;
-        """
-
+        # Construir query SQL com filtros ANTES do ORDER BY e LIMIT
+        sql_cadastrados = "SELECT * FROM vw_movimentos WHERE idcond = %s"
         params_cadastrados = [condominio_id]
 
+        # Adicionar filtros opcionais
         if placa:
-            sql_cadastrados += " AND mc.placa LIKE %s"  # Corrigido para mc.placa
+            sql_cadastrados += " AND placa LIKE %s"
             params_cadastrados.append(f"%{placa}%")
 
         if unidade:
-            sql_cadastrados += " AND cp.unidade LIKE %s"  # Corrigido para cp.unidade
-            params_cadastrados.append(f"%{unidade}%")
+            sql_cadastrados += " AND unidade = %s"
+            params_cadastrados.append(unidade)
+
+        # Adicionar ORDER BY e LIMIT no final
+        sql_cadastrados += " ORDER BY idmov DESC LIMIT 100"
 
         cursor.execute(sql_cadastrados, params_cadastrados)
         veiculos_cadastrados = cursor.fetchall()
@@ -67,16 +69,13 @@ def obter_lista_veiculos(condominio_id):
                     veiculo['ultima'] = None
                     veiculo['status'] = 'Sem registro'
                 else:
-                    # Definir status baseado na última câmera usando a função
-                    if veiculo.get('ultima_camera'):
-                        statuscamera = 'Movimento'
-                        if veiculo['direcao'] == 'E':
-                            statuscamera = 'Entrada'
-                        elif veiculo['direcao'] == 'S':
-                            statuscamera = 'Saída'
-                        veiculo['status'] = statuscamera
-                    else:
-                        veiculo['status'] = 'Sem movimento'
+                    # Definir status baseado na direção
+                    statuscamera = 'Movimento'
+                    if veiculo['direcao'] == 'E':
+                        statuscamera = 'Entrada'
+                    elif veiculo['direcao'] == 'S':
+                        statuscamera = 'Saída'
+                    veiculo['status'] = statuscamera
 
             # Como estamos usando apenas lastupdate, penultima sempre será None
             veiculo['penultima'] = None
@@ -126,8 +125,8 @@ def obter_lista_veiculos(condominio_id):
 # @app.route('/api/veiculo/<int:condominio_id>/<placa>')
 # def api_veiculo_detalhes(condominio_id, placa):
 def veiculo_detalhes(condominio_id, placa):
-    autenticado, cond_id = verificar_autenticacao()
-    if not autenticado or str(cond_id) != str(condominio_id):
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado'})
 
     conn = get_db_connection()
@@ -142,10 +141,12 @@ def veiculo_detalhes(condominio_id, placa):
                    COALESCE(ma.nmmarca, 'N/I') as marca, 
                    COALESCE(mo.nmmodelo, 'N/I') as modelo,
                    vva.data_inicio, vva.data_fim, vva.status_permissao
-            FROM vw_veiculos_autorizados vva
+            FROM vw_autorizacoes vva
             LEFT JOIN cadmodelo mo ON vva.idmodelo = mo.idmodelo
             LEFT JOIN cadmarca ma ON mo.idmarca = ma.idmarca
             WHERE vva.idcond = %s AND vva.placa = %s
+            ORDER BY rank_permissao
+            LIMIT 1
         """, (condominio_id, placa))
 
         veiculo = cursor.fetchone()
@@ -171,10 +172,7 @@ def veiculo_detalhes(condominio_id, placa):
         """, (condominio_id, placa))
 
         movimentacoes_raw = cursor.fetchall()
-
-        # Processar movimentações com validação de sequência lógica
         movimentacoes = []
-        ultimo_tipo = None  # Para controlar a alternância
 
         for mov in movimentacoes_raw:
             tipo_movimento = 'Movimento'
@@ -182,46 +180,15 @@ def veiculo_detalhes(condominio_id, placa):
                 tipo_movimento = 'Entrada'
             elif mov['direcao'] == 'S':
                 tipo_movimento = 'Saída'
-
-            # Validar sequência lógica: Entrada -> Saída -> Entrada -> Saída
-            if ultimo_tipo is None:
-                # Primeiro movimento sempre é válido
-                movimentacoes.append({
-                    'data': BRASIL_TZ.localize(mov['data']),
-                    'tipo': tipo_movimento
-                })
-                ultimo_tipo = tipo_movimento
-            else:
-                # Verificar se o movimento atual é diferente do anterior
-                if tipo_movimento != ultimo_tipo:
-                    movimentacoes.append({
-                        'data': BRASIL_TZ.localize(mov['data']),
-                        'tipo': tipo_movimento
-                    })
-                    ultimo_tipo = tipo_movimento
-                # Se for igual ao anterior, ignorar (movimento duplicado/inconsistente)
+            movimentacoes.append({
+                'data': BRASIL_TZ.localize(mov['data']),
+                'tipo': tipo_movimento
+            })
 
         # Tratar valores nulos e dados não verídicos para marca e modelo
         if veiculo:
-            marca = veiculo['marca'] if veiculo['marca'] else 'N/I'
-            modelo = veiculo['modelo'] if veiculo['modelo'] else 'N/I'
-
-            # Verificar se são dados genéricos/não verídicos EXCETO quando idmodelo = 1
-            # Para idmodelo = 1, manter "Agrale" como marca válida
-            cursor.execute("""
-                SELECT cv.idmodelo FROM cadveiculo cv WHERE cv.placa = %s
-            """, (placa,))
-            resultado_modelo_veiculo = cursor.fetchone()
-
-            if marca == 'Agrale' and modelo == 'Marruá' and (
-                    not resultado_modelo_veiculo or resultado_modelo_veiculo['idmodelo'] != 1):
-                # Para outros casos que não idmodelo=1 (Agrale), considerar como dados não verídicos
-                veiculo['marca'] = 'N/I'
-                veiculo['modelo'] = 'N/I'
-            else:
-                # Manter dados que parecem verídicos
-                veiculo['marca'] = marca
-                veiculo['modelo'] = modelo
+            veiculo['marca'] = veiculo['marca'] if veiculo['marca'] else 'N/I'
+            veiculo['modelo'] = veiculo['modelo'] if veiculo['modelo'] else 'N/I'
 
         return jsonify({
             'success': True,
@@ -242,9 +209,10 @@ def veiculo_detalhes(condominio_id, placa):
 # @app.route('/api/unidade/<int:condominio_id>/<unidade>')
 # def api_detalhes_unidade(condominio_id, unidade):
 def detalhes_unidade(condominio_id, unidade):
-    autenticado, cond_id = verificar_autenticacao()
-    if not autenticado or str(cond_id) != str(condominio_id):
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado'})
+
 
     conn = get_db_connection()
     if not conn:
@@ -254,13 +222,13 @@ def detalhes_unidade(condominio_id, unidade):
     try:
         # NOVA ESTRUTURA: Buscar veículos estacionados usando vw_veiculos_autorizados
         sql_veiculos = """
-        SELECT vva.placa, vva.cor, 
-               vva.nmmarca as marca, vva.nmmodelo as modelo,
-               vva.data_inicio, vva.data_fim, vva.status_permissao, clo.sit
-		FROM vw_veiculos_autorizados vva
-		LEFT JOIN cadlocal clo ON clo.idcond = vva.idcond AND clo.unidade = vva.unidade 
-			AND clo.placa = vva.placa
-        WHERE vva.idcond = %s AND vva.unidade = %s AND clo.sit = 1;
+        SELECT au.placa, au.cor, au.nmmarca as marca, au.nmmodelo as modelo, 
+        data_inicio, data_fim, status_permissao, lm.contav as sit
+        FROM vw_autorizacoes au 
+        LEFT JOIN vw_last_mov lm on lm.idcond = au.idcond AND au.placa = lm.placa and lm.direcao = 'E'
+        WHERE au.idperm = (SELECT idperm FROM vw_autorizacoes ax WHERE ax.placa = au.placa LIMIT 1)
+        AND lm.direcao = 'E' AND au.idcond = %s AND au.unidade = %s
+        ORDER BY au.seqcond ASC, lm.nowpost DESC;
         """
 
         cursor.execute(sql_veiculos, [condominio_id, str(unidade)])
@@ -270,13 +238,16 @@ def detalhes_unidade(condominio_id, unidade):
         info_unidade = None
         try:
             sql_unidade = """
-            SELECT vperm, vocup 
-            FROM vagasunidades 
-            WHERE idcond = %s AND unidade = %s
+            SELECT vu.vperm, COALESCE(ve.estacionados, 0) as vocup
+            FROM vagasunidades vu
+            LEFT JOIN vw_estacionados ve ON ve.idcond = vu.idcond AND ve.seqcond = vu.seqcond
+            WHERE vu.idcond = %s AND vu.unidade = %s
+            ORDER BY vu.seqcond;
             """
 
-            cursor.execute(sql_unidade, [condominio_id, str(unidade)])
+            cursor.execute(sql_unidade, [condominio_id, (unidade)])
             info_unidade = cursor.fetchone()
+
         except mysql.connector.Error:
             # Se vagasunidades não existir, usar valores padrão baseados nos veículos encontrados
             info_unidade = {'vperm': 2, 'vocup': len(veiculos)}
@@ -284,29 +255,6 @@ def detalhes_unidade(condominio_id, unidade):
         # Se não encontrou na tabela, usar valores padrão
         if not info_unidade:
             info_unidade = {'vperm': 2, 'vocup': len(veiculos)}
-
-        # Contar total de veículos não cadastrados do condomínio
-        total_nao_cadastrados = 0
-        try:
-            sql_nao_cadastrados = """
-            SELECT COUNT(DISTINCT m.placa) as total
-            FROM movcar m
-            WHERE m.idcond = %s AND m.contav = 1
-            AND m.placa IS NOT NULL AND m.placa != ''
-            AND LENGTH(m.placa) >= 7
-            AND m.placa REGEXP '^[A-Z]{3}[0-9]{4}$|^[A-Z]{3}[0-9][A-Z][0-9]{2}'
-            AND m.placa NOT IN (
-                SELECT cv.placa FROM cadveiculo cv
-                INNER JOIN cadlocal cl ON cv.placa = cl.placa AND cl.idcond = %s
-                WHERE cv.placa IS NOT NULL AND cv.placa != ''
-            )
-            """
-
-            cursor.execute(sql_nao_cadastrados, [condominio_id, condominio_id])
-            result = cursor.fetchone()
-            total_nao_cadastrados = result['total'] if result else 0
-        except mysql.connector.Error:
-            total_nao_cadastrados = 0
 
         return jsonify({
             'success': True,
@@ -318,7 +266,6 @@ def detalhes_unidade(condominio_id, unidade):
         })
 
     except mysql.connector.Error as err:
-        print(f"ERRO API UNIDADE: {err}")
         return jsonify({'success': False, 'message': f'Erro ao consultar unidade: {err}'})
     finally:
         cursor.close()

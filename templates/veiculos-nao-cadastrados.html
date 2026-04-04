@@ -116,28 +116,12 @@
                         <select class="form-control" id="unidade" required>
                             <option value="">Carregando unidades...</option>
                         </select>
-                        <div class="form-text">Selecione a unidade, Avulso ou Prestador</div>
+                        <div class="form-text">Selecione a unidade, Avulso, Prestador ou Visitante</div>
                     </div>
                     <div class="mb-3">
                         <label for="cor" class="form-label">Cor</label>
                         <select class="form-select" id="cor" required>
-                            <option value="">Selecione a cor</option>
-                            <option value="Amarelo">Amarelo</option>
-                            <option value="Azul">Azul</option>
-                            <option value="Bege">Bege</option>
-                            <option value="Branco">Branco</option>
-                            <option value="Cinza">Cinza</option>
-                            <option value="Dourado">Dourado</option>
-                            <option value="Laranja">Laranja</option>
-                            <option value="Marrom">Marrom</option>
-                            <option value="Prata">Prata</option>
-                            <option value="Preto">Preto</option>
-                            <option value="Rosa">Rosa</option>
-                            <option value="Roxo">Roxo</option>
-                            <option value="Verde">Verde</option>
-                            <option value="Vermelho">Vermelho</option>
-                            <option value="Vinho">Vinho</option>
-                            <option value="Outro">Outro</option>
+                            <option value="">Carregando cores...</option>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -394,6 +378,7 @@
                 carregarNomeCondominio();
                 carregarVeiculosNaoCadastrados();
                 carregarMarcas();
+                carregarCores();
             },
             error: function() {
                 // Erro na verificação - redirecionar para login
@@ -646,12 +631,34 @@
         });
     }
 
+    function carregarCores() {
+        $.ajax({
+            url: '/api/cores',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    let html = '<option value="">Selecione a cor</option>';
+                    response.data.forEach(function(cor) {
+                        html += `<option value="${cor.idcor}">${cor.nmcor}</option>`;
+                    });
+                    $('#cor').html(html);
+                } else {
+                    $('#cor').html('<option value="">Erro ao carregar cores</option>');
+                }
+            },
+            error: function() {
+                $('#cor').html('<option value="">Erro ao carregar cores</option>');
+            }
+        });
+    }
+
     function salvarVeiculo() {
         const dados = {
             condominio_id: condominioId,
             placa: $('#placa').val(),
             unidade: $('#unidade').val(),
-            cor: $('#cor').val(),
+            idcor: $('#cor').val(),
             marca: $('#marca').val(),
             modelo: $('#modelo').val(),
             data_inicio: $('#data-inicio').val(),
@@ -661,7 +668,7 @@
             hora_fim: $('#cadastro-hora-fim').val() || '17:00'        // Alterado para camelCase
         };
 
-        if (!dados.unidade || !dados.cor || !dados.marca || !dados.modelo || !dados.data_inicio) {
+        if (!dados.unidade || !dados.idcor || !dados.marca || !dados.modelo || !dados.data_inicio) {
             alert('Todos os campos obrigatórios devem ser preenchidos');
             return;
         }

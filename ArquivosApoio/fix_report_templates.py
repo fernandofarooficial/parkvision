@@ -62,7 +62,7 @@ def corrigir_template(arquivo):
         print(f"  SKIP {arquivo} - nenhuma mudança necessária")
 
 def main():
-    templates_dir = "templates"
+    templates_dir = "../templates"
     
     # Lista de templates para corrigir
     templates = [

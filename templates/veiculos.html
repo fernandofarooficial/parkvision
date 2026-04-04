@@ -94,8 +94,14 @@
             <a href="#" id="btn-mapa-vagas" class="btn btn-mapa-vagas me-auto">
                 <i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas
             </a>
+            <button id="btn-unidades" class="btn btn-secondary">
+                <i class="bi bi-building me-1"></i>Unidades
+            </button>
             <button id="btn-relatorios" class="btn btn-info">
                 <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatórios
+            </button>
+            <button id="btn-apontamento" class="btn btn-outline-primary">
+                <i class="bi bi-pencil-square me-1"></i>Apontamento
             </button>
             <button id="btn-nao-cadastrados" class="btn btn-warning">
                 <i class="bi bi-exclamation-triangle me-1"></i>
@@ -108,7 +114,7 @@
                 <i class="bi bi-plus-circle me-2"></i>Permissão
             </button>
             <button id="btn-modulo-veiculo" class="btn btn-warning">
-                <i class="bi bi-car-front me-2"></i>Veículo
+                <i class="bi bi-truck me-2"></i>Veículo
             </button>
         </div>
     </div>
@@ -235,7 +241,7 @@
                                         <select class="form-control" id="criar-unidade" required>
                                             <option value="">Carregando unidades...</option>
                                         </select>
-                                        <div class="form-text">Selecione a unidade, Avulso ou Prestador</div>
+                                        <div class="form-text">Selecione a unidade, Avulso, Prestador ou Visitante</div>
                                     </div>
                                 </div>
                             </div>
@@ -465,29 +471,13 @@
                         <select class="form-control" id="cadastro-unidade" required>
                             <option value="">Carregando unidades...</option>
                         </select>
-                        <div class="form-text">Selecione a unidade, Avulso ou Prestador</div>
+                        <div class="form-text">Selecione a unidade, Avulso, Prestador ou Visitante</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="cadastro-cor" class="form-label">Cor</label>
                         <select class="form-select" id="cadastro-cor" required>
-                            <option value="">Selecione a cor</option>
-                            <option value="Amarelo">Amarelo</option>
-                            <option value="Azul">Azul</option>
-                            <option value="Bege">Bege</option>
-                            <option value="Branco">Branco</option>
-                            <option value="Cinza">Cinza</option>
-                            <option value="Dourado">Dourado</option>
-                            <option value="Laranja">Laranja</option>
-                            <option value="Marrom">Marrom</option>
-                            <option value="Prata">Prata</option>
-                            <option value="Preto">Preto</option>
-                            <option value="Rosa">Rosa</option>
-                            <option value="Roxo">Roxo</option>
-                            <option value="Verde">Verde</option>
-                            <option value="Vermelho">Vermelho</option>
-                            <option value="Vinho">Vinho</option>
-                            <option value="Outro">Outro</option>
+                            <option value="">Carregando cores...</option>
                         </select>
                     </div>
 
@@ -598,23 +588,7 @@
                                     <div class="mb-3">
                                         <label for="criar-cor" class="form-label">Cor *</label>
                                         <select class="form-select" id="criar-cor" required>
-                                            <option value="">Selecione uma cor</option>
-                                            <option value="Amarelo">Amarelo</option>
-                                            <option value="Azul">Azul</option>
-                                            <option value="Bege">Bege</option>
-                                            <option value="Branco">Branco</option>
-                                            <option value="Cinza">Cinza</option>
-                                            <option value="Dourado">Dourado</option>
-                                            <option value="Laranja">Laranja</option>
-                                            <option value="Marrom">Marrom</option>
-                                            <option value="Prata">Prata</option>
-                                            <option value="Preto">Preto</option>
-                                            <option value="Rosa">Rosa</option>
-                                            <option value="Roxo">Roxo</option>
-                                            <option value="Verde">Verde</option>
-                                            <option value="Vermelho">Vermelho</option>
-                                            <option value="Vinho">Vinho</option>
-                                            <option value="Outro">Outro</option>
+                                            <option value="">Carregando cores...</option>
                                         </select>
                                     </div>
                                 </div>
@@ -675,23 +649,7 @@
                                         <div class="mb-3">
                                             <label for="modificar-cor" class="form-label">Cor *</label>
                                             <select class="form-select" id="modificar-cor" required>
-                                                <option value="">Selecione uma cor</option>
-                                                <option value="Amarelo">Amarelo</option>
-                                                <option value="Azul">Azul</option>
-                                                <option value="Bege">Bege</option>
-                                                <option value="Branco">Branco</option>
-                                                <option value="Cinza">Cinza</option>
-                                                <option value="Dourado">Dourado</option>
-                                                <option value="Laranja">Laranja</option>
-                                                <option value="Marrom">Marrom</option>
-                                                <option value="Prata">Prata</option>
-                                                <option value="Preto">Preto</option>
-                                                <option value="Rosa">Rosa</option>
-                                                <option value="Roxo">Roxo</option>
-                                                <option value="Verde">Verde</option>
-                                                <option value="Vermelho">Vermelho</option>
-                                                <option value="Vinho">Vinho</option>
-                                                <option value="Outro">Outro</option>
+                                                <option value="">Carregando cores...</option>
                                             </select>
                                         </div>
                                     </div>
@@ -991,6 +949,39 @@
         });
     }
 
+    function carregarCores() {
+        $.ajax({
+            url: '/api/cores',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    let html = '<option value="">Selecione uma cor</option>';
+                    response.data.forEach(function(cor) {
+                        html += `<option value="${cor.idcor}">${cor.nmcor}</option>`;
+                    });
+                    
+                    // Atualizar todos os selects de cor
+                    $('#cadastro-cor').html(html);
+                    $('#criar-cor').html(html);
+                    $('#modificar-cor').html(html);
+                } else {
+                    const errorHtml = '<option value="">Erro ao carregar cores</option>';
+                    $('#cadastro-cor').html(errorHtml);
+                    $('#criar-cor').html(errorHtml);
+                    $('#modificar-cor').html(errorHtml);
+                }
+            },
+            error: function() {
+                const errorHtml = '<option value="">Erro ao carregar cores</option>';
+                $('#cadastro-cor').html(errorHtml);
+                $('#criar-cor').html(errorHtml);
+                $('#modificar-cor').html(errorHtml);
+                console.error('Erro ao carregar cores');
+            }
+        });
+    }
+
     function carregarModelos(marca) {
         const modeloSelect = $('#cadastro-modelo');
 
@@ -1024,7 +1015,7 @@
         const modelo = $('#cadastro-modelo').val();
         const placa = $('#cadastro-placa').val().toUpperCase();
         const unidade = $('#cadastro-unidade').val();
-        const cor = $('#cadastro-cor').val();
+        const idcor = $('#cadastro-cor').val();
         const dataInicio = $('#cadastro-data-inicio').val();
         const dataFim = $('#cadastro-data-fim').val();
         const tempoIndeterminado = $('#cadastro-tempo-indeterminado').is(':checked');
@@ -1035,7 +1026,7 @@
         console.log('Enviando horários:', horaInicio, horaFim);
 
         // Validação básica
-        if (!marca || !modelo || !placa || !unidade || !cor || !dataInicio) {
+        if (!marca || !modelo || !placa || !unidade || !idcor || !dataInicio) {
             $('#cadastro-error').removeClass('d-none').text('Todos os campos obrigatórios devem ser preenchidos.');
             return;
         }
@@ -1064,7 +1055,7 @@
             modelo: modelo,
             placa: placa,
             unidade: unidade,
-            cor: cor,
+            idcor: idcor,
             data_inicio: dataInicio,
             data_fim: tempoIndeterminado ? null : dataFim,
             tempo_indeterminado: tempoIndeterminado,
@@ -1229,6 +1220,9 @@
 
                 // Carregar marcas para o formulário de cadastro
                 carregarMarcas();
+                
+                // Carregar cores para os formulários
+                carregarCores();
 
                 // Carregar veículos
                 carregarVeiculos();
@@ -1469,6 +1463,7 @@ function criarNovaPermissao() {
         type: 'POST',
         contentType: 'application/json',
         data: JSON.stringify({
+            condominio_id: condominioId,  // CORRIGIDO: Adicionar condominio_id
             placa: placa,
             unidade: unidade,
             dataInicio: dataInicio,
@@ -1509,7 +1504,7 @@ function buscarPermissaoParaModificacao() {
     }
 
     $.ajax({
-        url: `/api/permissao/${encodeURIComponent(placa)}`,
+        url: `/api/permissao/${encodeURIComponent(placa)}?condominio_id=${condominioId}`,
         type: 'GET',
         success: function(response) {
             if (response.success) {
@@ -1581,6 +1576,7 @@ function salvarModificacaoPermissao() {
 
     // Preparar dados para envio
     const dadosModificacao = {
+        condominio_id: condominioId,  // CORRIGIDO: Adicionar condominio_id
         placa: placa,
         dataFim: dataFim
     };
@@ -1800,7 +1796,7 @@ function buscarVeiculoParaModificacao() {
 // Função para preencher formulário de modificação
 function preencherFormularioModificacao(veiculo) {
     $('#modificar-placa-display').val(veiculo.placa);
-    $('#modificar-cor').val(veiculo.cor || '');
+    $('#modificar-cor').val(veiculo.idcor || '');
 
     // Aguardar marcas carregarem e selecionar
     setTimeout(function() {
@@ -1820,7 +1816,7 @@ function criarNovoVeiculo() {
     const placa = $('#veiculo-placa').val().trim().toUpperCase();
     const marca = $('#criar-marca').val();
     const modelo = $('#criar-modelo').val();
-    const cor = $('#criar-cor').val();
+    const idcor = $('#criar-cor').val();
 
     const errorDiv = $('#criar-error');
     const successDiv = $('#criar-success');
@@ -1845,14 +1841,14 @@ function criarNovoVeiculo() {
         return;
     }
 
-    if (!cor) {errorDiv.removeClass('d-none').text('A cor está vazia!');
+    if (!idcor) {errorDiv.removeClass('d-none').text('A cor está vazia!');
     return;
     }
 
 
 
 
-    if (!placa || !marca || !modelo || !cor) {
+    if (!placa || !marca || !modelo || !idcor) {
         errorDiv.removeClass('d-none').text('Todos os campos são obrigatórios');
         return;
     }
@@ -1866,7 +1862,7 @@ function criarNovoVeiculo() {
         placa: placa,
         marca: marca,
         modelo: modelo,
-        cor: cor
+        idcor: idcor
     };
 
     $.ajax({
@@ -1894,7 +1890,7 @@ function salvarModificacoes() {
     const placa = $('#modificar-placa-display').val();
     const marca = $('#modificar-marca').val();
     const modelo = $('#modificar-modelo').val();
-    const cor = $('#modificar-cor').val();
+    const idcor = $('#modificar-cor').val();
 
     const errorDiv = $('#modificar-error');
     const successDiv = $('#modificar-success');
@@ -1903,7 +1899,7 @@ function salvarModificacoes() {
     successDiv.addClass('d-none');
 
     // Validações
-    if (!marca || !modelo || !cor) {
+    if (!marca || !modelo || !idcor) {
         errorDiv.removeClass('d-none').text('Todos os campos são obrigatórios');
         return;
     }
@@ -1911,7 +1907,7 @@ function salvarModificacoes() {
     const dados = {
         marca: marca,
         modelo: modelo,
-        cor: cor
+        idcor: idcor
     };
 
     $.ajax({
@@ -1998,6 +1994,16 @@ $('#btn-nao-cadastrados').click(function() {
 //botão relatórios
 $('#btn-relatorios').click(function() {
     window.location.href = `/relatorios/${condominioId}`;
+});
+
+//botão unidades
+$('#btn-unidades').click(function() {
+    window.location.href = `/unidades/${condominioId}`;
+});
+
+//botão apontamento
+$('#btn-apontamento').click(function() {
+    window.location.href = `/apontamento/${condominioId}`;
 });
 
 // Função para carregar unidades do condomínio

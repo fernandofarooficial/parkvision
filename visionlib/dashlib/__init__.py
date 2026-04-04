@@ -5,8 +5,8 @@
 import mysql.connector
 from config.database import get_db_connection
 from flask import jsonify
-from globals import verificar_autenticacao
 import globals
+from globals import verificar_autenticacao
 
 
 # API para obter mapa de vagas
@@ -14,7 +14,8 @@ import globals
 # @app.route('/api/mapa-vagas/<int:condominio_id>')
 # def api_mapa_vagas(condominio_id)
 def obter_mapa_vagas(condominio_id):
-    # Autenticação agora é feita nas rotas principais do main.py
+
+    print("TRACK: Entrei no obter_mapa_vagas")
     
     # Definir numero de colunas por linha
     colunasporlinhanomapa = 10
@@ -29,12 +30,20 @@ def obter_mapa_vagas(condominio_id):
 
     cursor = conn.cursor(dictionary=True)
     try:
-        q = "SELECT unidade, vperm, vocup FROM vw_vagas_condominio WHERE idcond = %s"
+        q = """
+        SELECT vu.unidade, vu.vperm, COALESCE(ve.estacionados, 0) as vocup
+        FROM vagasunidades vu
+        LEFT JOIN vw_estacionados ve ON ve.idcond = vu.idcond AND ve.seqcond = vu.seqcond
+        WHERE vu.idcond = %s
+        ORDER BY vu.seqcond;
+        """
         v = (condominio_id,)
         cursor.execute(q,v)
         vagas = cursor.fetchall()
         total_unidades = len(vagas)
-        total_vagas_permitidas = sum(vaga['vperm'] for vaga in vagas)
+        total_vagas_permitidas = next((item['limite'] for item in globals.cvag if item['idcond'] == condominio_id), 0)
+        if total_vagas_permitidas == 0:
+            total_vagas_permitidas = sum(vaga['vperm'] for vaga in vagas)
         total_ocupadas = sum(vaga['vocup'] for vaga in vagas)
     except mysql.connector.Error:
         # Se a tabela não existir, encerrar a função
@@ -69,6 +78,9 @@ def obter_mapa_vagas(condominio_id):
 # @app.route('/api/resumo')
 # def api_resumo()
 def obter_resumo():
+
+    print("TRACK: Entrei no obter_resumo")
+
     conn = get_db_connection()
     if not conn:
         return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})

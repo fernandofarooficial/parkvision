@@ -1,4 +1,4 @@
-from visionlib.dblib import gravar_movimento
+from db_lib_generico import gravar_movimento
 from datetime import datetime
 
 movimentotest1 =  {'data': {'log_id': 99999, 'occurrence': 'Lpr',
@@ -13,15 +13,15 @@ movimentotest1 =  {'data': {'log_id': 99999, 'occurrence': 'Lpr',
                            'image_base64': '/9j/4AAQSkZJRgABAQAAAQ'}}
 
 
-movimentotest2 =  {'data': {'log_id': 99999, 'occurrence': 'Lpr',
-                           'analytic_id': '929',
+movimentotest2 =  {'data': {'log_id': 12345, 'occurrence': 'Lpr',
+                           'analytic_id': '124',
                            'region_dic': {'region0': [[1,1], [1,1], [1,1], [1,1], [1,1]]},
-                           'bbox_lst': None, 'video_stream': 'm', 'camera_id': 37,
-                           'camera_name': '7031 COTIA PARK 2 LPR EXTERNO', 'rtsp': 'rtsp:m',
-                           'address': 'COTIA PARK 2', 'description': None,
+                           'bbox_lst': None, 'video_stream': 'm', 'camera_id': 199,
+                           'camera_name': '1234 TESTE APP VISIT ENTRADA', 'rtsp': 'rtsp:m',
+                           'address': 'UIRAPURUS', 'description': None,
                            'coordinate': '{"latitude":"","longitude":""}',
-                           'created_at': '08/07/2025 18:54:39', 'rule': None,
-                           'plate_value': 'EIP3100', 'car_color': 'white', 'car_color_confs': 0.91,
+                           'created_at': '30/10/2025 17:30:10', 'rule': None,
+                           'plate_value': 'JBH5ED0', 'car_color': 'white', 'car_color_confs': 0.91,
                            'image_base64': '/9j/4AAQSkZJRgABAQAAAQ'}}
 
 '''

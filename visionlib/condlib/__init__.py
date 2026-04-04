@@ -7,19 +7,19 @@ from globals import verificar_autenticacao
 
 # API para autenticação
 # @app.route('/api/auth/login', methods=['POST'])
-def condominio_login():
-    data = request.json
-    condominio_id = data.get('condominio_id')
-    senha = data.get('senha')
-
-    print(f'Cond_id: {condominio_id} -- Senha: {senha}')
-
-    if condominio_id in globals.CONDOMINIO_SENHAS and globals.CONDOMINIO_SENHAS[condominio_id] == senha:
-        session['autenticado'] = True
-        session['condominio_id'] = condominio_id
-        return jsonify({'success': True, 'message': 'Login realizado com sucesso'})
-    else:
-        return jsonify({'success': False, 'message': 'Credenciais inválidas'})
+# def condominio_login():
+#     data = request.json
+#     condominio_id = data.get('condominio_id')
+#     senha = data.get('senha')
+#
+#     print(f'Cond_id: {condominio_id} -- Senha: {senha}')
+#
+#     if condominio_id in globals.CONDOMINIO_SENHAS and globals.CONDOMINIO_SENHAS[condominio_id] == senha:
+#         session['autenticado'] = True
+#         session['condominio_id'] = condominio_id
+#         return jsonify({'success': True, 'message': 'Login realizado com sucesso'})
+#     else:
+#         return jsonify({'success': False, 'message': 'Credenciais inválidas'})
 
 # API para obter lista de condomínios
 # Referências no programa principal

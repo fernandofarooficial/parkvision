@@ -12,6 +12,7 @@ def verificar_autenticacao():
     # Verificar se há autenticação do novo sistema
     if 'usuario' in session and session.get('autenticado', False):
         usuario = session['usuario']
+
         # Para compatibilidade, retorna o primeiro condomínio da lista
         if usuario.get('condominios') and len(usuario['condominios']) > 0:
             primeiro_condominio = usuario['condominios'][0]['idcond']
@@ -74,11 +75,23 @@ CONDOMINIO_SENHAS = {
 # cent   = Número da câmera de entrada
 # csai   = Número da câmera de saída
 # cdup   = Número de câmera de dupla função (entrada e saída)
-cvag = [{'idcond':1,'nrcond':6004,'tipo':1,'cent':89,'csai':90,'cdup':8,'colunas':7}]
-cvag.append({'idcond':4,'nrcond':7031,'tipo':2,'cent':0,'csai':0,'cdup':37,'colunas':7})
-cvag.append({'idcond':8,'nrcond':6003,'tipo':3,'cent':75,'csai':164,'cdup':0,'colunas':5})
+# cetd   = Número de câmera auxiliar de entrada
+# vent   = Número da câmera de entrada - máquina extra
+# vsai   = Número da câmera de saída - máquina extra
+# vdup   = Número de câmera de dupla função (entrada e saída) - máquina extra
+# vetd   = Número de câmera auxiliar de entrada - máquina extra
 
-# Ultimas três leituras
-m0 = {'idcond':0,'placa':'0','momento:':datetime.now(),'contav':0,'direcao':'X','camera_id':0,'log_id':0}
-m1 = {'idcond':0,'placa':'1','momento:':datetime.now(),'contav':0,'direcao':'X','camera_id':0,'log_id':0}
-m2 = {'idcond':0,'placa':'2','momento:':datetime.now(),'contav':0,'direcao':'X','camera_id':0,'log_id':0}
+cvag = [{'idcond':1,'nrcond':6004,'tipo':1,
+         'cent':89,'csai':90,'cdup':8,'cetd':0,
+         'vent':0,'vsai':0,'vdup':0,'vetd':0,
+         'limite': 0,'colunas':7}]
+
+cvag.append({'idcond':2,'nrcond':6003,'tipo':2,
+             'cent':75,'csai':164,'cdup':0,'cetd':190,
+             'vent':0,'vsai':0,'vdup':0,'vetd':0,
+             'limite': 80,'colunas':5})
+
+cvag.append({'idcond':3,'nrcond':1234,'tipo':3,
+             'cent':0,'csai':0,'cdup':199,'cetd':0,
+             'vent':0,'vsai':0,'vdup':0,'vetd':0,
+             'limite': 0,'colunas':5})

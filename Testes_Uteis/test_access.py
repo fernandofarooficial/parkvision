@@ -4,7 +4,7 @@ Script para testar a função verificar_acesso_condominio
 """
 
 import sys
-sys.path.append('.')
+sys.path.append('..')
 
 from flask import Flask, session
 from globals import verificar_acesso_condominio

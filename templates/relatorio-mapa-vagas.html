@@ -39,7 +39,12 @@
     }
     
     .status-completo {
-        color: #ffc107;
+        color: #0d6efd;
+        font-weight: bold;
+    }
+    
+    .status-parcial {
+        color: #fd7e14;
         font-weight: bold;
     }
     
@@ -100,27 +105,35 @@
 <!-- Informações Gerais -->
 <div class="info-container">
     <div class="row text-center">
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card bg-primary text-white">
                 <div class="card-body">
                     <h4 id="total-unidades">0</h4>
-                    <p class="mb-0">Total de Unidades</p>
+                    <p class="mb-0">Total Unidades</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card bg-success text-white">
                 <div class="card-body">
                     <h4 id="vagas-disponiveis">0</h4>
-                    <p class="mb-0">Vagas Disponíveis</p>
+                    <p class="mb-0">Disponíveis</p>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card bg-warning text-dark">
+            <div class="card" style="background-color: #fd7e14; color: white;">
+                <div class="card-body">
+                    <h4 id="vagas-parciais">0</h4>
+                    <p class="mb-0">Parcialmente Ocupadas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-info text-white">
                 <div class="card-body">
                     <h4 id="vagas-completas">0</h4>
-                    <p class="mb-0">Vagas Completas</p>
+                    <p class="mb-0">Completas</p>
                 </div>
             </div>
         </div>
@@ -128,7 +141,7 @@
             <div class="card bg-danger text-white">
                 <div class="card-body">
                     <h4 id="vagas-excesso">0</h4>
-                    <p class="mb-0">Vagas em Excesso</p>
+                    <p class="mb-0">Excesso</p>
                 </div>
             </div>
         </div>
@@ -283,9 +296,12 @@
     function getStatusClass(status) {
         switch(status) {
             case 'Disponível':
+            case 'Vazio':
                 return 'status-disponivel';
             case 'Completo':
                 return 'status-completo';
+            case 'Parcial':
+                return 'status-parcial';
             case 'Excesso':
                 return 'status-excesso';
             default:
@@ -295,12 +311,14 @@
 
     function atualizarResumo() {
         const totalUnidades = dadosRelatorio.length;
-        const disponiveis = dadosRelatorio.filter(row => row[3] === 'Disponível').length;
+        const disponiveis = dadosRelatorio.filter(row => row[3] === 'Disponível' || row[3] === 'Vazio').length;
+        const parciais = dadosRelatorio.filter(row => row[3] === 'Parcial').length;
         const completas = dadosRelatorio.filter(row => row[3] === 'Completo').length;
         const excesso = dadosRelatorio.filter(row => row[3] === 'Excesso').length;
         
         $('#total-unidades').text(totalUnidades);
         $('#vagas-disponiveis').text(disponiveis);
+        $('#vagas-parciais').text(parciais);
         $('#vagas-completas').text(completas);
         $('#vagas-excesso').text(excesso);
     }
