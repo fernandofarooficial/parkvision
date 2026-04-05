@@ -1,5 +1,6 @@
 from datetime import datetime
 from flask import session
+from config.database import get_db_connection
 
 # COMPATIBILIDADE: Função legada para verificar autenticação por condomínio
 # DEPRECATED: Usar visionlib.authlib.verificar_autenticacao_usuario() para novas implementações
@@ -81,17 +82,41 @@ CONDOMINIO_SENHAS = {
 # vdup   = Número de câmera de dupla função (entrada e saída) - máquina extra
 # vetd   = Número de câmera auxiliar de entrada - máquina extra
 
-cvag = [{'idcond':1,'nrcond':6004,'tipo':1,
-         'cent':89,'csai':90,'cdup':8,'cetd':0,
-         'vent':0,'vsai':0,'vdup':0,'vetd':0,
-         'limite': 0,'colunas':7}]
+def carregar_cvag():
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            'SELECT idcond, nrcond, tipo, cent, csai, cdup, cetd, '
+            'vent, vsai, vdup, vetd, limite, colunas FROM cadcond'
+        )
+        resultado = cursor.fetchall()
+        return [
+            {
+                'idcond':  int(r['idcond']  or 0),
+                'nrcond':  int(r['nrcond']  or 0),
+                'tipo':    int(r['tipo']    or 0),
+                'cent':    int(r['cent']    or 0),
+                'csai':    int(r['csai']    or 0),
+                'cdup':    int(r['cdup']    or 0),
+                'cetd':    int(r['cetd']    or 0),
+                'vent':    int(r['vent']    or 0),
+                'vsai':    int(r['vsai']    or 0),
+                'vdup':    int(r['vdup']    or 0),
+                'vetd':    int(r['vetd']    or 0),
+                'limite':  int(r['limite']  or 0),
+                'colunas': int(r['colunas'] or 0),
+            }
+            for r in resultado
+        ]
+    except Exception as e:
+        print(f'Erro ao carregar cvag: {e}')
+        return []
+    finally:
+        cursor.close()
+        conn.close()
 
-cvag.append({'idcond':2,'nrcond':6003,'tipo':2,
-             'cent':75,'csai':164,'cdup':0,'cetd':190,
-             'vent':0,'vsai':0,'vdup':0,'vetd':0,
-             'limite': 80,'colunas':5})
 
-cvag.append({'idcond':3,'nrcond':1234,'tipo':3,
-             'cent':0,'csai':0,'cdup':199,'cetd':0,
-             'vent':0,'vsai':0,'vdup':0,'vetd':0,
-             'limite': 0,'colunas':5})
+cvag = carregar_cvag()
