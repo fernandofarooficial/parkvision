@@ -2,10 +2,9 @@
 # DBLIB
 # --------------------
 
-
 from flask import jsonify
 from datetime import datetime
-import globals
+from ArquivosApoio.draftqualquer import idcond
 from config.database import get_db_connection
 from visionlib.vplib import process_heimdall_plate
 from visionlib.teleglib import enviar_mensagem_telegram
@@ -13,323 +12,220 @@ from visionlib.teleglib import enviar_mensagem_telegram
 
 def gravar_movimento(movdic):
     # Carregar variaveis importantes e criar dicionário de retorno
+    inforec = carregar_leitura(movdic)
+    lpri = f"[AFP:{inforec['log_id']}]:"
+    print(f"[{lpri}Primeira carga do inforec - Placa Lida = {inforec['placalida']}")
+    # gravar o log bruto
+    gravar_log_bruto(inforec)
+    print(f"[{lpri}Log bruto gravado - Id Camera = {inforec['camera_id']}")
+    # Validar a placa lida
+    verifica_placa = process_heimdall_plate(inforec['placalida'], idcond, 0.8)
+    placa = verifica_placa['corrected_plate']
+    inforec['placa'] = placa
+    print(f"{lpri}Placa analisada - Placa = {placa}")
+    # Verifica se a placa é válida
+    if not verifica_placa['found_match'] or placa == '*ERROR*':
+        # placa invalida - grava log mas não considera o registro
+        inforec['placa'] = '*ERROR*'
+        inforec['contav'] = 0
+        gravar_log(inforec)
+        print(f"{lpri}placa inválida")
+        return inforec
+    # Carregar dados da camera
+    infocamera = carregar_dados_camera(inforec)
+    inforec['idcond'] = infocamera['idcond']
+    inforec['direcao'] = infocamera['direcao']
+    print(f"{lpri}Carreguei dados camera - Idcond: {inforec['idcond']}")
+    # Checar se tivemos eventos anteriores para esta placa
+    inforec['contav'] = checar_anteriores(inforec)
+    print(f"{lpri}Chequei anteriores - ContaV: {inforec['contav']}")
+    # Só processo se contav = 1, se for zero só grava o log
+    if inforec['contav'] == 1:
+        # Verifica se a placa está cadastrada, só abre se estiver cadastrada
+        if placadastrada(inforec['idcond'], inforec['placa']):
+            # placa cadastrada - verifica se está na validade e pega o nome do condominio
+            inforec['nome_condominio'] = obter_nome_condominio(inforec)
+            inforec['status_permissao'], inforec['unidade'] = placaautorizada(inforec)
+            if inforec['status_permissao'] in ('INDEFINIDA', 'VIGENTE'):
+                # placa autorizada
+                # obter veiculos estacionados
+                inforec['qtde_estacionada'], inforec['placas_estacionadas'] = contar_vagas_ocupadas(inforec)
+                inforec['vagas_permitidas'] = obter_vagas_permitidas(inforec)
+                print(f"{lpri}veículo autorizado - ",end=False)
+                print(f"Vagas permitidas: {inforec['vagas_permitidas']} ",end=False)
+                print(f"Estacionados: {inforec['qtde_estacionada']} - {inforec['placas_estacionadas']}")
+            else:
+                print(f"{lpri}: veículo não autorizado")
+        else:
+            # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
+            print(f"{lpri}placa não cadastrada - ")
+    # gravar o log
+    gravar_log(inforec)
+    # Processar mensagens Telegram apenas para movimentos válidos (contav=1)
+    if inforec['contav'] == 1:
+        # Trata a mensagem para o Telegram
+        mensagem_telegram(inforec)
+    #
+    return inforec
+
+
+def carregar_leitura(movdic):
+    # Carregar variaveis importantes e criar dicionário de retorno
     placalida = movdic.get('data', {}).get('plate_value', 'N/A')
     inforec = {'placalida': placalida}
     momentorecebido = movdic.get('data', {}).get('created_at', 'N/A')
-    instante = inforec['instante'] = momentorecebido
-    momento = inforec['momento'] = datetime.strptime(momentorecebido, '%d/%m/%Y %H:%M:%S')
-    id_anl = inforec['id_analitico'] = movdic.get('data', {}).get('analytic_id', 'N/A')
-    nome_cam = inforec['nome_camera'] = movdic.get('data', {}).get('camera_name', 'N/A')
-    log_id = inforec['log_id'] = movdic.get('data', {}).get('log_id', 'N/A')
-    cam_id = inforec['camera_id'] = movdic.get('data', {}).get('camera_id', 'N/A')
-    adres = inforec['address'] = movdic.get('data', {}).get('address', 'N/A')
-    cor = inforec['cor_do_carro'] = movdic.get('data', {}).get('car_color', 'N/A')
-    corconf = inforec['cor_do_carro_conf'] = movdic.get('data', {}).get('car_color_confs', 'N/A')
+    inforec['instante'] = momentorecebido
+    inforec['momento'] = datetime.strptime(momentorecebido, '%d/%m/%Y %H:%M:%S')
+    inforec['id_analitico'] = movdic.get('data', {}).get('analytic_id', 'N/A')
+    inforec['nome_camera'] = movdic.get('data', {}).get('camera_name', 'N/A')
+    inforec['log_id'] = movdic.get('data', {}).get('log_id', 'N/A')
+    inforec['camera_id'] = movdic.get('data', {}).get('camera_id', 'N/A')
+    inforec['address'] = movdic.get('data', {}).get('address', 'N/A')
+    inforec['cor_do_carro'] = movdic.get('data', {}).get('car_color', 'N/A')
+    inforec['cor_do_carro_conf'] = movdic.get('data', {}).get('car_color_confs', 'N/A')
+    return inforec
 
+
+def gravar_log_bruto(inforec):
     # gravar o log bruto
     connection = get_db_connection()
     cursor = connection.cursor()
+    #
     consulta = '''
         INSERT INTO logbruto (idlog,placalida,nowpost,nomecam,idcam)
         VALUES (%s, %s, %s, %s, %s)
         '''
-    valores = (log_id, placalida, momento, nome_cam, cam_id)
+    valores = (inforec['log_id'], inforec['placalida'], inforec['momento'], inforec['nome_camera'], inforec['camera_id'])
     cursor.execute(consulta, valores)
     connection.commit()
+    #
     cursor.close()
     connection.close()
-    # Log unificado do ciclo de gravação
-
-    # localizar o código do condomínio
-    numerocondominio = int(nome_cam[:4])
-    idcond = identificar_condominio(numerocondominio)
-    if idcond == 0:
-        return
-    inforec['idcond'] = idcond
-
-    # apontar a direção e o tipo de tratamento
-    tipotratamento = 0
-    direcao = 'I'
-    configuracao_encontrada = False
-    for dad_cond in globals.cvag:
-        if dad_cond['idcond'] == idcond:
-            configuracao_encontrada = True
-            tipotratamento = dad_cond['tipo']
-            if cam_id == dad_cond['cent'] or cam_id == dad_cond['vent']:
-                direcao = 'E'
-            elif cam_id == dad_cond['cetd'] or cam_id == dad_cond['vetd']:
-                direcao = 'E'
-            elif cam_id == dad_cond['csai'] or cam_id == dad_cond['vsai']:
-                direcao = 'S'
-            elif cam_id == dad_cond['cdup'] or cam_id == dad_cond['vdup']:
-                direcao = 'I'
-            else:
-                pass
-            if cam_id in (dad_cond['cent'],dad_cond['cetd'],dad_cond['csai'],dad_cond['cdup']):
-                inforec['cent'] = dad_cond['cent']
-                inforec['csai'] = dad_cond['csai']
-                inforec['cdup'] = dad_cond['cdup']
-                inforec['cetd'] = dad_cond['cetd']
-            else:
-                inforec['cent'] = dad_cond['vent']
-                inforec['csai'] = dad_cond['vsai']
-                inforec['cdup'] = dad_cond['vdup']
-                inforec['cetd'] = dad_cond['vetd']
-            break
-
-    if not configuracao_encontrada:
-        pass
-
-    inforec['direcao'] = direcao
-    inforec['tipotratamento'] = tipotratamento
-
-    # validação da placa
-    pulacadastrocarros = False
-    verifica_placa = process_heimdall_plate(placalida, idcond, 0.8, pulacadastrocarros)
-    placa = verifica_placa['corrected_plate']
-    inforec['placa'] = placa
-
-    # 🔧 CORREÇÃO: Apenas rejeitar se a placa for realmente inválida (*ERROR*)
-    # Placas válidas mas não cadastradas devem ser processadas normalmente
-    if not verifica_placa['found_match'] or placa == '*ERROR*':
-        placa = '*ERROR*'
-        contav = 0
-        inforec['contav'] = 0
-
-        gravar_log(log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav,
-                   instante, direcao)
-        return inforec
-
-    # ✅ Se chegou aqui, a placa é válida (cadastrada ou não)
-
-    # Direcionar para o tipo de tratamento correto
-    if tipotratamento == 1:
-        contav_lista = [0, 1, 1, 1]
-        direcao_lista = [inforec['direcao'], inforec['direcao'], 'E', 'S']
-        cv = tratamentotipo01(inforec)
-        contav = contav_lista[cv]
-        direcao = direcao_lista[cv]
-        inforec['direcao'] = direcao
-    elif tipotratamento == 2:
-        contav = tratamentotipo02(inforec)
-    elif tipotratamento == 3:
-        contav, direcao = tratamentotipo03(inforec)
-        inforec['direcao'] = direcao
-    elif tipotratamento == 0:
-        contav = 1
-    else:
-        contav = 0
-    #
-    inforec['contav'] = contav
-
-    # gravar o log
-    gravar_log(log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav,
-               instante, direcao)
-
-    # 🔧 CORREÇÃO: Verificar cadastro SEMPRE para placas válidas, independentemente do contav
-    # O contav controla contagem de vagas, mas o registro de placas novas deve ser independente
-    if placadastrada(idcond, placa):
-        pass
-    else:
-        pass
-
-    # Processar mensagens Telegram apenas para movimentos válidos (contav=1)
-    if contav == 1:
-        # Trata a mensagem para o Telegram
-        mensagem_telegram(idcond, direcao, placa)
-    else:
-        pass
-
-    return inforec
-
-
-def tratamentotipo01(inforec):
-    #
-    # Devolutiva agora ficou mais complexa
-    #
-    # contav = 0 : Não conta vaga e não muda direção
-    # contav = 1 : Conta vaga e não muda direção
-    # contav = 2 : Conta vaga e direção é igual a E (entrada)
-    # contav = 3 : Conta vaga e direção é igual a S (saída)
-    #
-
-    # Extrair dados do registro
-    log_heimdall = inforec['log_id']
-    placa = inforec['placa']
-    cam_id = inforec['camera_id']
-    momento = inforec['momento']
-    cam_entrada = inforec['cent']
-    cam_saida = inforec['csai']
-    cam_dup = inforec['cdup']
-
-    # Por padrão, conta a vaga
-    contav = 1
-
-    # abrir conexão com a base de dados
-    connection = get_db_connection()
-    cursor = connection.cursor(dictionary=True)
-
-
-    # Ler os últimos movimentos
-    cursor.execute(
-        'SELECT placa, idcam, nowpost, contav, direcao, idcond, idlog FROM movcar ORDER BY nowpost DESC LIMIT 10')
-    movimentos = cursor.fetchall()
-
-    # verificar se a placa já foi contabilizada anteriormente
-    for movimento in movimentos:
-        if movimento['contav'] == 1 and movimento['placa'] == placa:
-            tempo_diferenca = abs(momento - movimento['nowpost']).total_seconds()
-            if tempo_diferenca < 90:  # Movimento duplicado em 90s
-                contav = 0  # Não contar esta vaga
-                return contav
-
-    # Checar se é camera dupla
-    if cam_id == cam_dup:
-        cursor.execute('SELECT direcao from movcar where placa = %s AND contav = 1 ORDER BY nowpost DESC LIMIT 1',(placa,))
-        retorno = cursor.fetchone()
-        if retorno is None:
-            contav = 0 # direção = I
-            inforec['direcao'] = 'I'
-        else:
-            ultdir = retorno['direcao']
-            if ultdir == 'S':
-                contav = 2 # direcao = E
-                inforec['direcao'] = 'E'
-            elif ultdir == 'E':
-                contav = 3 # direcao = S
-                inforec['direcao'] = 'S'
-            elif ultdir == 'I':
-                contav = 0 # direcao = I
-                inforec['direcao'] = 'I'
-            else:
-                contav = 0
-    else:
-        if cam_id == cam_entrada:
-            inforec['direcao'] = 'E'
-        elif cam_id == cam_saida:
-            inforec['direcao'] = 'S'
-
-    # fechar a conexão com a base de dados
-    cursor.close()
-    connection.close()
-
-    return contav
-
-
-def tratamentotipo02(inforec):
-    # Colocar valor nas variáveis
-    log_heimdall = inforec['log_id']
-    placa = inforec['placa']
-    cam_id = inforec['camera_id']
-    momento = inforec['momento']
-    cam_e = inforec['cent']
-    cam_s = inforec['csai']
-    cam_x = inforec['cetd']
-    # Inicia com a ideia que o movimento será válido
-    contav = 1
-    if cam_id in (cam_e, cam_s, cam_x):
-        # A câmera é de trabalho
-        # ler os últimos movimentos
-        connection = get_db_connection()
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute(
-            'SELECT nowpost FROM movcar WHERE placa = %s AND contav = 1 ORDER BY nowpost DESC LIMIT 1',(placa,))
-        movimento = cursor.fetchone()
-        cursor.close()
-        connection.close()
-        # verifica se teve algum retorno
-        if movimento:
-            tempo_diferenca = abs(momento - movimento['nowpost']).total_seconds()
-            if tempo_diferenca < 90:  # Movimento duplicado em 90s
-                contav = 0  # Não contar esta vaga
-                return contav
-    else:
-        return 0
-    return contav
-
-
-def tratamentotipo03(inforec):
-    # Extrair dados do registro
-    log_heimdall = inforec['log_id']
-    placa = inforec['placa']
-    cam_id = inforec['camera_id']
-    momento = inforec['momento']
-    cam_dup = inforec['cdup']
-    # Valida se é a câmera correta
-    if cam_id != cam_dup:
-        return 0, 'I'  # não é a camera para o tratamento indicado
-    # abrir conexão com a base de dados
-    connection = get_db_connection()
-    cursor = connection.cursor(dictionary=True)
-    # Ler os últimos 10 movimentos
-    cursor.execute('SELECT placa, idcam, nowpost, contav, direcao, idcond, idlog FROM movcar ORDER BY nowpost DESC LIMIT 10')
-    movimentos = cursor.fetchall()
-    # verificar se a placa já foi contabilizada anteriormente
-    for movimento in movimentos:
-        if movimento['contav'] == 1 and movimento['placa'] == placa:
-            tempo_diferenca = abs(momento - movimento['nowpost']).total_seconds()
-            if tempo_diferenca < 90:  # Movimento duplicado em 90s
-                return 0, 'I'   # Não contar esta vaga
-    # Computar a vaga - verificar a ultima direção
-    cursor.execute('SELECT direcao from movcar where placa = %s AND contav = 1 ORDER BY nowpost DESC LIMIT 1',(placa,))
-    dir = cursor.fetchone()
-    if dir is None:
-        return 1, 'I'
-    direcao = dir['direcao']
-    if direcao == 'E':
-        return 1, 'S'
-    elif direcao == 'S':
-        return 1, 'E'
-    # fim da função
-    return 1, 'I'
-
-
-def gravar_log(log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav,
-               instante, direcao):
-
-    # abrir conexão com a base de dados
-    connection = get_db_connection()
-    cursor = connection.cursor()
-
-    # montar query para gravar na tabela de movimento de carro - log
-    query = f"""
-            INSERT INTO movcar 
-            (idlog, idcond, placa, placalida, nowpost, cor, corconf, ender, nomecam, idcam, idaia, contav, instante, direcao) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-    valor = (
-    log_id, idcond, placa, placalida, momento, cor, corconf, adres, nome_cam, cam_id, id_anl, contav, instante, direcao)
-    cursor.execute(query, valor)
-    connection.commit()
-
-
-    # fechar conexão com a base de dados
-    cursor.close()
-    connection.close()
-
     return
 
 
-def identificar_condominio(numerocondominio):
-    # abrindo a conexão com a base de dados
+def carregar_dados_camera(inforec):
+    # gerar lista com as informações da câmera que recebemos o alerta
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    #
+    query = "SELECT * FROM cadcamera WHERE idcam = %s LIMIT 1"
+    values = (inforec['camera_id'],)
+    cursor.execute(query, values)
+    infocamera = cursor.fetchone()
+    #
+    cursor.close()
+    connection.close()
+    #
+    return infocamera
+
+
+def checar_anteriores(inforec):
+    # verificar se a placa foi computada no ultimo minuto para evitar duplo movimento
+    # Por padrão, conta a vaga
+    contav = 1
+    # abrir conexão com a base de dados
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    # Ler os últimos movimentos
+    query = "SELECT placa, contav, idcond, nowpost FROM movcar WHERE idcond = %s AND placa = %s ORDER BY nowpost DESC LIMIT 10"
+    values = (inforec['idcond'],inforec['placa'])
+    cursor.execute(query, values)
+    movimentos = cursor.fetchall()
+    # verificar se a placa já foi contabilizada anteriormente
+    for movimento in movimentos:
+        if movimento['contav'] == 1:
+            tempo_diferenca = abs(inforec["momento"] - movimento['nowpost']).total_seconds()
+            if tempo_diferenca < 90:  # Movimento duplicado em 90s
+                contav = 0  # Não contar esta vaga
+    # fechar base de dados
+    cursor.close()
+    connection.close()
+    # fecha a função com o resultado de contav
+    return contav
+
+
+def gravar_log(inforec):
+    # gravar o log em movcar
     connection = get_db_connection()
     cursor = connection.cursor()
-
-    # localizar o código do condomínio na base de dados
-    idcond = 0
-    vlr = numerocondominio
-    qry = f"SELECT idcond FROM cadcond WHERE nrcond = {vlr}"
-    cursor.execute(qry)
-    resultadoquery = cursor.fetchall()
-    qtdlin = cursor.rowcount
-
-    # fechar a conexão com a base de dados
+    # montar query para gravar na tabela de movimento de carro - log
+    query = f"""
+            INSERT INTO movcar 
+            (idlog, idcond, placa, placalida, nowpost, cor, corconf, ender, nomecam, 
+            idcam, idaia, contav, instante, direcao) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+    valor = (inforec['log_id'],      inforec['idcond'],       inforec['placa'],             inforec['placalida'],
+             inforec['momento'],     inforec['cor_do_carro'], inforec['cor_do_carro_conf'], inforec['address'],
+             inforec['nome_camera'], inforec['camera_id'],    inforec['id_analitico'],      inforec['contav'],
+             inforec['instante'],    inforec['direcao'])
+    cursor.execute(query, valor)
+    connection.commit()
+    #
+    cursor.close()
     connection.close()
+    #
+    return
 
-    # tratando o resultado da query
-    if qtdlin == 1:
-        idcond = resultadoquery[0][0]
-    return idcond
+
+def contar_vagas_ocupadas(inforec):
+    # obter situação das vagas da unidade
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    #
+    query = 'SELECT estacionados, placas FROM vw_estacionados WHERE idcond = %s AND unidade = %s LIMIT 1'
+    values = (inforec['idcond'], inforec['unidade'])
+    cursor.execute((query,values))
+    retorno_query = cursor.fetchone()
+    #
+    cursor.close()
+    connection.close()
+    #
+    return retorno_query
+
+
+def obter_vagas_permitidas(inforec):
+    # obter quantidade de vagas permitidas
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    #
+    query = 'SELECT vperm ASs vagas_permitidas vagasunidades WHERE idcond = %s AND unidade = %s LIMIT 1'
+    values = (inforec['idcond'], inforec['unidade'])
+    cursor.execute(query, values)
+    retorno_query = cursor.fetchone()
+    #
+    cursor.close()
+    connection.close()
+    #
+    return retorno_query
+
+
+def obter_nome_condominio(inforec):
+    # obter o nome do condomínio
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    #
+    query = 'SELECT nmcond FROM cadcond WHERE idcond = %s LIMIT 1'
+    values = (inforec['idcond'],)
+    cursor.execute(query, values)
+    retorno_query = cursor.fetchone()
+    #
+    cursor.close()
+    connection.close()
+    #
+    return retorno_query['nmcond']
+
+
+
+def mensagem_telegram(inforec):
+    # Trata mensagens no telegram
+    ["idcond"], inforec["direcao"], inforec["placa"]
+
+
+
+
+
 
 
 # --------------------------------------------------------------------------------------------
@@ -512,107 +408,8 @@ def obter_cores():
         conn.close()
 
 
-def mensagem_telegram(idcond, direcao, placa):
-    """
-    Atualiza contagem de vagas e verifica se deve enviar notificações
-    """
-
-
-    # abrindo a conexão com a base de dados
-    connection = get_db_connection()
-    cursor = connection.cursor()
-
-    # pegar a unidade do véiculo e a situação da permissão
-    cursor.execute('''
-        SELECT unidade, status_permissao 
-        FROM vw_autorizacoes 
-        WHERE idcond = %s AND placa = %s
-        ORDER BY placa ASC, rank_permissao ASC, idperm DESC 
-        LIMIT 1;
-        ''', (idcond, placa))
-    retorno_vigencia = cursor.fetchone()
-    if retorno_vigencia is not None:
-        vigencia = retorno_vigencia[1]
-        unidade = retorno_vigencia[0]
-    else:
-        vigencia = 'S/I'
-        unidade = 'N/A'
-
-
-    # Pegar quantidade de vagas realmente ocupadas
-    cursor.execute('SELECT estacionados, placas FROM vw_estacionados WHERE idcond = %s AND unidade = %s', (idcond, unidade))
-    linhalida = cursor.fetchone()
-    if linhalida:
-        qtdfinal = linhalida[0]
-        carrosdentro = linhalida[1]
-    else:
-        qtdfinal = 0
-        carrosdentro = "."
-
-
-    # Pegar quantidade permitida
-    cursor.execute('SELECT vperm FROM vagasunidades WHERE idcond = %s AND unidade = %s', (idcond, unidade))
-    resultado_permitidas = cursor.fetchone()
-    qtdpermitida = int(resultado_permitidas[0]) if resultado_permitidas else 1
-
-
-    # checa o status - só envia mensagem em caso de excesso
-    enviarmensagemvagas = False
-    if qtdfinal > qtdpermitida:
-        enviarmensagemvagas = True
-        textopadrao2 = "Vagas excedidas: "
-        textopadrao5 = f' - Veículos estacionados: {carrosdentro}'
-    elif qtdfinal == qtdpermitida:
-        textopadrao2 = "Vagas completas: "
-        textopadrao5 = ''
-    else:
-        textopadrao2 = "Vagas disponíveis: "
-        textopadrao5 = ''
-
-    # checa a vigência - só envia se vencida
-    enviarmensagemvigencia = True if direcao == 'E' and vigencia in ('VENCIDA','S/I') else False
-
-    enviarmensagem = True if enviarmensagemvagas or enviarmensagemvigencia else False
-
-    if enviarmensagem:
-        # Pegar nome do condomínio
-        cursor.execute("SELECT nmcond FROM cadcond WHERE idcond = %s", (idcond,))
-        resultado_nome = cursor.fetchone()
-        nomecond = resultado_nome[0] if resultado_nome else f"Condomínio {idcond}"
-
-        # pega informações de envio de mensagem
-        cursor.execute("SELECT * FROM cadmensagem WHERE idcond = %s AND tipomensagem = %s", (idcond, 1))
-        vmsg = cursor.fetchone()
-
-        if enviarmensagemvagas:
-            # montar texto da mensagem
-            textopadrao1 = "ParkVision informa: "
-            textopadrao3 = f"Condomínio: {nomecond} - Unidade: {unidade} - Permitidas: {qtdpermitida} - Ocupadas: {qtdfinal} - Placa: {placa} ("
-            textopadrao4 = "Entrada)" if direcao == 'E' else "Saída)"
-
-            msgtxt = f"{textopadrao1}{textopadrao2}{textopadrao3}{textopadrao4}{textopadrao5}"
-            try:
-                status_mensagem = enviar_mensagem_telegram(vmsg[3], vmsg[4], msgtxt)
-            except Exception as e:
-                pass
-
-        if enviarmensagemvigencia:
-            # Formatar texto da mensagem
-            if vigencia == 'VENCIDA':
-                msgvigencia = f"ParkVision informa: Condomínio: {nomecond} - Veículo {placa} entrou com permissão vencida, referente a unidade {unidade}"
-            else:
-                msgvigencia = f"ParkVision informa:  Condomínio: {nomecond} - Veículo {placa} entrou sem permissão cadastrada, referente a unidade {unidade}"
-            try:
-                status_mensagem = enviar_mensagem_telegram(vmsg[3], vmsg[4], msgvigencia)
-            except Exception as e:
-                pass
-
-    # fechar conexão com a base de dados
-    connection.close()
-
-    return
-
 def placadastrada(cond, pplaca):
+    # verifica se a placa está cadastrada
     # abrindo a conexão com a base de dados
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -626,6 +423,36 @@ def placadastrada(cond, pplaca):
         query = 'INSERT INTO semcadastro (idcond, placa) VALUES (%s, %s)'
         cursor.execute(query, (cond, pplaca))
         connection.commit()
+    #
     cursor.close()
     connection.close()
+    #
     return resultadoconsulta
+
+
+def placaautorizada(inforec):
+    # verifica se a placa está dentro do tempo de validade
+    # abrindo a conexão com a base de dados
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    # fazer a consulta
+    query = """
+        SELECT placa, idcond, status_permissao, unidade
+        FROM vw_autorizacoes
+        WHERE idcond = %s AND placa = %s
+        ORDER BY rank_permissao
+        LIMIT 1
+    """
+    values = (inforec['idcond'],inforec['placa'])
+    cursor.execute(query, values)
+    resultado = cursor.fetchone()
+    #
+    if resultado is None:
+        # Não achou placa no condomínio
+        resultado = {'status_permissao': 'Inexistente', 'unidade': 'N/A', 'idcond': inforec['idcond'], 'placa': inforec['placa']}
+    #
+    cursor.close()
+    connection.close()
+    #
+    print(f'PlacaAut - resultado: {resultado}')
+    return resultado['status_permissao'], resultado['unidade']
