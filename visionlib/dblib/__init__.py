@@ -220,7 +220,8 @@ def obter_nome_condominio(inforec):
 
 def mensagem_telegram(inforec):
     # Trata mensagens no telegram
-    ["idcond"], inforec["direcao"], inforec["placa"]
+    print(f"mensagem telegram {inforec}")
+    return
 
 
 
