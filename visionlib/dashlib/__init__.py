@@ -15,25 +15,20 @@ from globals import verificar_autenticacao
 # def api_mapa_vagas(condominio_id)
 def obter_mapa_vagas(condominio_id):
 
-    print("TRACK: Entrei no obter_mapa_vagas")
-    
-    # Definir numero de colunas por linha
-    colunasporlinhanomapa = 10
-
-    for c in globals.cvag:
-        if c['idcond'] == condominio_id:
-            colunasporlinhanomapa = c['colunas']
-            break
-
     conn = get_db_connection()
     if not conn:
         return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
 
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT colunas FROM vagasunidades WHERE idcond = %s LIMIT 1",(condominio_id,))
+        cursor.execute("SELECT colunas, limite FROM vagasunidades WHERE idcond = %s LIMIT 1",(condominio_id,))
         resp_q = cursor.fetchone()
-        colunasporlinhanomapa = resp_q['colunas'] if resp_q is not None else 10
+        if resp_q is not None:
+            colunasporlinhanomapa = resp_q['colunas']
+            total_vagas_permitidas = resp_q['limite']
+        else:
+            colunasporlinhanomapa = 10
+            total_vagas_permitidas = 100
         q = """
         SELECT vu.unidade, vu.vperm, COALESCE(ve.estacionados, 0) as vocup
         FROM vagasunidades vu
@@ -45,7 +40,6 @@ def obter_mapa_vagas(condominio_id):
         cursor.execute(q,v)
         vagas = cursor.fetchall()
         total_unidades = len(vagas)
-        total_vagas_permitidas = next((item['limite'] for item in globals.cvag if item['idcond'] == condominio_id), 0)
         if total_vagas_permitidas == 0:
             total_vagas_permitidas = sum(vaga['vperm'] for vaga in vagas)
         total_ocupadas = sum(vaga['vocup'] for vaga in vagas)
