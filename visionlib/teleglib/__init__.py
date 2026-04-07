@@ -49,9 +49,19 @@ def teleg_info(cond, tipo = 1):
     return vmsg[3], vmsg[4]
 
 
+def teleg_sem_vaga(irec):
+    token, chat_id = teleg_info(irec['idcond'])
+    motivo = f"Sem vagas disponíveis: Permitidas: {irec['vagas_permitidas']} - "
+    motivo += f"Ocupadas: {irec['qtde_estacionada']} ({irec['placas_estacionadas']})."
+    msg = f"ParkVision informa: {irec['nome_condominio']} - Placa: {irec['placa']}: não autorizada. {motivo}"
+    enviar_mensagem_telegram(token, chat_id, msg)
+    return
+
+
 def teleg_veiculo_nao_autorizado(irec):
     token, chat_id = teleg_info(irec['idcond'])
-    msg = f"ParkVision informa: {irec['nome_condominio']} - Placa: {irec['placa']}: não autorizada."
+    motivo = "Sem permissão" if irec['status_permissao'] == "INEXISTENTE" else 'Permissão vencida.'
+    msg = f"ParkVision informa: {irec['nome_condominio']} - Placa: {irec['placa']}: não autorizada. {motivo}"
     enviar_mensagem_telegram(token, chat_id, msg)
     return
 

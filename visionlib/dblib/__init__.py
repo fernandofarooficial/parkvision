@@ -8,13 +8,12 @@ from ArquivosApoio.draftqualquer import idcond
 from config.database import get_db_connection
 from visionlib.vplib import process_heimdall_plate
 from visionlib.teleglib import teleg_placa_nao_cadastrada, teleg_veiculo_ok
-from visionlib.teleglib import  teleg_veiculo_nao_autorizado
+from visionlib.teleglib import  teleg_veiculo_nao_autorizado, teleg_sem_vaga
 
 
 def gravar_movimento(movdic):
     # Carregar variaveis importantes e criar dicionário de retorno
     inforec = carregar_leitura(movdic)
-    lpri = f"[AFP:{inforec['log_id']}]:"
     # gravar o log bruto
     gravar_log_bruto(inforec)
     # Validar a placa lida
@@ -40,20 +39,34 @@ def gravar_movimento(movdic):
         inforec['nome_condominio'] = obter_nome_condominio(inforec)
         # Verifica se a placa está cadastrada, só abre se estiver cadastrada
         if placadastrada(inforec['idcond'], inforec['placa']):
+            print(f"[{placa}]: Placa cadastrada")
             # placa cadastrada - verifica se está na validade
             inforec['status_permissao'], inforec['unidade'] = placaautorizada(inforec)
+            print(f"[{placa}]: Status da permissão: {inforec['status_permissao']}")
             if inforec['status_permissao'] in ('INDEFINIDA', 'VIGENTE'):
+                print(f"[{placa}]: Placa com permissão válida")
                 # placa autorizada
                 # obter veiculos estacionados
                 inforec['qtde_estacionada'], inforec['placas_estacionadas'] = contar_vagas_ocupadas(inforec)
                 inforec['vagas_permitidas'] = obter_vagas_permitidas(inforec)
-                print(f"{lpri}veículo autorizado - ",end="")
+                print(f"[{placa}]: veículo autorizado - ",end="")
                 print(f"Vagas permitidas: {inforec['vagas_permitidas']} ",end="")
                 print(f"Estacionados: {inforec['qtde_estacionada']} - {inforec['placas_estacionadas']}")
-                teleg_veiculo_ok(inforec)
+                # checar quantidade de vagas permitidas
+                if inforec['qtde_estacionada'] >= inforec['vagas_permitidas']:
+                    print(f"[{placa}]: Todas as vagas ocupadas")
+                    # unidade já ocupou todas as vagas
+                    teleg_sem_vaga(inforec)
+                else:
+                    print(f"[{placa}]: Todos critérios atendidos")
+                    # passou por todos os critérios: cadastrada, com permissão e com vaga disponível
+                    teleg_veiculo_ok(inforec)
             else:
+                print(f"[{placa}]: Placa sem permissão válida")
+                # Placa sem permissão válida
                 teleg_veiculo_nao_autorizado(inforec)
         else:
+            print(f"[{placa}]: Placa sem cadastro")
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
             teleg_placa_nao_cadastrada(inforec)
     # gravar o log
@@ -196,8 +209,9 @@ def obter_vagas_permitidas(inforec):
     #
     cursor.close()
     connection.close()
+    print(f"Retorno query: {retorno_query}")
     #
-    return retorno_query
+    return retorno_query['vagas_permitidas']
 
 
 def obter_nome_condominio(inforec):
@@ -449,7 +463,7 @@ def placaautorizada(inforec):
     #
     if resultado is None:
         # Não achou placa no condomínio
-        resultado = {'status_permissao': 'Inexistente', 'unidade': 'N/A', 'idcond': inforec['idcond'], 'placa': inforec['placa']}
+        resultado = {'status_permissao': 'INEXISTENTE', 'unidade': 'N/A', 'idcond': inforec['idcond'], 'placa': inforec['placa']}
     #
     cursor.close()
     connection.close()
