@@ -22,18 +22,17 @@ def obter_mapa_vagas(condominio_id):
 
     cursor = conn.cursor(dictionary=True)
 
-    # Tentar ler configuração de colunas por linha — colunas opcionais na tabela
+    # Ler configuração de colunas por linha e limite total de cadcond
     colunasporlinhanomapa = 10
+    _limite = 0
     try:
-        cursor.execute("SELECT colunas, limite FROM vagasunidades WHERE idcond = %s LIMIT 1", (condominio_id,))
+        cursor.execute("SELECT colunas, limite FROM cadcond WHERE idcond = %s LIMIT 1", (condominio_id,))
         resp_q = cursor.fetchone()
         if resp_q:
             colunasporlinhanomapa = resp_q.get('colunas') or 10
             _limite = resp_q.get('limite') or 0
-        else:
-            _limite = 0
     except mysql.connector.Error:
-        _limite = 0
+        pass
 
     try:
         # Tentar JOIN por seqcond (preferencial); se falhar, tentar por unidade
