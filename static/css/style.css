@@ -8,11 +8,18 @@ body {
 .navbar {
   padding-top: 2px;
   padding-bottom: 2px;
+  overflow: visible;
 }
 
 .navbar-brand {
   font-weight: bold;
   font-size: 1.5rem;
+}
+
+.navbar-brand img {
+  margin-top: -16px;
+  margin-bottom: -16px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
 }
 
 /* Cards */
