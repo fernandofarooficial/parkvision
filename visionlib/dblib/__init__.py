@@ -7,58 +7,55 @@ from datetime import datetime
 from ArquivosApoio.draftqualquer import idcond
 from config.database import get_db_connection
 from visionlib.vplib import process_heimdall_plate
-from visionlib.teleglib import enviar_mensagem_telegram
+from visionlib.teleglib import teleg_placa_nao_cadastrada, teleg_veiculo_ok
+from visionlib.teleglib import  teleg_veiculo_nao_autorizado
 
 
 def gravar_movimento(movdic):
     # Carregar variaveis importantes e criar dicionário de retorno
     inforec = carregar_leitura(movdic)
     lpri = f"[AFP:{inforec['log_id']}]:"
-    print(f"[{lpri}Primeira carga do inforec - Placa Lida = {inforec['placalida']}")
     # gravar o log bruto
     gravar_log_bruto(inforec)
-    print(f"[{lpri}Log bruto gravado - Id Camera = {inforec['camera_id']}")
     # Validar a placa lida
     verifica_placa = process_heimdall_plate(inforec['placalida'], idcond, 0.8)
     placa = verifica_placa['corrected_plate']
     inforec['placa'] = placa
-    print(f"{lpri}Placa analisada - Placa = {placa}")
     # Verifica se a placa é válida
     if not verifica_placa['found_match'] or placa == '*ERROR*':
         # placa invalida - grava log mas não considera o registro
         inforec['placa'] = '*ERROR*'
         inforec['contav'] = 0
         gravar_log(inforec)
-        print(f"{lpri}placa inválida")
         return inforec
     # Carregar dados da camera
     infocamera = carregar_dados_camera(inforec)
     inforec['idcond'] = infocamera['idcond']
     inforec['direcao'] = infocamera['direcao']
-    print(f"{lpri}Carreguei dados camera - Idcond: {inforec['idcond']}")
     # Checar se tivemos eventos anteriores para esta placa
     inforec['contav'] = checar_anteriores(inforec)
-    print(f"{lpri}Chequei anteriores - ContaV: {inforec['contav']}")
     # Só processo se contav = 1, se for zero só grava o log
     if inforec['contav'] == 1:
+        # obter nome do condomínio
+        inforec['nome_condominio'] = obter_nome_condominio(inforec)
         # Verifica se a placa está cadastrada, só abre se estiver cadastrada
         if placadastrada(inforec['idcond'], inforec['placa']):
-            # placa cadastrada - verifica se está na validade e pega o nome do condominio
-            inforec['nome_condominio'] = obter_nome_condominio(inforec)
+            # placa cadastrada - verifica se está na validade
             inforec['status_permissao'], inforec['unidade'] = placaautorizada(inforec)
             if inforec['status_permissao'] in ('INDEFINIDA', 'VIGENTE'):
                 # placa autorizada
                 # obter veiculos estacionados
                 inforec['qtde_estacionada'], inforec['placas_estacionadas'] = contar_vagas_ocupadas(inforec)
                 inforec['vagas_permitidas'] = obter_vagas_permitidas(inforec)
-                print(f"{lpri}veículo autorizado - ",end=False)
-                print(f"Vagas permitidas: {inforec['vagas_permitidas']} ",end=False)
+                print(f"{lpri}veículo autorizado - ",end="")
+                print(f"Vagas permitidas: {inforec['vagas_permitidas']} ",end="")
                 print(f"Estacionados: {inforec['qtde_estacionada']} - {inforec['placas_estacionadas']}")
+                teleg_veiculo_ok(inforec)
             else:
-                print(f"{lpri}: veículo não autorizado")
+                teleg_veiculo_nao_autorizado(inforec)
         else:
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
-            print(f"{lpri}placa não cadastrada - ")
+            teleg_placa_nao_cadastrada(inforec)
     # gravar o log
     gravar_log(inforec)
     # Processar mensagens Telegram apenas para movimentos válidos (contav=1)
@@ -176,13 +173,15 @@ def contar_vagas_ocupadas(inforec):
     #
     query = 'SELECT estacionados, placas FROM vw_estacionados WHERE idcond = %s AND unidade = %s LIMIT 1'
     values = (inforec['idcond'], inforec['unidade'])
-    cursor.execute((query,values))
+    cursor.execute(query,values)
     retorno_query = cursor.fetchone()
+    if retorno_query is None:
+        retorno_query = {'estacionados': 0, 'placas': "N/A"}
     #
     cursor.close()
     connection.close()
     #
-    return retorno_query
+    return retorno_query['estacionados'], retorno_query['placas']
 
 
 def obter_vagas_permitidas(inforec):
@@ -190,7 +189,7 @@ def obter_vagas_permitidas(inforec):
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
     #
-    query = 'SELECT vperm ASs vagas_permitidas vagasunidades WHERE idcond = %s AND unidade = %s LIMIT 1'
+    query = 'SELECT vperm AS vagas_permitidas FROM vagasunidades WHERE idcond = %s AND unidade = %s LIMIT 1'
     values = (inforec['idcond'], inforec['unidade'])
     cursor.execute(query, values)
     retorno_query = cursor.fetchone()
@@ -455,5 +454,4 @@ def placaautorizada(inforec):
     cursor.close()
     connection.close()
     #
-    print(f'PlacaAut - resultado: {resultado}')
     return resultado['status_permissao'], resultado['unidade']

@@ -1,5 +1,5 @@
 import requests
-
+from config.database import get_db_connection
 
 def enviar_mensagem_telegram(token, chat_id, mensagem):
     """
@@ -33,3 +33,40 @@ def enviar_mensagem_telegram(token, chat_id, mensagem):
     except requests.RequestException as e:
         print(f"❌ Erro de conexão: {e}")
         return False
+
+
+def teleg_info(cond, tipo = 1):
+    # abrindo a conexão com a base de dados
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    # pega informações de envio de mensagem
+    cursor.execute("SELECT * FROM cadmensagem WHERE idcond = %s AND tipomensagem = %s", (cond, tipo))
+    vmsg = cursor.fetchone()
+    #
+    cursor.close()
+    connection.close()
+    #
+    return vmsg[3], vmsg[4]
+
+
+def teleg_veiculo_nao_autorizado(irec):
+    token, chat_id = teleg_info(irec['idcond'])
+    msg = f"ParkVision informa: {irec['nome_condominio']} - Placa: {irec['placa']}: não autorizada."
+    enviar_mensagem_telegram(token, chat_id, msg)
+    return
+
+
+def teleg_veiculo_ok(irec):
+    token, chat_id = teleg_info(irec['idcond'])
+    direcao = 'Saída' if irec['direcao'] == 'S' else 'Entrada'
+    msg = f"ParkVision informa: {irec['nome_condominio']} - Placa: {irec['placa']}: {direcao}"
+    enviar_mensagem_telegram(token, chat_id, msg)
+    return
+
+
+def teleg_placa_nao_cadastrada(irec):
+    token, chat_id = teleg_info(irec['idcond'])
+    msg = f"ParkVision informa: {irec['nome_condominio']} - Placa: {irec['placa']} não cadastrada!"
+    enviar_mensagem_telegram(token, chat_id, msg)
+    return
+
