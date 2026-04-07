@@ -21,31 +21,44 @@ def obter_mapa_vagas(condominio_id):
         return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
 
     cursor = conn.cursor(dictionary=True)
+
+    # Tentar ler configuração de colunas por linha — colunas opcionais na tabela
+    colunasporlinhanomapa = 10
     try:
-        cursor.execute("SELECT colunas, limite FROM vagasunidades WHERE idcond = %s LIMIT 1",(condominio_id,))
+        cursor.execute("SELECT colunas, limite FROM vagasunidades WHERE idcond = %s LIMIT 1", (condominio_id,))
         resp_q = cursor.fetchone()
-        if resp_q is not None:
-            colunasporlinhanomapa = resp_q['colunas']
-            total_vagas_permitidas = resp_q['limite']
+        if resp_q:
+            colunasporlinhanomapa = resp_q.get('colunas') or 10
+            _limite = resp_q.get('limite') or 0
         else:
-            colunasporlinhanomapa = 10
-            total_vagas_permitidas = 100
-        q = """
-        SELECT vu.unidade, vu.vperm, COALESCE(ve.estacionados, 0) as vocup
-        FROM vagasunidades vu
-        LEFT JOIN vw_estacionados ve ON ve.idcond = vu.idcond AND ve.seqcond = vu.seqcond
-        WHERE vu.idcond = %s
-        ORDER BY vu.seqcond;
-        """
-        v = (condominio_id,)
-        cursor.execute(q,v)
+            _limite = 0
+    except mysql.connector.Error:
+        _limite = 0
+
+    try:
+        # Tentar JOIN por seqcond (preferencial); se falhar, tentar por unidade
+        try:
+            cursor.execute("""
+                SELECT vu.unidade, vu.vperm, COALESCE(ve.estacionados, 0) as vocup
+                FROM vagasunidades vu
+                LEFT JOIN vw_estacionados ve ON ve.idcond = vu.idcond AND ve.seqcond = vu.seqcond
+                WHERE vu.idcond = %s
+                ORDER BY vu.seqcond
+            """, (condominio_id,))
+        except mysql.connector.Error:
+            cursor.execute("""
+                SELECT vu.unidade, vu.vperm, COALESCE(ve.estacionados, 0) as vocup
+                FROM vagasunidades vu
+                LEFT JOIN vw_estacionados ve ON ve.idcond = vu.idcond AND ve.unidade = vu.unidade
+                WHERE vu.idcond = %s
+                ORDER BY vu.unidade
+            """, (condominio_id,))
         vagas = cursor.fetchall()
         total_unidades = len(vagas)
-        if total_vagas_permitidas == 0:
-            total_vagas_permitidas = sum(vaga['vperm'] for vaga in vagas)
+        total_vagas_permitidas = _limite if _limite > 0 else sum(vaga['vperm'] for vaga in vagas)
         total_ocupadas = sum(vaga['vocup'] for vaga in vagas)
-    except mysql.connector.Error:
-        # Se a tabela não existir, encerrar a função
+    except mysql.connector.Error as err:
+        logger.error(f"Erro ao carregar mapa de vagas do condomínio {condominio_id}: {err}")
         return jsonify({'success': False, 'message': 'Não temos mapa de vagas para este condomínio!'})
 
     # Contar veículos não cadastrados da tabela semcadastro
