@@ -19,6 +19,7 @@ def obter_mapa_vagas(condominio_id):
     
     # Definir numero de colunas por linha
     colunasporlinhanomapa = 10
+
     for c in globals.cvag:
         if c['idcond'] == condominio_id:
             colunasporlinhanomapa = c['colunas']
@@ -30,6 +31,9 @@ def obter_mapa_vagas(condominio_id):
 
     cursor = conn.cursor(dictionary=True)
     try:
+        cursor.execute("SELECT colunas FROM vagasunidades WHERE idcond = %s LIMIT 1",(condominio_id,))
+        resp_q = cursor.fetchone()
+        colunasporlinhanomapa = resp_q['colunas'] if resp_q is not None else 10
         q = """
         SELECT vu.unidade, vu.vperm, COALESCE(ve.estacionados, 0) as vocup
         FROM vagasunidades vu
