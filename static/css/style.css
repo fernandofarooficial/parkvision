@@ -5,6 +5,11 @@ body {
 }
 
 /* Navbar personalizada */
+.navbar {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
 .navbar-brand {
   font-weight: bold;
   font-size: 1.5rem;
