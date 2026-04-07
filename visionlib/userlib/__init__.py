@@ -1,8 +1,11 @@
 import mysql.connector
+import logging
 from config.database import get_db_connection
 from flask import jsonify, request
-from visionlib.authlib import (verificar_autenticacao_usuario, verificar_permissao_tipo_usuario, 
+from visionlib.authlib import (verificar_autenticacao_usuario, verificar_permissao_tipo_usuario,
                               hash_senha, validar_email, validar_senha_forte, registrar_log_usuario)
+
+logger = logging.getLogger(__name__)
 
 
 def criar_usuario(dados_usuario, criado_por):
@@ -93,7 +96,7 @@ def listar_usuarios(incluir_inativos=False):
         return usuarios
         
     except mysql.connector.Error as err:
-        print(f"Erro ao listar usuários: {err}")
+        logger.error(f"Erro ao listar usuários: {err}")
         return None
     finally:
         cursor.close()
@@ -136,7 +139,7 @@ def obter_usuario_por_id(idgente):
         return usuario
         
     except mysql.connector.Error as err:
-        print(f"Erro ao obter usuário: {err}")
+        logger.error(f"Erro ao obter usuário: {err}")
         return None
     finally:
         cursor.close()
@@ -437,7 +440,7 @@ def listar_solicitacoes_pendentes():
         return solicitacoes
         
     except mysql.connector.Error as err:
-        print(f"Erro ao listar solicitações: {err}")
+        logger.error(f"Erro ao listar solicitações: {err}")
         return None
     finally:
         cursor.close()
@@ -650,7 +653,7 @@ def listar_condominios_disponiveis():
         return condominios
         
     except mysql.connector.Error as err:
-        print(f"Erro ao listar condomínios: {err}")
+        logger.error(f"Erro ao listar condomínios: {err}")
         return None
     finally:
         cursor.close()
@@ -683,7 +686,7 @@ def listar_condominios_usuario(idgente):
         return condominios
         
     except mysql.connector.Error as err:
-        print(f"Erro ao listar condomínios do usuário: {err}")
+        logger.error(f"Erro ao listar condomínios do usuário: {err}")
         return None
     finally:
         cursor.close()
@@ -739,7 +742,7 @@ def liberar_condominio_usuario(idgente, idcond, liberado_por):
         
     except mysql.connector.Error as err:
         conn.rollback()
-        print(f"Erro ao liberar condomínio: {err}")
+        logger.error(f"Erro ao liberar condomínio: {err}")
         return False, f"Erro ao liberar condomínio: {err}"
     finally:
         cursor.close()
@@ -795,7 +798,7 @@ def remover_condominio_usuario(idgente, idcond, removido_por):
         
     except mysql.connector.Error as err:
         conn.rollback()
-        print(f"Erro ao remover condomínio: {err}")
+        logger.error(f"Erro ao remover condomínio: {err}")
         return False, f"Erro ao remover condomínio: {err}"
     finally:
         cursor.close()

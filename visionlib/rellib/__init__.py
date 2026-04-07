@@ -3,9 +3,12 @@
 # ---------------
 
 import mysql.connector
+import logging
 from config.database import get_db_connection
 from flask import jsonify, request
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 def obter_relatorio_permissoes_validas(condominio_id):
@@ -299,7 +302,7 @@ def obter_relatorio_veiculos_condominio(condominio_id):
         
         cursor.execute(query, (condominio_id,))
         resultados = cursor.fetchall()
-        print(f'Linha 1: {cursor.fetchone()}')
+        logger.debug(f'relatorio_mapa_vagas linha extra: {cursor.fetchone()}')
         
         # Formatear dados para o relatório
         dados_relatorio = []

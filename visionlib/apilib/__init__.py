@@ -1,5 +1,8 @@
+import logging
 from flask import jsonify, request
 from visionlib.dblib import gravar_movimento
+
+logger = logging.getLogger(__name__)
 
 def receber_dados():
     try:
@@ -8,7 +11,7 @@ def receber_dados():
 
         # Processar os dados e gravar no banco de dados
         dadosdic = gravar_movimento(dados)
-        print(f"Fim do Ciclo de Gravação - Placa: {dadosdic.get('placa','NA')} - IdCamera: {dadosdic.get('camera_id','NA')}")
+        logger.info(f"Fim do Ciclo de Gravação - Placa: {dadosdic.get('placa','NA')} - IdCamera: {dadosdic.get('camera_id','NA')}")
 
         # Retornar confirmação
         return jsonify({'status': 'sucesso', 'mensagem': 'Dados recebidos'}), 200

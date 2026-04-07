@@ -3,10 +3,13 @@
 # --------------
 
 import mysql.connector
+import logging
 from config.database import get_db_connection
 from flask import jsonify, request
 from datetime import datetime
 import pytz
+
+logger = logging.getLogger(__name__)
 
 # Definir fuso horário brasileiro
 BRASIL_TZ = pytz.timezone('America/Sao_Paulo')
@@ -36,7 +39,7 @@ def obter_veiculos_vigentes(condominio_id):
         return jsonify({'success': True, 'data': veiculos})
         
     except Exception as e:
-        print(f"Erro ao buscar veículos vigentes: {e}")
+        logger.error(f"Erro ao buscar veículos vigentes: {e}")
         return jsonify({'success': False, 'message': f'Erro ao consultar veículos: {str(e)}'})
     finally:
         cursor.close()
@@ -48,14 +51,12 @@ def obter_ultimo_movimento(placa, condominio_id):
     Obtém a última direção de movimento de um veículo
     """
 
-    print("Entre em obter_ultimo_movimento!!!!!!!!!")
-
     conn = get_db_connection()
     if not conn:
         return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
-    
+
     cursor = conn.cursor(dictionary=True)
-    print(f'placa: {placa} e condominio: {condominio_id}')
+    logger.debug(f'obter_ultimo_movimento: placa={placa} condominio={condominio_id}')
     try:
         # Buscar último movimento do veículo com contav = 1
         query = """
@@ -77,7 +78,7 @@ def obter_ultimo_movimento(placa, condominio_id):
         return jsonify({'success': True, 'ultima_direcao': ultima_direcao})
         
     except Exception as e:
-        print(f"Erro ao buscar último movimento: {e}")
+        logger.error(f"Erro ao buscar último movimento: {e}")
         return jsonify({'success': False, 'message': f'Erro ao consultar último movimento: {str(e)}'})
     finally:
         cursor.close()
@@ -105,7 +106,7 @@ def processar_apontamento():
             except (ValueError, TypeError):
                 return jsonify({'success': False, 'message': 'ID do condomínio inválido'})
         
-        print(f"DEBUG processar_apontamento: placa={placa}, unidade={unidade}, direcao={direcao}, condominio_id={condominio_id}")
+        logger.debug(f"processar_apontamento: placa={placa}, unidade={unidade}, direcao={direcao}, condominio_id={condominio_id}")
         
         # Validações básicas
         if not placa or not unidade or not direcao or not condominio_id:
@@ -161,7 +162,7 @@ def processar_apontamento():
         except Exception as db_error:
             # Rollback em caso de erro
             conn.rollback()
-            print(f"Erro na operação do banco de dados: {db_error}")
+            logger.error(f"Erro na operação do banco de dados: {db_error}")
             return jsonify({'success': False, 'message': f'Erro na operação do banco de dados: {str(db_error)}'})
         finally:
             cursor.close()
@@ -169,5 +170,5 @@ def processar_apontamento():
             
     except Exception as e:
         # Erro geral na função
-        print(f"Erro geral ao processar apontamento: {e}")
+        logger.error(f"Erro geral ao processar apontamento: {e}")
         return jsonify({'success': False, 'message': f'Erro ao processar apontamento: {str(e)}'})

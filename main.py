@@ -6,8 +6,10 @@ from flask import Flask, render_template, jsonify, request, session, redirect, u
 import os
 import pytz
 import secrets
-import sys
 from datetime import timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 import datetime
 from visionlib.apilib import receber_dados
 from visionlib.dblib import obter_marcas, obter_modelos, inserir_carro, obter_cores
@@ -35,9 +37,12 @@ from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, 
 
 app = Flask(__name__)
 
-# Configurações de sessão para produção - CHAVE FIXA PARA VPS
-app.secret_key = os.environ.get('SECRET_KEY', 'ParkVision2024-SecretKey-32chars-FixedForVPS!')  # Chave secreta fixa
-app.config['SESSION_COOKIE_SECURE'] = False  # True apenas com HTTPS
+# Configurações de sessão
+_secret_key = os.environ.get('SECRET_KEY')
+if not _secret_key:
+    raise RuntimeError("SECRET_KEY não definida. Configure a variável de ambiente SECRET_KEY no .env")
+app.secret_key = _secret_key
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Previne acesso via JavaScript
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Proteção CSRF
 app.config['SESSION_COOKIE_PATH'] = '/'  # Cookie válido para todo o site
@@ -711,150 +716,45 @@ def logs_viewer():
     """Página para visualizar logs em tempo real"""
     if not verificar_permissao_tipo_usuario(['ADM']):
         return redirect(url_for('login'))
-    return '''
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>ParkVision - Monitor de Logs</title>
-        <style>
-            body { font-family: monospace; background: #000; color: #00ff00; margin: 0; padding: 20px; }
-            .header { color: #fff; text-align: center; margin-bottom: 20px; }
-            .controls { margin-bottom: 20px; text-align: center; }
-            .controls button { 
-                padding: 10px 20px; margin: 5px; 
-                background: #333; color: #fff; border: none; cursor: pointer; border-radius: 5px;
-            }
-            .controls button:hover { background: #555; }
-            .controls button.active { background: #007700; }
-            #logs { 
-                border: 1px solid #333; padding: 10px; height: 80vh; overflow-y: scroll; 
-                background: #111; white-space: pre-wrap; font-size: 12px; line-height: 1.4;
-            }
-            .log-debug { color: #00ffff; }
-            .log-info { color: #00ff00; }
-            .log-warning { color: #ffff00; }
-            .log-error { color: #ff0000; }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>🚗 ParkVision - Monitor de Logs</h1>
-        </div>
-        
-        <div class="controls">
-            <button id="pauseBtn" onclick="togglePause()">⏸️ Pausar</button>
-            <button onclick="clearLogs()">🗑️ Limpar</button>
-            <button onclick="downloadLogs()">💾 Download</button>
-            <button id="autoScrollBtn" onclick="toggleAutoScroll()" class="active">📜 Auto-Scroll</button>
-            <select id="levelFilter" onchange="filterLogs()">
-                <option value="">Todos os níveis</option>
-                <option value="DEBUG">DEBUG</option>
-                <option value="INFO">INFO</option>
-                <option value="WARNING">WARNING</option>
-                <option value="ERROR">ERROR</option>
-            </select>
-        </div>
-        
-        <div id="logs"></div>
-        
-        <script>
-            let isPaused = false;
-            let autoScroll = true;
-            let logBuffer = [];
-            
-            function formatLogLine(line) {
-                if (line.includes('[DEBUG]')) return '<span class="log-debug">' + line + '</span>';
-                if (line.includes('[INFO]')) return '<span class="log-info">' + line + '</span>';
-                if (line.includes('[WARNING]')) return '<span class="log-warning">' + line + '</span>';
-                if (line.includes('[ERROR]')) return '<span class="log-error">' + line + '</span>';
-                return line;
-            }
-            
-            function fetchLogs() {
-                if (isPaused) return;
-                
-                fetch('/api/logs/tail')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success && data.lines) {
-                            const logsDiv = document.getElementById('logs');
-                            data.lines.forEach(line => {
-                                logBuffer.push(line);
-                                const formattedLine = formatLogLine(line);
-                                logsDiv.innerHTML += formattedLine + '\\n';
-                            });
-                            
-                            if (autoScroll && !isPaused) {
-                                logsDiv.scrollTop = logsDiv.scrollHeight;
-                            }
-                            
-                            // Limitar buffer para evitar uso excessivo de memória
-                            if (logBuffer.length > 1000) {
-                                logBuffer = logBuffer.slice(-500);
-                            }
-                        }
-                    })
-                    .catch(err => console.log('Erro ao buscar logs:', err));
-            }
-            
-            function togglePause() {
-                isPaused = !isPaused;
-                const btn = document.getElementById('pauseBtn');
-                btn.innerHTML = isPaused ? '▶️ Continuar' : '⏸️ Pausar';
-                btn.className = isPaused ? 'active' : '';
-            }
-            
-            function clearLogs() {
-                document.getElementById('logs').innerHTML = '';
-                logBuffer = [];
-            }
-            
-            function toggleAutoScroll() {
-                autoScroll = !autoScroll;
-                const btn = document.getElementById('autoScrollBtn');
-                btn.className = autoScroll ? 'active' : '';
-            }
-            
-            function downloadLogs() {
-                const logs = document.getElementById('logs').innerText;
-                const blob = new Blob([logs], { type: 'text/plain' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'parkvision-logs-' + new Date().toISOString().slice(0,19).replace(/:/g, '-') + '.txt';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            }
-            
-            function filterLogs() {
-                const level = document.getElementById('levelFilter').value;
-                const logsDiv = document.getElementById('logs');
-                
-                if (!level) {
-                    logsDiv.innerHTML = logBuffer.map(formatLogLine).join('\\n');
-                } else {
-                    const filtered = logBuffer.filter(line => line.includes('[' + level + ']'));
-                    logsDiv.innerHTML = filtered.map(formatLogLine).join('\\n');
-                }
-                
-                if (autoScroll) {
-                    logsDiv.scrollTop = logsDiv.scrollHeight;
-                }
-            }
-            
-            // Buscar logs a cada 2 segundos
-            setInterval(fetchLogs, 2000);
-            
-            // Buscar logs iniciais
-            fetchLogs();
-        </script>
-    </body>
-    </html>
-    '''
+    return render_template('logs.html')
+
+
+@app.route('/api/logs/tail')
+def api_logs_tail():
+    """Retorna novas linhas do arquivo de log a partir de um offset"""
+    if not verificar_permissao_tipo_usuario(['ADM']):
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+
+    log_file = 'parkvision.log'
+    try:
+        offset = int(request.args.get('offset', 0))
+    except (ValueError, TypeError):
+        offset = 0
+
+    try:
+        if not os.path.exists(log_file):
+            return jsonify({'success': True, 'lines': [], 'next_offset': 0})
+
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            f.seek(0, 2)
+            file_size = f.tell()
+
+            if offset > file_size:
+                offset = 0
+
+            if offset == 0 and file_size > 50000:
+                f.seek(-50000, 2)
+                f.readline()
+            else:
+                f.seek(offset)
+
+            lines = [line.rstrip('\n') for line in f.readlines() if line.strip()]
+            next_offset = f.tell()
+
+        return jsonify({'success': True, 'lines': lines, 'next_offset': next_offset})
+
+    except OSError as e:
+        return jsonify({'success': False, 'message': f'Erro ao ler log: {e}'})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

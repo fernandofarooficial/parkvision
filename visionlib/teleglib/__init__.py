@@ -1,5 +1,8 @@
 import requests
+import logging
 from config.database import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 def enviar_mensagem_telegram(token, chat_id, mensagem):
     """
@@ -24,14 +27,14 @@ def enviar_mensagem_telegram(token, chat_id, mensagem):
         response = requests.post(url, data=dados)
 
         if response.status_code == 200:
-            print("✅ Mensagem enviada com sucesso!")
+            logger.info("Telegram: mensagem enviada com sucesso")
             return True
         else:
-            print(f"❌ Erro: {response.status_code} - {response.text}")
+            logger.error(f"Telegram: erro {response.status_code} - {response.text}")
             return False
 
     except requests.RequestException as e:
-        print(f"❌ Erro de conexão: {e}")
+        logger.error(f"Telegram: erro de conexão: {e}")
         return False
 
 

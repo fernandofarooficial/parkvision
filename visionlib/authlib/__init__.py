@@ -1,10 +1,13 @@
 import bcrypt
 import secrets
 import mysql.connector
+import logging
 from datetime import datetime, timedelta
 from config.database import get_db_connection
 from flask import jsonify, request, session
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def hash_senha(senha):
@@ -104,7 +107,7 @@ def login_usuario(email, senha):
         return usuario_sessao
         
     except mysql.connector.Error as err:
-        print(f"Erro no login: {err}")
+        logger.error(f"Erro no login: {err}")
         return None
     finally:
         cursor.close()
@@ -201,7 +204,7 @@ def gerar_token_recuperacao(email):
         return token
         
     except mysql.connector.Error as err:
-        print(f"Erro ao gerar token: {err}")
+        logger.error(f"Erro ao gerar token: {err}")
         conn.rollback()
         return None
     finally:
@@ -257,7 +260,7 @@ def recuperar_senha_com_token(token, nova_senha):
         return True
         
     except mysql.connector.Error as err:
-        print(f"Erro na recuperação: {err}")
+        logger.error(f"Erro na recuperação: {err}")
         conn.rollback()
         return False
     finally:
@@ -302,7 +305,7 @@ def alterar_senha(idgente, senha_atual, nova_senha):
         return True, "Senha alterada com sucesso"
         
     except mysql.connector.Error as err:
-        print(f"Erro ao alterar senha: {err}")
+        logger.error(f"Erro ao alterar senha: {err}")
         conn.rollback()
         return False, "Erro interno do sistema"
     finally:
@@ -331,7 +334,7 @@ def registrar_log_usuario(idgente, acao, detalhes=None):
         conn.commit()
         
     except mysql.connector.Error as err:
-        print(f"Erro ao registrar log: {err}")
+        logger.error(f"Erro ao registrar log: {err}")
     finally:
         cursor.close()
         conn.close()
@@ -440,9 +443,8 @@ def api_solicitar_recuperacao():
         # Aqui você implementaria o envio de email com o token
         # Por enquanto, apenas retorna sucesso
         return jsonify({
-            'success': True, 
-            'message': 'Se o email estiver cadastrado, você receberá instruções para recuperação',
-            'token': token  # REMOVER EM PRODUÇÃO - apenas para testes
+            'success': True,
+            'message': 'Se o email estiver cadastrado, você receberá instruções para recuperação'
         })
     else:
         # Mesmo se o email não existir, retorna sucesso por segurança

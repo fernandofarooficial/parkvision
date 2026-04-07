@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParkVision - Monitor de Logs</title>
+    <style>
+        body { font-family: monospace; background: #000; color: #00ff00; margin: 0; padding: 20px; }
+        .header { color: #fff; text-align: center; margin-bottom: 20px; }
+        .controls { margin-bottom: 20px; text-align: center; }
+        .controls button {
+            padding: 10px 20px; margin: 5px;
+            background: #333; color: #fff; border: none; cursor: pointer; border-radius: 5px;
+        }
+        .controls button:hover { background: #555; }
+        .controls button.active { background: #007700; }
+        .controls select {
+            padding: 10px; margin: 5px;
+            background: #333; color: #fff; border: 1px solid #555; border-radius: 5px;
+        }
+        #logs {
+            border: 1px solid #333; padding: 10px; height: 80vh; overflow-y: scroll;
+            background: #111; white-space: pre-wrap; font-size: 12px; line-height: 1.4;
+        }
+        .log-debug { color: #00ffff; }
+        .log-info  { color: #00ff00; }
+        .log-warning { color: #ffff00; }
+        .log-error { color: #ff0000; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ParkVision - Monitor de Logs</h1>
+    </div>
+
+    <div class="controls">
+        <button id="pauseBtn" onclick="togglePause()">Pausar</button>
+        <button onclick="clearLogs()">Limpar</button>
+        <button onclick="downloadLogs()">Download</button>
+        <button id="autoScrollBtn" onclick="toggleAutoScroll()" class="active">Auto-Scroll</button>
+        <select id="levelFilter" onchange="filterLogs()">
+            <option value="">Todos os níveis</option>
+            <option value="DEBUG">DEBUG</option>
+            <option value="INFO">INFO</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+        </select>
+    </div>
+
+    <div id="logs"></div>
+
+    <script>
+        let isPaused = false;
+        let autoScroll = true;
+        let logBuffer = [];
+        let lastOffset = 0;
+
+        function formatLogLine(line) {
+            if (line.includes('[DEBUG]'))   return '<span class="log-debug">'   + escapeHtml(line) + '</span>';
+            if (line.includes('[INFO]'))    return '<span class="log-info">'    + escapeHtml(line) + '</span>';
+            if (line.includes('[WARNING]')) return '<span class="log-warning">' + escapeHtml(line) + '</span>';
+            if (line.includes('[ERROR]'))   return '<span class="log-error">'   + escapeHtml(line) + '</span>';
+            return escapeHtml(line);
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function fetchLogs() {
+            if (isPaused) return;
+
+            fetch('/api/logs/tail?offset=' + lastOffset)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.lines && data.lines.length > 0) {
+                        lastOffset = data.next_offset;
+                        const logsDiv = document.getElementById('logs');
+                        const level = document.getElementById('levelFilter').value;
+
+                        data.lines.forEach(line => {
+                            logBuffer.push(line);
+                            if (!level || line.includes('[' + level + ']')) {
+                                logsDiv.innerHTML += formatLogLine(line) + '\n';
+                            }
+                        });
+
+                        if (autoScroll) logsDiv.scrollTop = logsDiv.scrollHeight;
+
+                        if (logBuffer.length > 2000) logBuffer = logBuffer.slice(-1000);
+                    }
+                })
+                .catch(err => console.log('Erro ao buscar logs:', err));
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('pauseBtn');
+            btn.textContent = isPaused ? 'Continuar' : 'Pausar';
+            btn.className = isPaused ? 'active' : '';
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+            logBuffer = [];
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            document.getElementById('autoScrollBtn').className = autoScroll ? 'active' : '';
+        }
+
+        function downloadLogs() {
+            const logs = document.getElementById('logs').innerText;
+            const blob = new Blob([logs], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'parkvision-logs-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function filterLogs() {
+            const level = document.getElementById('levelFilter').value;
+            const logsDiv = document.getElementById('logs');
+            const filtered = level ? logBuffer.filter(l => l.includes('[' + level + ']')) : logBuffer;
+            logsDiv.innerHTML = filtered.map(formatLogLine).join('\n');
+            if (autoScroll) logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        setInterval(fetchLogs, 2000);
+        fetchLogs();
+    </script>
+</body>
+</html>

@@ -5,7 +5,6 @@
 import mysql.connector
 from config.database import get_db_connection
 from flask import jsonify, request
-from globals import verificar_autenticacao
 from datetime import datetime
 
 # Rota para criar nova permissão

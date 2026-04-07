@@ -2,35 +2,40 @@
 # DBLIB
 # --------------------
 
+import logging
 from flask import jsonify
 from datetime import datetime
-from ArquivosApoio.draftqualquer import idcond
 from config.database import get_db_connection
 from visionlib.vplib import process_heimdall_plate
 from visionlib.teleglib import teleg_placa_nao_cadastrada, teleg_veiculo_ok
-from visionlib.teleglib import  teleg_veiculo_nao_autorizado, teleg_sem_vaga
+from visionlib.teleglib import teleg_veiculo_nao_autorizado, teleg_sem_vaga
+
+logger = logging.getLogger(__name__)
 
 
 def gravar_movimento(movdic):
-    # Carregar variaveis importantes e criar dicionário de retorno
+    # Carregar variáveis importantes e criar dicionário de retorno
     inforec = carregar_leitura(movdic)
-    # gravar o log bruto
+    # Gravar o log bruto
     gravar_log_bruto(inforec)
-    # Validar a placa lida
-    verifica_placa = process_heimdall_plate(inforec['placalida'], idcond, 0.8)
+    # Carregar dados da câmera primeiro para obter idcond correto
+    infocamera = carregar_dados_camera(inforec)
+    if infocamera is None:
+        logger.error(f"Câmera {inforec.get('camera_id')} não encontrada em cadcamera")
+        return inforec
+    inforec['idcond'] = infocamera['idcond']
+    inforec['direcao'] = infocamera['direcao']
+    # Validar a placa lida com o idcond correto
+    verifica_placa = process_heimdall_plate(inforec['placalida'], inforec['idcond'], 0.8)
     placa = verifica_placa['corrected_plate']
     inforec['placa'] = placa
     # Verifica se a placa é válida
     if not verifica_placa['found_match'] or placa == '*ERROR*':
-        # placa invalida - grava log mas não considera o registro
+        # placa inválida - grava log mas não considera o registro
         inforec['placa'] = '*ERROR*'
         inforec['contav'] = 0
         gravar_log(inforec)
         return inforec
-    # Carregar dados da camera
-    infocamera = carregar_dados_camera(inforec)
-    inforec['idcond'] = infocamera['idcond']
-    inforec['direcao'] = infocamera['direcao']
     # Checar se tivemos eventos anteriores para esta placa
     inforec['contav'] = checar_anteriores(inforec)
     # Só processo se contav = 1, se for zero só grava o log
@@ -39,34 +44,28 @@ def gravar_movimento(movdic):
         inforec['nome_condominio'] = obter_nome_condominio(inforec)
         # Verifica se a placa está cadastrada, só abre se estiver cadastrada
         if placadastrada(inforec['idcond'], inforec['placa']):
-            print(f"[{placa}]: Placa cadastrada")
+            logger.info(f"[{placa}]: Placa cadastrada")
             # placa cadastrada - verifica se está na validade
             inforec['status_permissao'], inforec['unidade'] = placaautorizada(inforec)
-            print(f"[{placa}]: Status da permissão: {inforec['status_permissao']}")
+            logger.info(f"[{placa}]: Status da permissão: {inforec['status_permissao']}")
             if inforec['status_permissao'] in ('INDEFINIDA', 'VIGENTE'):
-                print(f"[{placa}]: Placa com permissão válida")
-                # placa autorizada
-                # obter veiculos estacionados
+                logger.info(f"[{placa}]: Placa com permissão válida")
+                # placa autorizada - obter veículos estacionados
                 inforec['qtde_estacionada'], inforec['placas_estacionadas'] = contar_vagas_ocupadas(inforec)
                 inforec['vagas_permitidas'] = obter_vagas_permitidas(inforec)
-                print(f"[{placa}]: veículo autorizado - ",end="")
-                print(f"Vagas permitidas: {inforec['vagas_permitidas']} ",end="")
-                print(f"Estacionados: {inforec['qtde_estacionada']} - {inforec['placas_estacionadas']}")
+                logger.info(f"[{placa}]: vagas_permitidas={inforec['vagas_permitidas']} estacionados={inforec['qtde_estacionada']}")
                 # checar quantidade de vagas permitidas
                 if inforec['qtde_estacionada'] >= inforec['vagas_permitidas']:
-                    print(f"[{placa}]: Todas as vagas ocupadas")
-                    # unidade já ocupou todas as vagas
+                    logger.info(f"[{placa}]: Todas as vagas ocupadas")
                     teleg_sem_vaga(inforec)
                 else:
-                    print(f"[{placa}]: Todos critérios atendidos")
-                    # passou por todos os critérios: cadastrada, com permissão e com vaga disponível
+                    logger.info(f"[{placa}]: Todos critérios atendidos")
                     teleg_veiculo_ok(inforec)
             else:
-                print(f"[{placa}]: Placa sem permissão válida")
-                # Placa sem permissão válida
+                logger.info(f"[{placa}]: Placa sem permissão válida")
                 teleg_veiculo_nao_autorizado(inforec)
         else:
-            print(f"[{placa}]: Placa sem cadastro")
+            logger.info(f"[{placa}]: Placa sem cadastro")
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
             teleg_placa_nao_cadastrada(inforec)
     # gravar o log
@@ -209,7 +208,7 @@ def obter_vagas_permitidas(inforec):
     #
     cursor.close()
     connection.close()
-    print(f"Retorno query: {retorno_query}")
+    logger.debug(f"obter_vagas_permitidas: {retorno_query}")
     #
     return retorno_query['vagas_permitidas']
 
@@ -233,7 +232,7 @@ def obter_nome_condominio(inforec):
 
 def mensagem_telegram(inforec):
     # Trata mensagens no telegram
-    print(f"mensagem telegram {inforec}")
+    logger.debug(f"mensagem_telegram: {inforec}")
     return
 
 

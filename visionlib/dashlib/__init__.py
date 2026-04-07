@@ -3,10 +3,11 @@
 # ---------------------
 
 import mysql.connector
+import logging
 from config.database import get_db_connection
 from flask import jsonify
-import globals
-from globals import verificar_autenticacao
+
+logger = logging.getLogger(__name__)
 
 
 # API para obter mapa de vagas
@@ -77,7 +78,7 @@ def obter_mapa_vagas(condominio_id):
 # def api_resumo()
 def obter_resumo():
 
-    print("TRACK: Entrei no obter_resumo")
+    logger.debug("obter_resumo chamado")
 
     conn = get_db_connection()
     if not conn:

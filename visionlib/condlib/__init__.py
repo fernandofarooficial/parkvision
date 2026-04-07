@@ -1,8 +1,6 @@
 import mysql.connector
-import globals
 from config.database import get_db_connection
-from flask import jsonify, session, request
-from globals import verificar_autenticacao
+from flask import jsonify
 
 
 # API para autenticação

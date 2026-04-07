@@ -1,4 +1,3 @@
-from datetime import datetime
 from flask import session
 from config.database import get_db_connection
 
@@ -51,18 +50,4 @@ def verificar_acesso_condominio(idcond_requisitado):
     return tem_acesso, usuario if tem_acesso else None
 
 
-lastmov = ['XXX1X11', 1, datetime.now()]
-
-
-# Senhas temporárias para os condomínios (em produção, isso estaria no banco de dados)
-CONDOMINIO_SENHAS = {
-    '1': 'senha1',  # CONDOMÍNIO 1
-    '2': 'senha2',  # Outros condomínios
-    '3': 'senha3',
-    '4': 'senha4',
-    '5': 'senha5',
-    '6': 'senha6',
-    '7': 'senha7',
-    '8': 'senha8'
-}
 

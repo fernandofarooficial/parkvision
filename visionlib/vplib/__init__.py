@@ -4,8 +4,11 @@ Valida e corrige placas lidas pelo sistema Heimdall
 """
 
 import re
+import logging
 from config.database import get_db_connection
 import mysql.connector
+
+logger = logging.getLogger(__name__)
 
 
 def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadastro_carros=False):
@@ -120,7 +123,7 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
 
                     # Verificar tabela deparaplacas
                     match_deparaplacas = consultar_tabela_deparaplacas(placa_limpa)
-                    print(f'match_deparaplacas (heimdall): {match_deparaplacas}')
+                    logger.debug(f'match_deparaplacas (heimdall): {match_deparaplacas}')
                     if match_deparaplacas['found']:
                         # Verificar se a placa de destino está nas placas cadastradas do condomínio
                         if match_deparaplacas['placa_destino'] in placas_cadastradas:
@@ -133,7 +136,7 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                             }
 
             except mysql.connector.Error as err:
-                print(f"Erro ao buscar placas cadastradas: {err}")
+                logger.error(f"Erro ao buscar placas cadastradas: {err}")
             finally:
                 cursor.close()
                 conn.close()
@@ -434,7 +437,7 @@ def verificar_placa_cadastrada_exata(placa, idcond):
             return {'found': False, 'placa': None}
             
     except mysql.connector.Error as err:
-        print(f"Erro ao verificar placa cadastrada: {err}")
+        logger.error(f"Erro ao verificar placa cadastrada: {err}")
         return {'found': False, 'placa': None}
     finally:
         cursor.close()
@@ -482,7 +485,7 @@ def buscar_melhor_correspondencia_cadastrada(placa_lida, idcond, limite_similari
         
         # NOVA FUNCIONALIDADE: Verificar tabela deparaplacas
         match_deparaplacas = consultar_tabela_deparaplacas(placa_lida_limpa)
-        print(f'match_deparaplacas (melhor): {match_deparaplacas}')
+        logger.debug(f'match_deparaplacas (melhor): {match_deparaplacas}')
         if match_deparaplacas['found']:
             # Verificar se a placa de destino está nas placas cadastradas do condomínio
             if match_deparaplacas['placa_destino'] in placas_cadastradas:
@@ -513,7 +516,7 @@ def buscar_melhor_correspondencia_cadastrada(placa_lida, idcond, limite_similari
             return {'found': False, 'placa': None, 'confidence': maior_similaridade}
             
     except mysql.connector.Error as err:
-        print(f"Erro ao buscar correspondência cadastrada: {err}")
+        logger.error(f"Erro ao buscar correspondência cadastrada: {err}")
         return {'found': False, 'placa': None, 'confidence': 0.0}
     finally:
         cursor.close()
@@ -578,7 +581,7 @@ def buscar_correspondencia_similar_cadastrada(placa, idcond, limite_similaridade
             return {'found': False, 'placa': None, 'confidence': maior_similaridade}
             
     except mysql.connector.Error as err:
-        print(f"Erro ao buscar similaridade cadastrada: {err}")
+        logger.error(f"Erro ao buscar similaridade cadastrada: {err}")
         return {'found': False, 'placa': None, 'confidence': 0.0}
     finally:
         cursor.close()
@@ -891,7 +894,7 @@ def consultar_tabela_deparaplacas(placa_lida):
         """
         cursor.execute(query, (placa_lida.upper(),))
         resultado = cursor.fetchone()
-        print(f'******Consultei placa depara - resultado: {resultado}')
+        logger.debug(f'consultar_tabela_deparaplacas: resultado={resultado}')
         if resultado:
             return {
                 'found': True,
@@ -902,7 +905,7 @@ def consultar_tabela_deparaplacas(placa_lida):
             return {'found': False, 'placa_destino': None, 'placa_origem': None}
             
     except mysql.connector.Error as err:
-        print(f"Erro ao consultar tabela deparaplacas: {err}")
+        logger.error(f"Erro ao consultar tabela deparaplacas: {err}")
         return {'found': False, 'placa_destino': None, 'placa_origem': None}
     finally:
         cursor.close()
