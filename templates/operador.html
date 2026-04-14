@@ -107,21 +107,10 @@
         100% { background-color: transparent; }
     }
 
-    /* ── Badges de status ─────────────────────────── */
-    .badge-status {
-        font-size: .78rem;
-        padding: .3em .65em;
-        border-radius: .3rem;
-        font-weight: 600;
-        letter-spacing: .02em;
-        white-space: nowrap;
-    }
-
-    .badge-indefinida    { background: #0d6efd22; color: #0d6efd; border: 1px solid #0d6efd55; }
-    .badge-vigente       { background: #19875422; color: #146c43; border: 1px solid #19875455; }
-    .badge-vencida       { background: #fd7e1422; color: #c35a00; border: 1px solid #fd7e1455; }
-    .badge-nao-cadastrado{ background: #dc354522; color: #b02a37; border: 1px solid #dc354555; }
-    .badge-sem-permissao { background: #6c757d22; color: #495057; border: 1px solid #6c757d55; }
+    /* ── Direção ──────────────────────────────────── */
+    .direcao-entrada { color: #146c43; font-weight: 600; }
+    .direcao-saida   { color: #c35a00; font-weight: 600; }
+    .direcao-nd      { color: #6c757d; }
 
     /* ── Placa ────────────────────────────────────── */
     .placa-efetiva {
@@ -209,6 +198,7 @@
                     <th style="width:130px">Placa Efetiva</th>
                     <th style="width:130px">Placa Lida</th>
                     <th style="width:90px">Unidade</th>
+                    <th style="width:120px">Direção</th>
                     <th style="width:160px">Permissão</th>
                     <th style="width:130px">Vagas Disponíveis</th>
                 </tr>
@@ -254,17 +244,30 @@
     const qtdeNovos      = document.getElementById('qtde-novos');
 
     /* ── Helpers de status ────────────────────────── */
-    const STATUS_CLASS = {
-        'INDEFINIDA':     'badge-indefinida',
-        'VIGENTE':        'badge-vigente',
-        'VENCIDA':        'badge-vencida',
-        'NÃO CADASTRADO': 'badge-nao-cadastrado',
-        'SEM PERMISSÃO':  'badge-sem-permissao',
-    };
-
     function badgeStatus(status) {
-        const cls = STATUS_CLASS[status] || 'badge-sem-permissao';
-        return `<span class="badge-status ${cls}">${status || 'DESCONHECIDO'}</span>`;
+        switch (status) {
+            case 'INDEFINIDA':
+                return '<span class="badge bg-primary"><i class="bi bi-infinity me-1"></i>INDEFINIDA</span>';
+            case 'VIGENTE':
+                return '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>VIGENTE</span>';
+            case 'VENCIDA':
+                return '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>VENCIDA</span>';
+            case 'NÃO CADASTRADO':
+                return '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>NÃO CADASTRADO</span>';
+            default:
+                return '<span class="badge bg-secondary"><i class="bi bi-question-circle me-1"></i>SEM PERMISSÃO</span>';
+        }
+    }
+
+    function celDirecao(direcao) {
+        switch (direcao) {
+            case 'E':
+                return '<span class="direcao-entrada"><i class="bi bi-arrow-down-circle me-1"></i>Entrada</span>';
+            case 'S':
+                return '<span class="direcao-saida"><i class="bi bi-arrow-up-circle me-1"></i>Saída</span>';
+            default:
+                return '<span class="direcao-nd"><i class="bi bi-dash-circle me-1"></i>Indeterminada</span>';
+        }
     }
 
     function celVagas(vagas) {
@@ -299,6 +302,7 @@
             <td><span class="placa-efetiva">${ev.placa}</span></td>
             <td>${celPlacaLida(ev.placa, ev.placalida)}</td>
             <td class="text-center">${unidade}</td>
+            <td>${celDirecao(ev.direcao)}</td>
             <td>${badgeStatus(ev.status_permissao)}</td>
             <td class="text-center">${celVagas(ev.vagas_disponiveis)}</td>
         `;

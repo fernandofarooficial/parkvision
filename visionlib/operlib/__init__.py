@@ -54,6 +54,7 @@ def adicionar_evento(inforec):
         'status_permissao': status,
         'vagas_disponiveis': vagas_disp,
         'unidade':          inforec.get('unidade', ''),
+        'direcao':          inforec.get('direcao', ''),
         'ts':               time.time(),
     }
 
@@ -110,7 +111,8 @@ def obter_historico_db(idcond, limit=50):
             SELECT
                 m.placa,
                 m.placalida,
-                DATE_FORMAT(m.nowpost, '%%d/%%m/%%Y %%H:%%i:%%S') AS momento,
+                m.instante AS momento,
+                m.direcao,
                 CASE
                     WHEN cv.placa IS NULL THEN 'NÃO CADASTRADO'
                     ELSE COALESCE(
