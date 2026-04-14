@@ -205,7 +205,7 @@
             </thead>
             <tbody id="tbody-operador">
                 <tr>
-                    <td colspan="6" class="op-empty">
+                    <td colspan="7" class="op-empty">
                         <i class="bi bi-hourglass-split fs-3 d-block mb-2"></i>
                         Carregando histórico...
                     </td>
@@ -294,6 +294,7 @@
     function criarLinha(ev, isNova) {
         const tr = document.createElement('tr');
         if (isNova) tr.classList.add('row-nova');
+        tr.dataset.ts = ev.ts;
 
         const unidade = ev.unidade ? ev.unidade : '<span class="text-muted">—</span>';
 
@@ -321,7 +322,7 @@
             .then(r => r.json())
             .then(data => {
                 if (!data.success) {
-                    tbody.innerHTML = `<tr><td colspan="6" class="op-empty text-danger">
+                    tbody.innerHTML = `<tr><td colspan="7" class="op-empty text-danger">
                         <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
                         Erro ao carregar histórico.
                     </td></tr>`;
@@ -332,7 +333,7 @@
                 const eventos = data.eventos || [];
 
                 if (eventos.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" class="op-empty">
+                    tbody.innerHTML = `<tr><td colspan="7" class="op-empty">
                         <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                         Nenhum evento registrado ainda.
                     </td></tr>`;
@@ -354,7 +355,7 @@
                 iniciarPolling();
             })
             .catch(() => {
-                tbody.innerHTML = `<tr><td colspan="6" class="op-empty text-danger">
+                tbody.innerHTML = `<tr><td colspan="7" class="op-empty text-danger">
                     <i class="bi bi-wifi-off fs-3 d-block mb-2"></i>
                     Falha na conexão com o servidor.
                 </td></tr>`;
@@ -362,6 +363,24 @@
                 // Tentar novamente em 5s
                 setTimeout(carregarHistorico, 5000);
             });
+    }
+
+    /* ── Remove linhas mais antigas que 10 minutos ── */
+    function removerLinhasAntigas() {
+        const corte = (Date.now() / 1000) - (10 * 60);
+        const linhas = tbody.querySelectorAll('tr[data-ts]');
+        linhas.forEach(tr => {
+            if (parseFloat(tr.dataset.ts) < corte) tr.remove();
+        });
+        // Se a tabela ficou vazia, exibir mensagem
+        if (tbody.querySelectorAll('tr[data-ts]').length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="op-empty">
+                <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
+                Nenhum evento nos últimos 10 minutos.
+            </td></tr>`;
+            totalEventos = 0;
+            txtTotal.textContent = '0';
+        }
     }
 
     /* ── Polling de novos eventos ─────────────────── */
@@ -372,6 +391,7 @@
     }
 
     function pollEventos() {
+        removerLinhasAntigas();
         const url = `/api/operador/eventos/${condId}?desde_ts=${ultimoTs}`;
 
         fetch(url)

@@ -65,9 +65,13 @@ def adicionar_evento(inforec):
             _event_store[idcond] = store[:MAX_EVENTOS_POR_COND]
 
 
+JANELA_MINUTOS = 10
+
+
 def obter_eventos_recentes(idcond, desde_ts=None, limit=100):
     """
     Retorna eventos do store de memória para polling do front-end.
+    Filtra apenas eventos dos últimos JANELA_MINUTOS minutos.
 
     Parâmetros:
         idcond (int):       ID do condomínio
@@ -77,8 +81,12 @@ def obter_eventos_recentes(idcond, desde_ts=None, limit=100):
     Retorna:
         list[dict]: lista de eventos (mais recente primeiro)
     """
+    corte = time.time() - (JANELA_MINUTOS * 60)
+
     with _event_lock:
         eventos = list(_event_store.get(idcond, []))
+
+    eventos = [e for e in eventos if e['ts'] >= corte]
 
     if desde_ts is not None:
         try:
@@ -140,6 +148,7 @@ def obter_historico_db(idcond, limit=50):
             WHERE m.idcond = %s
               AND m.placa != '*ERROR*'
               AND m.contav = 1
+              AND m.nowpost >= NOW() - INTERVAL 10 MINUTE
             ORDER BY m.nowpost DESC
             LIMIT %s
         """, (idcond, limit))
