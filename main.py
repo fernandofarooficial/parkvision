@@ -34,6 +34,7 @@ from visionlib.userlib import (api_listar_usuarios, api_criar_usuario, api_atual
                               api_listar_condominios_disponiveis, api_listar_condominios_usuario,
                               api_gerenciar_condominios_usuario)
 from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, processar_apontamento
+from visionlib.operlib import obter_eventos_recentes, obter_historico_db
 
 app = Flask(__name__)
 
@@ -98,6 +99,35 @@ def mapa_vagas(condominio_id):
     if not tem_acesso:
         return redirect(url_for('login'))
     return render_template('mapa-vagas.html')
+
+
+@app.route('/operador/<int:condominio_id>')
+def operador(condominio_id):
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return redirect(url_for('login'))
+    return render_template('operador.html')
+
+
+# API: carga inicial do histórico de eventos (banco de dados)
+@app.route('/api/operador/historico/<int:condominio_id>')
+def api_operador_historico(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    eventos = obter_historico_db(condominio_id)
+    return jsonify({'success': True, 'eventos': eventos})
+
+
+# API: polling de novos eventos (memória — tempo real)
+@app.route('/api/operador/eventos/<int:condominio_id>')
+def api_operador_eventos(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    desde_ts = request.args.get('desde_ts', None)
+    eventos = obter_eventos_recentes(condominio_id, desde_ts)
+    return jsonify({'success': True, 'eventos': eventos})
 
 
 # ===== NOVAS ROTAS DE AUTENTICAÇÃO E GESTÃO DE USUÁRIOS =====

@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision - Operador{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Layout geral ─────────────────────────────── */
+    .op-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: .5rem;
+    }
+
+    .op-titulo {
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .op-cond-nome {
+        font-size: 1rem;
+        color: #6c757d;
+        margin: 0;
+    }
+
+    /* ── Barra de status ──────────────────────────── */
+    .op-status-bar {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        padding: .5rem 1rem;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        margin-bottom: 1.2rem;
+        font-size: .875rem;
+        flex-wrap: wrap;
+    }
+
+    .op-status-item {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        white-space: nowrap;
+    }
+
+    .op-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .op-dot-ok      { background: #198754; animation: pulse-green 2s infinite; }
+    .op-dot-erro    { background: #dc3545; }
+    .op-dot-neutro  { background: #6c757d; }
+
+    @keyframes pulse-green {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: .4; }
+    }
+
+    /* ── Tabela ───────────────────────────────────── */
+    .op-table-wrapper {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        overflow: hidden;
+    }
+
+    .op-table-scroll {
+        max-height: calc(100vh - 280px);
+        overflow-y: auto;
+    }
+
+    #tabela-operador {
+        margin: 0;
+        font-size: .875rem;
+    }
+
+    #tabela-operador thead th {
+        position: sticky;
+        top: 0;
+        background: #343a40;
+        color: #fff;
+        font-weight: 500;
+        border-color: #495057;
+        padding: .6rem .75rem;
+        z-index: 1;
+        white-space: nowrap;
+    }
+
+    #tabela-operador tbody td {
+        padding: .55rem .75rem;
+        vertical-align: middle;
+    }
+
+    /* linha que acabou de chegar — pisca uma vez */
+    .row-nova {
+        animation: highlight-row .8s ease-out;
+    }
+
+    @keyframes highlight-row {
+        0%   { background-color: #fff3cd; }
+        100% { background-color: transparent; }
+    }
+
+    /* ── Badges de status ─────────────────────────── */
+    .badge-status {
+        font-size: .78rem;
+        padding: .3em .65em;
+        border-radius: .3rem;
+        font-weight: 600;
+        letter-spacing: .02em;
+        white-space: nowrap;
+    }
+
+    .badge-indefinida    { background: #0d6efd22; color: #0d6efd; border: 1px solid #0d6efd55; }
+    .badge-vigente       { background: #19875422; color: #146c43; border: 1px solid #19875455; }
+    .badge-vencida       { background: #fd7e1422; color: #c35a00; border: 1px solid #fd7e1455; }
+    .badge-nao-cadastrado{ background: #dc354522; color: #b02a37; border: 1px solid #dc354555; }
+    .badge-sem-permissao { background: #6c757d22; color: #495057; border: 1px solid #6c757d55; }
+
+    /* ── Placa ────────────────────────────────────── */
+    .placa-efetiva {
+        font-family: monospace;
+        font-size: .9rem;
+        font-weight: 700;
+        letter-spacing: .05em;
+        color: #212529;
+    }
+
+    .placa-lida {
+        font-family: monospace;
+        font-size: .85rem;
+        color: #6c757d;
+    }
+
+    .placa-igual { color: #adb5bd; }   /* lida == efetiva: destaque reduzido */
+
+    /* ── Vagas ────────────────────────────────────── */
+    .vagas-ok     { color: #198754; font-weight: 600; }
+    .vagas-zero   { color: #dc3545; font-weight: 600; }
+    .vagas-nd     { color: #adb5bd; }
+
+    /* ── Vazia ────────────────────────────────────── */
+    .op-empty {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+
+    /* ── Contador de novos ────────────────────────── */
+    #badge-novos {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+<div class="op-header">
+    <div>
+        <p class="op-cond-nome" id="nome-cond">Carregando...</p>
+        <h1 class="op-titulo"><i class="bi bi-display me-2"></i>Operador</h1>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-secondary" id="badge-novos">
+            <i class="bi bi-arrow-down-circle me-1"></i><span id="qtde-novos">0</span> novo(s)
+        </span>
+        <a id="btn-veiculos" href="#" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-car-front me-1"></i>Veículos
+        </a>
+        <a id="btn-mapa" href="#" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-grid me-1"></i>Mapa de Vagas
+        </a>
+    </div>
+</div>
+
+<!-- Barra de status -->
+<div class="op-status-bar">
+    <div class="op-status-item">
+        <span class="op-dot" id="dot-conn"></span>
+        <span id="txt-conn">Conectando...</span>
+    </div>
+    <div class="op-status-item">
+        <i class="bi bi-clock text-secondary"></i>
+        <span>Última atualização: <strong id="ultimo-update">—</strong></span>
+    </div>
+    <div class="op-status-item">
+        <i class="bi bi-list-check text-secondary"></i>
+        <span>Eventos exibidos: <strong id="total-eventos">0</strong></span>
+    </div>
+    <div class="op-status-item ms-auto">
+        <span class="text-muted" id="txt-historico"></span>
+    </div>
+</div>
+
+<!-- Tabela -->
+<div class="op-table-wrapper">
+    <div class="op-table-scroll">
+        <table class="table table-hover table-bordered" id="tabela-operador">
+            <thead>
+                <tr>
+                    <th style="width:155px">Data / Hora</th>
+                    <th style="width:130px">Placa Efetiva</th>
+                    <th style="width:130px">Placa Lida</th>
+                    <th style="width:90px">Unidade</th>
+                    <th style="width:160px">Permissão</th>
+                    <th style="width:130px">Vagas Disponíveis</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-operador">
+                <tr>
+                    <td colspan="6" class="op-empty">
+                        <i class="bi bi-hourglass-split fs-3 d-block mb-2"></i>
+                        Carregando histórico...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+
+    /* ── Constantes ───────────────────────────────── */
+    const POLL_INTERVAL_MS = 3000;
+    const condId = parseInt(window.location.pathname.split('/')[2], 10);
+
+    /* ── Estado ───────────────────────────────────── */
+    let ultimoTs = null;          // timestamp do evento mais recente visto
+    let totalEventos = 0;
+    let pollingAtivo = false;
+    let novosAcumulados = 0;
+
+    /* ── Elementos ────────────────────────────────── */
+    const tbody          = document.getElementById('tbody-operador');
+    const dotConn        = document.getElementById('dot-conn');
+    const txtConn        = document.getElementById('txt-conn');
+    const txtUltimoUpd   = document.getElementById('ultimo-update');
+    const txtTotal       = document.getElementById('total-eventos');
+    const txtHistorico   = document.getElementById('txt-historico');
+    const badgeNovos     = document.getElementById('badge-novos');
+    const qtdeNovos      = document.getElementById('qtde-novos');
+
+    /* ── Helpers de status ────────────────────────── */
+    const STATUS_CLASS = {
+        'INDEFINIDA':     'badge-indefinida',
+        'VIGENTE':        'badge-vigente',
+        'VENCIDA':        'badge-vencida',
+        'NÃO CADASTRADO': 'badge-nao-cadastrado',
+        'SEM PERMISSÃO':  'badge-sem-permissao',
+    };
+
+    function badgeStatus(status) {
+        const cls = STATUS_CLASS[status] || 'badge-sem-permissao';
+        return `<span class="badge-status ${cls}">${status || 'DESCONHECIDO'}</span>`;
+    }
+
+    function celVagas(vagas) {
+        if (vagas === null || vagas === undefined) {
+            return '<span class="vagas-nd">—</span>';
+        }
+        const n = parseInt(vagas, 10);
+        if (n > 0) return `<span class="vagas-ok"><i class="bi bi-p-circle me-1"></i>${n} livre(s)</span>`;
+        return `<span class="vagas-zero"><i class="bi bi-x-circle me-1"></i>Sem vagas</span>`;
+    }
+
+    function celPlacaLida(efetiva, lida) {
+        if (efetiva === lida) {
+            return `<span class="placa-lida placa-igual">${lida}</span>`;
+        }
+        return `<span class="placa-lida">${lida}</span>`;
+    }
+
+    function horaAtual() {
+        return new Date().toLocaleTimeString('pt-BR');
+    }
+
+    /* ── Montar linha da tabela ───────────────────── */
+    function criarLinha(ev, isNova) {
+        const tr = document.createElement('tr');
+        if (isNova) tr.classList.add('row-nova');
+
+        const unidade = ev.unidade ? ev.unidade : '<span class="text-muted">—</span>';
+
+        tr.innerHTML = `
+            <td class="text-nowrap">${ev.momento || '—'}</td>
+            <td><span class="placa-efetiva">${ev.placa}</span></td>
+            <td>${celPlacaLida(ev.placa, ev.placalida)}</td>
+            <td class="text-center">${unidade}</td>
+            <td>${badgeStatus(ev.status_permissao)}</td>
+            <td class="text-center">${celVagas(ev.vagas_disponiveis)}</td>
+        `;
+        return tr;
+    }
+
+    /* ── Indicador de conexão ─────────────────────── */
+    function setConectado(ok) {
+        dotConn.className = 'op-dot ' + (ok ? 'op-dot-ok' : 'op-dot-erro');
+        txtConn.textContent = ok ? 'Monitorando' : 'Erro de conexão — tentando novamente...';
+    }
+
+    /* ── Carga inicial (banco de dados) ───────────── */
+    function carregarHistorico() {
+        fetch(`/api/operador/historico/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="op-empty text-danger">
+                        <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
+                        Erro ao carregar histórico.
+                    </td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                const eventos = data.eventos || [];
+
+                if (eventos.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="op-empty">
+                        <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                        Nenhum evento registrado ainda.
+                    </td></tr>`;
+                } else {
+                    eventos.forEach(ev => {
+                        tbody.appendChild(criarLinha(ev, false));
+                        // registrar o ts mais recente visto
+                        if (ultimoTs === null || ev.ts > ultimoTs) ultimoTs = ev.ts;
+                    });
+                    totalEventos = eventos.length;
+                    txtTotal.textContent = totalEventos;
+                    txtHistorico.textContent = `${eventos.length} registros do histórico carregados`;
+                }
+
+                // Se não veio nenhum evento, inicializar ultimoTs para agora
+                if (ultimoTs === null) ultimoTs = Date.now() / 1000;
+
+                setConectado(true);
+                iniciarPolling();
+            })
+            .catch(() => {
+                tbody.innerHTML = `<tr><td colspan="6" class="op-empty text-danger">
+                    <i class="bi bi-wifi-off fs-3 d-block mb-2"></i>
+                    Falha na conexão com o servidor.
+                </td></tr>`;
+                setConectado(false);
+                // Tentar novamente em 5s
+                setTimeout(carregarHistorico, 5000);
+            });
+    }
+
+    /* ── Polling de novos eventos ─────────────────── */
+    function iniciarPolling() {
+        if (pollingAtivo) return;
+        pollingAtivo = true;
+        setTimeout(pollEventos, POLL_INTERVAL_MS);
+    }
+
+    function pollEventos() {
+        const url = `/api/operador/eventos/${condId}?desde_ts=${ultimoTs}`;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && Array.isArray(data.eventos) && data.eventos.length > 0) {
+                    // Ordenar do mais antigo ao mais recente para inserir na ordem certa
+                    const novos = data.eventos.sort((a, b) => a.ts - b.ts);
+
+                    // Remover placeholder "vazio" se existir
+                    const empty = tbody.querySelector('.op-empty');
+                    if (empty) tbody.innerHTML = '';
+
+                    novos.forEach(ev => {
+                        const tr = criarLinha(ev, true);
+                        tbody.insertBefore(tr, tbody.firstChild);
+                        if (ev.ts > ultimoTs) ultimoTs = ev.ts;
+                    });
+
+                    totalEventos += novos.length;
+                    txtTotal.textContent = totalEventos;
+                    txtUltimoUpd.textContent = horaAtual();
+
+                    // Badge de "novos"
+                    novosAcumulados += novos.length;
+                    qtdeNovos.textContent = novosAcumulados;
+                    badgeNovos.style.display = 'inline-flex';
+                    // Esconder o badge após 4s
+                    clearTimeout(badgeNovos._timer);
+                    badgeNovos._timer = setTimeout(() => {
+                        badgeNovos.style.display = 'none';
+                        novosAcumulados = 0;
+                    }, 4000);
+
+                    setConectado(true);
+                }
+            })
+            .catch(() => setConectado(false))
+            .finally(() => {
+                setTimeout(pollEventos, POLL_INTERVAL_MS);
+            });
+    }
+
+    /* ── Carregar nome do condomínio ──────────────── */
+    function carregarNomeCond() {
+        fetch(`/api/condominio/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.data && data.data.nmcond) {
+                    document.getElementById('nome-cond').textContent = data.data.nmcond;
+                    document.title = `Operador — ${data.data.nmcond}`;
+                }
+            })
+            .catch(() => {});
+
+        document.getElementById('btn-veiculos').href = `/veiculos/${condId}`;
+        document.getElementById('btn-mapa').href    = `/mapa-vagas/${condId}`;
+    }
+
+    /* ── Inicialização ────────────────────────────── */
+    document.addEventListener('DOMContentLoaded', function () {
+        dotConn.className = 'op-dot op-dot-neutro';
+        txtConn.textContent = 'Conectando...';
+        carregarNomeCond();
+        carregarHistorico();
+    });
+
+})();
+</script>
+{% endblock %}

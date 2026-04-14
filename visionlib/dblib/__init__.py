@@ -9,6 +9,7 @@ from config.database import get_db_connection
 from visionlib.vplib import process_heimdall_plate
 from visionlib.teleglib import teleg_placa_nao_cadastrada, teleg_veiculo_ok
 from visionlib.teleglib import teleg_veiculo_nao_autorizado, teleg_sem_vaga
+from visionlib.operlib import adicionar_evento
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +68,12 @@ def gravar_movimento(movdic):
         else:
             logger.info(f"[{placa}]: Placa sem cadastro")
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
+            inforec['status_permissao'] = 'NÃO CADASTRADO'
             teleg_placa_nao_cadastrada(inforec)
     # gravar o log
     gravar_log(inforec)
+    # Atualizar tela Operador em tempo real
+    adicionar_evento(inforec)
     # Processar mensagens Telegram apenas para movimentos válidos (contav=1)
     if inforec['contav'] == 1:
         # Trata a mensagem para o Telegram
