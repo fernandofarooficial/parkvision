@@ -94,6 +94,9 @@
             <a href="#" id="btn-mapa-vagas" class="btn btn-mapa-vagas me-auto">
                 <i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas
             </a>
+            <a href="#" id="btn-operador" class="btn btn-dark me-2">
+                <i class="bi bi-display me-1"></i>Operador
+            </a>
             <button id="btn-unidades" class="btn btn-secondary">
                 <i class="bi bi-building me-1"></i>Unidades
             </button>
@@ -1122,8 +1125,9 @@
                     $('#nome-condominio').text(condominioNome);
                     document.title = `ParkVision - ${condominioNome}`;
 
-                    // Atualizar link do mapa de vagas
+                    // Atualizar links de navegação
                     $('#btn-mapa-vagas').attr('href', `/mapa-vagas/${condominioId}`);
+                    $('#btn-operador').attr('href', `/operador/${condominioId}`);
                 } else {
                     $('#nome-condominio').text('Erro ao carregar dados');
                 }
