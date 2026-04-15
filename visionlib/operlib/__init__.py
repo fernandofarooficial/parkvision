@@ -170,6 +170,58 @@ def obter_historico_db(idcond, limit=50):
         conn.close()
 
 
+def _calcular_statusmov(cursor, rec, acao):
+    """
+    Calcula o statusmov conforme tabela de decisão da tela operador.
+
+    Retorna:
+        tuple: (statusmov: str, tem_cadastro: bool)
+            statusmov — Z, A, B, C, D, E, F ou G
+            tem_cadastro — True se placa existe em cadveiculo
+    """
+    if acao == 'ignorar':
+        return 'Z', True  # tem_cadastro irrelevante para ignorar
+
+    # Verificar cadastro
+    cursor.execute("SELECT placa FROM cadveiculo WHERE placa = %s", (rec['placa'],))
+    tem_cadastro = cursor.fetchone() is not None
+
+    if not tem_cadastro:
+        return ('C' if acao == 'confirmar' else 'D'), False
+
+    # Verificar permissão vigente ou indefinida
+    cursor.execute("""
+        SELECT status_permissao FROM vw_autorizacoes
+        WHERE idcond = %s AND placa = %s
+          AND status_permissao IN ('VIGENTE', 'INDEFINIDA')
+        LIMIT 1
+    """, (rec['idcond'], rec['placa']))
+    tem_permissao = cursor.fetchone() is not None
+
+    if not tem_permissao:
+        return ('E' if acao == 'confirmar' else 'F'), True
+
+    # Verificar vagas disponíveis
+    cursor.execute("""
+        SELECT vu.vperm, COALESCE(ve.estacionados, 0) AS estacionados
+        FROM vw_autorizacoes a
+        JOIN vagasunidades vu ON vu.idcond = a.idcond AND vu.unidade = a.unidade
+        LEFT JOIN vw_estacionados ve ON ve.idcond = a.idcond AND ve.unidade = a.unidade
+        WHERE a.idcond = %s AND a.placa = %s
+          AND a.status_permissao IN ('VIGENTE', 'INDEFINIDA')
+        ORDER BY a.rank_permissao
+        LIMIT 1
+    """, (rec['idcond'], rec['placa']))
+    vagas_row = cursor.fetchone()
+
+    tem_vagas = (vagas_row is None) or (vagas_row['estacionados'] < vagas_row['vperm'])
+
+    if tem_vagas:
+        return ('A' if acao == 'confirmar' else 'B'), True
+    else:
+        return ('G' if acao == 'confirmar' else 'F'), True
+
+
 def executar_acao_operador(idmov, acao, idgente, motivo=None):
     """
     Executa a ação do operador sobre um registro de movimento (movcar).
@@ -202,9 +254,11 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
             return {'success': False, 'message': 'Registro não encontrado'}
 
         novo_contav = contav_map[acao]
+        statusmov, tem_cadastro = _calcular_statusmov(cursor, rec, acao)
+
         cursor.execute(
-            "UPDATE movcar SET contav = %s, idgente = %s WHERE idmov = %s",
-            (novo_contav, idgente, idmov)
+            "UPDATE movcar SET contav = %s, idgente = %s, statusmov = %s WHERE idmov = %s",
+            (novo_contav, idgente, statusmov, idmov)
         )
 
         if motivo and motivo.strip():
@@ -214,18 +268,13 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
             )
 
         # Status C: confirmar veículo não cadastrado → gravar em semcadastro
-        if acao == 'confirmar':
+        if acao == 'confirmar' and not tem_cadastro:
             cursor.execute(
-                "SELECT placa FROM cadveiculo WHERE placa = %s",
-                (rec['placa'],)
+                """INSERT INTO semcadastro (idcond, placa)
+                   VALUES (%s, %s)
+                   ON DUPLICATE KEY UPDATE lup = NOW()""",
+                (rec['idcond'], rec['placa'])
             )
-            if not cursor.fetchone():
-                cursor.execute(
-                    """INSERT INTO semcadastro (idcond, placa)
-                       VALUES (%s, %s)
-                       ON DUPLICATE KEY UPDATE lup = NOW()""",
-                    (rec['idcond'], rec['placa'])
-                )
 
         conn.commit()
         return {'success': True, 'message': 'Ação registrada com sucesso'}
