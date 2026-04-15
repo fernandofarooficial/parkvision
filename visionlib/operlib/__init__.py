@@ -8,6 +8,7 @@
 import time
 import threading
 import logging
+import requests
 from config.database import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,65 @@ def obter_historico_db(idcond, limit=50):
         conn.close()
 
 
+TEMPO_PULSO_MS = 500   # duração do pulso em milissegundos
+
+
+def _enviar_pulso_dispositivo(idcam, idcond):
+    """
+    Envia pulso ao relé do dispositivo associado à câmera que gerou o movimento.
+
+    Busca a URL do dispositivo e o número do relé via:
+        movcar.idcam → cadcamera(idcam, idcond) → caddisp(urldisp) + cadcamera.numrele
+
+    A falha no envio é registrada em log mas NÃO interrompe o fluxo principal.
+    """
+    if not idcam or not idcond:
+        return
+
+    conn = get_db_connection()
+    if not conn:
+        logger.warning("_enviar_pulso_dispositivo: sem conexão com o banco")
+        return
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT cd.urldisp, cc.numrele
+            FROM cadcamera cc
+            JOIN caddisp cd ON cd.iddisp = cc.iddisp
+            WHERE cc.idcam = %s
+              AND cc.idcond = %s
+              AND cc.iddisp IS NOT NULL
+            LIMIT 1
+        """, (idcam, idcond))
+        row = cursor.fetchone()
+    finally:
+        cursor.close()
+        conn.close()
+
+    if not row:
+        logger.info(
+            f"_enviar_pulso_dispositivo: nenhum dispositivo configurado "
+            f"para idcam={idcam}, idcond={idcond}"
+        )
+        return
+
+    url = f"http://{row['urldisp'].rstrip('/')}/set_output"
+    rele = row['numrele'] or 1
+    payload = {"address": rele, "state": 1, "time_1": TEMPO_PULSO_MS}
+
+    try:
+        resp = requests.post(url, json=payload, timeout=5)
+        resp.raise_for_status()
+        resultado = resp.json().get("result", "?")
+        logger.info(
+            f"_enviar_pulso_dispositivo: pulso enviado → {url} "
+            f"relé={rele} resultado={resultado}"
+        )
+    except requests.exceptions.RequestException as e:
+        logger.error(f"_enviar_pulso_dispositivo: falha ao enviar pulso → {url} — {e}")
+
+
 def _calcular_statusmov(cursor, rec, acao):
     """
     Calcula o statusmov conforme tabela de decisão da tela operador.
@@ -246,7 +306,7 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute(
-            "SELECT idmov, idlog, idcond, placa FROM movcar WHERE idmov = %s",
+            "SELECT idmov, idlog, idcond, placa, idcam FROM movcar WHERE idmov = %s",
             (idmov,)
         )
         rec = cursor.fetchone()
@@ -277,6 +337,12 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
             )
 
         conn.commit()
+
+        # Enviar pulso ao dispositivo nos status que exigem abertura do portão
+        # (A, C, E, G) — todos os casos de confirmação
+        if statusmov in ('A', 'C', 'E', 'G'):
+            _enviar_pulso_dispositivo(rec.get('idcam'), rec.get('idcond'))
+
         return {'success': True, 'message': 'Ação registrada com sucesso'}
 
     except Exception as e:
