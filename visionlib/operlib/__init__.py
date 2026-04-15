@@ -33,10 +33,6 @@ def adicionar_evento(inforec):
     if placa == '*ERROR*':
         return
 
-    # Ignorar leituras duplicadas (contav=0) — evita poluição visual
-    if inforec.get('contav', 0) == 0:
-        return
-
     status = inforec.get('status_permissao', 'NÃO CADASTRADO')
     if status == 'INEXISTENTE':
         status = 'SEM PERMISSÃO'
@@ -48,6 +44,8 @@ def adicionar_evento(inforec):
         vagas_disp = max(0, vperm - vocup)
 
     evento = {
+        'idmov':            inforec.get('idmov'),
+        'idlog':            inforec.get('log_id'),
         'placa':            placa,
         'placalida':        inforec.get('placalida', 'N/A'),
         'momento':          inforec.get('instante', ''),
@@ -117,6 +115,8 @@ def obter_historico_db(idcond, limit=50):
     try:
         cursor.execute("""
             SELECT
+                m.idmov,
+                m.idlog,
                 m.placa,
                 m.placalida,
                 m.instante AS momento,
@@ -147,7 +147,8 @@ def obter_historico_db(idcond, limit=50):
             LEFT JOIN cadveiculo cv ON cv.placa = m.placa
             WHERE m.idcond = %s
               AND m.placa != '*ERROR*'
-              AND m.contav = 1
+              AND m.contav = 0
+              AND m.idgente IS NULL
               AND m.nowpost >= NOW() - INTERVAL 10 MINUTE
             ORDER BY m.nowpost DESC
             LIMIT %s
@@ -163,6 +164,76 @@ def obter_historico_db(idcond, limit=50):
     except Exception as e:
         logger.error(f"operlib.obter_historico_db: erro ao carregar histórico — {e}")
         return []
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def executar_acao_operador(idmov, acao, idgente, motivo=None):
+    """
+    Executa a ação do operador sobre um registro de movimento (movcar).
+
+    Parâmetros:
+        idmov (int):    PK do registro em movcar
+        acao (str):     'confirmar' | 'rejeitar' | 'ignorar'
+        idgente (int):  ID do usuário que realizou a ação (movcar.idgente)
+        motivo (str):   Texto opcional para registrar na tabela motivo
+
+    Retorna:
+        dict: {'success': bool, 'message': str}
+    """
+    contav_map = {'confirmar': 1, 'rejeitar': 0, 'ignorar': 0}
+    if acao not in contav_map:
+        return {'success': False, 'message': f'Ação inválida: {acao}'}
+
+    conn = get_db_connection()
+    if not conn:
+        return {'success': False, 'message': 'Sem conexão com o banco de dados'}
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT idmov, idlog, idcond, placa FROM movcar WHERE idmov = %s",
+            (idmov,)
+        )
+        rec = cursor.fetchone()
+        if not rec:
+            return {'success': False, 'message': 'Registro não encontrado'}
+
+        novo_contav = contav_map[acao]
+        cursor.execute(
+            "UPDATE movcar SET contav = %s, idgente = %s WHERE idmov = %s",
+            (novo_contav, idgente, idmov)
+        )
+
+        if motivo and motivo.strip():
+            cursor.execute(
+                "INSERT INTO motivo (idlog, motivo) VALUES (%s, %s)",
+                (rec['idlog'], motivo.strip())
+            )
+
+        # Status C: confirmar veículo não cadastrado → gravar em semcadastro
+        if acao == 'confirmar':
+            cursor.execute(
+                "SELECT placa FROM cadveiculo WHERE placa = %s",
+                (rec['placa'],)
+            )
+            if not cursor.fetchone():
+                cursor.execute(
+                    """INSERT INTO semcadastro (idcond, placa)
+                       VALUES (%s, %s)
+                       ON DUPLICATE KEY UPDATE lup = NOW()""",
+                    (rec['idcond'], rec['placa'])
+                )
+
+        conn.commit()
+        return {'success': True, 'message': 'Ação registrada com sucesso'}
+
+    except Exception as e:
+        logger.error(f"operlib.executar_acao_operador: erro — {e}")
+        conn.rollback()
+        return {'success': False, 'message': 'Erro interno ao registrar ação'}
 
     finally:
         cursor.close()

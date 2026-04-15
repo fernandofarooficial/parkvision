@@ -145,6 +145,18 @@
     #badge-novos {
         display: none;
     }
+
+    /* ── Botões de ação ──────────────────────────── */
+    .btn-acao {
+        padding: .2rem .45rem;
+        font-size: .78rem;
+        line-height: 1.2;
+    }
+
+    .col-acoes {
+        width: 145px;
+        white-space: nowrap;
+    }
 </style>
 {% endblock %}
 
@@ -201,17 +213,88 @@
                     <th style="width:120px">Direção</th>
                     <th style="width:160px">Permissão</th>
                     <th style="width:130px">Vagas Disponíveis</th>
+                    <th class="col-acoes text-center">Ações</th>
                 </tr>
             </thead>
             <tbody id="tbody-operador">
                 <tr>
-                    <td colspan="7" class="op-empty">
+                    <td colspan="8" class="op-empty">
                         <i class="bi bi-hourglass-split fs-3 d-block mb-2"></i>
                         Carregando histórico...
                     </td>
                 </tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Modal: corrigir placa -->
+<div class="modal fade" id="modalCorrigir" tabindex="-1" aria-labelledby="modalCorrigirLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="modalCorrigirLabel">
+                    <i class="bi bi-pencil-square me-2"></i>Corrigir Placa do Veículo
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    <strong>Correção de Placa:</strong> Use quando a placa foi detectada incorretamente pela câmera.
+                    A placa será corrigida nos movimentos e a linha será removida da tela.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Placa Atual (Detectada)</label>
+                    <input type="text" class="form-control" id="corrigir-placa-atual" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Placa Corrigida <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control text-uppercase" id="corrigir-placa-nova"
+                           placeholder="Digite a placa correta" maxlength="8">
+                    <div class="form-text">Digite a placa correta já existente no cadastro de veículos</div>
+                </div>
+                <div id="corrigir-resultado-busca" class="mb-3 d-none">
+                    <h6 class="small fw-semibold">Veículo encontrado:</h6>
+                    <div class="card card-body p-2 small" id="corrigir-dados-veiculo"></div>
+                </div>
+                <div id="corrigir-alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning" id="btn-confirmar-correcao" disabled>
+                    <span class="spinner-border spinner-border-sm me-1 d-none" id="corrigir-loading"></span>
+                    <i class="bi bi-check-circle me-1"></i>Confirmar Correção
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: informar motivo -->
+<div class="modal fade" id="modalMotivo" tabindex="-1" aria-labelledby="modalMotivoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalMotivoLabel">Informar Motivo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-motivo-desc" class="text-muted small mb-2"></p>
+                <div id="modal-motivo-aviso" class="alert alert-warning d-none small"></div>
+                <textarea id="modal-motivo-texto" class="form-control" rows="3"
+                          placeholder="Descreva o motivo..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <div id="modal-motivo-link-perm" class="d-none">
+                    <a id="link-criar-perm" href="#" class="btn btn-outline-primary btn-sm me-2" target="_blank">
+                        <i class="bi bi-plus-circle me-1"></i>Criar Permissão
+                    </a>
+                </div>
+                <button type="button" class="btn btn-primary" id="btn-modal-motivo-confirmar">Confirmar</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -290,11 +373,49 @@
         return new Date().toLocaleTimeString('pt-BR');
     }
 
+    /* ── Cenário de ação por combinação de condições ─ */
+    function cenario(ev) {
+        const cad = ev.status_permissao !== 'NÃO CADASTRADO';
+        const perm = ev.status_permissao === 'INDEFINIDA' || ev.status_permissao === 'VIGENTE';
+        const vag = ev.vagas_disponiveis !== null &&
+                    ev.vagas_disponiveis !== undefined &&
+                    parseInt(ev.vagas_disponiveis, 10) > 0;
+        return { cad, perm, vag };
+    }
+
+    /* ── Célula de botões de ação ─────────────────── */
+    function celAcoes(ev) {
+        if (!ev.idmov) return '<span class="text-muted small">—</span>';
+        const { cad, perm, vag } = cenario(ev);
+        const d = JSON.stringify({ idmov: ev.idmov, cad, perm, vag, placa: ev.placa, unidade: ev.unidade || '' })
+                      .replace(/"/g, '&quot;');
+        return `
+            <div class="d-flex gap-1 justify-content-center">
+                <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
+                        title="Ignorar" data-ev="${d}">
+                    <i class="bi bi-eye-slash"></i>
+                </button>
+                <button class="btn btn-sm btn-warning btn-acao btn-op-corrigir"
+                        title="Corrigir placa" data-placa="${ev.placa}" data-idmov="${ev.idmov}">
+                    <i class="bi bi-pencil-square"></i>
+                </button>
+                <button class="btn btn-sm btn-danger btn-acao btn-op-rejeitar"
+                        title="Rejeitar" data-ev="${d}">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+                <button class="btn btn-sm btn-success btn-acao btn-op-confirmar"
+                        title="Confirmar" data-ev="${d}">
+                    <i class="bi bi-check-lg"></i>
+                </button>
+            </div>`;
+    }
+
     /* ── Montar linha da tabela ───────────────────── */
     function criarLinha(ev, isNova) {
         const tr = document.createElement('tr');
         if (isNova) tr.classList.add('row-nova');
         tr.dataset.ts = ev.ts;
+        if (ev.idmov) tr.dataset.idmov = ev.idmov;
 
         const unidade = ev.unidade ? ev.unidade : '<span class="text-muted">—</span>';
 
@@ -306,6 +427,7 @@
             <td>${celDirecao(ev.direcao)}</td>
             <td>${badgeStatus(ev.status_permissao)}</td>
             <td class="text-center">${celVagas(ev.vagas_disponiveis)}</td>
+            <td class="text-center">${celAcoes(ev)}</td>
         `;
         return tr;
     }
@@ -322,7 +444,7 @@
             .then(r => r.json())
             .then(data => {
                 if (!data.success) {
-                    tbody.innerHTML = `<tr><td colspan="7" class="op-empty text-danger">
+                    tbody.innerHTML = `<tr><td colspan="8" class="op-empty text-danger">
                         <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
                         Erro ao carregar histórico.
                     </td></tr>`;
@@ -333,7 +455,7 @@
                 const eventos = data.eventos || [];
 
                 if (eventos.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="7" class="op-empty">
+                    tbody.innerHTML = `<tr><td colspan="8" class="op-empty">
                         <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                         Nenhum evento registrado ainda.
                     </td></tr>`;
@@ -355,7 +477,7 @@
                 iniciarPolling();
             })
             .catch(() => {
-                tbody.innerHTML = `<tr><td colspan="7" class="op-empty text-danger">
+                tbody.innerHTML = `<tr><td colspan="8" class="op-empty text-danger">
                     <i class="bi bi-wifi-off fs-3 d-block mb-2"></i>
                     Falha na conexão com o servidor.
                 </td></tr>`;
@@ -374,7 +496,7 @@
         });
         // Se a tabela ficou vazia, exibir mensagem
         if (tbody.querySelectorAll('tr[data-ts]').length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="op-empty">
+            tbody.innerHTML = `<tr><td colspan="8" class="op-empty">
                 <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
                 Nenhum evento nos últimos 10 minutos.
             </td></tr>`;
@@ -450,6 +572,275 @@
         document.getElementById('btn-veiculos').href = `/veiculos/${condId}`;
         document.getElementById('btn-mapa').href    = `/mapa-vagas/${condId}`;
     }
+
+    /* ── Modal Corrigir Placa ─────────────────────── */
+    const modalCorrigirEl = document.getElementById('modalCorrigir');
+    const modalCorrigir   = modalCorrigirEl ? new bootstrap.Modal(modalCorrigirEl) : null;
+    let _corrigirIdmov    = null;
+
+    function setAlertCorrigir(msg, tipo) {
+        document.getElementById('corrigir-alert').innerHTML = msg
+            ? `<div class="alert alert-${tipo} alert-dismissible small p-2 fade show">
+                   ${msg}
+                   <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+               </div>`
+            : '';
+    }
+
+    function buscarPlacaCorrigida(placa) {
+        const resultadoEl = document.getElementById('corrigir-resultado-busca');
+        const dadosEl     = document.getElementById('corrigir-dados-veiculo');
+        const btnConf     = document.getElementById('btn-confirmar-correcao');
+
+        if (placa.length < 3) {
+            resultadoEl.classList.add('d-none');
+            btnConf.disabled = true;
+            return;
+        }
+
+        fetch(`/api/cadveiculo/${encodeURIComponent(placa)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.data) {
+                    const v = data.data;
+                    dadosEl.innerHTML = `
+                        <div class="row g-1">
+                            <div class="col-6"><strong>Placa:</strong> ${v.placa}</div>
+                            <div class="col-6"><strong>Cor:</strong> ${v.cor || '—'}</div>
+                            <div class="col-6"><strong>Marca:</strong> ${v.marca || '—'}</div>
+                            <div class="col-6"><strong>Modelo:</strong> ${v.modelo || '—'}</div>
+                        </div>`;
+                    resultadoEl.classList.remove('d-none');
+                    btnConf.disabled = false;
+                } else {
+                    resultadoEl.classList.add('d-none');
+                    btnConf.disabled = true;
+                    if (placa.length >= 7) {
+                        setAlertCorrigir('Placa não encontrada no cadastro de veículos.', 'warning');
+                    }
+                }
+            })
+            .catch(() => {
+                resultadoEl.classList.add('d-none');
+                btnConf.disabled = true;
+                setAlertCorrigir('Erro ao buscar placa.', 'danger');
+            });
+    }
+
+    document.getElementById('corrigir-placa-nova')?.addEventListener('input', function () {
+        const v = this.value.trim().toUpperCase();
+        this.value = v;
+        setAlertCorrigir('', '');
+        buscarPlacaCorrigida(v);
+    });
+
+    document.getElementById('btn-confirmar-correcao')?.addEventListener('click', function () {
+        const placaAtual     = document.getElementById('corrigir-placa-atual').value.trim();
+        const placaCorrigida = document.getElementById('corrigir-placa-nova').value.trim().toUpperCase();
+
+        if (!placaAtual || !placaCorrigida) {
+            setAlertCorrigir('Ambas as placas são obrigatórias.', 'danger');
+            return;
+        }
+        if (placaAtual === placaCorrigida) {
+            setAlertCorrigir('A placa corrigida deve ser diferente da atual.', 'warning');
+            return;
+        }
+        if (placaCorrigida.length < 7) {
+            setAlertCorrigir('Digite uma placa válida (mínimo 7 caracteres).', 'warning');
+            return;
+        }
+
+        const loading = document.getElementById('corrigir-loading');
+        loading.classList.remove('d-none');
+        this.disabled = true;
+
+        fetch('/api/corrigir-placa-veiculo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ placa_atual: placaAtual, placa_corrigida: placaCorrigida, idcond: condId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                setAlertCorrigir(data.message || 'Placa corrigida com sucesso.', 'success');
+                setTimeout(() => {
+                    modalCorrigir.hide();
+                    if (_corrigirIdmov) removerLinhaPorIdmov(_corrigirIdmov);
+                }, 1200);
+            } else {
+                setAlertCorrigir('Erro: ' + (data.message || 'Falha ao corrigir placa.'), 'danger');
+                this.disabled = false;
+            }
+        })
+        .catch(() => {
+            setAlertCorrigir('Falha de conexão ao corrigir placa.', 'danger');
+            this.disabled = false;
+        })
+        .finally(() => loading.classList.add('d-none'));
+    });
+
+    // Limpar estado ao fechar o modal
+    modalCorrigirEl?.addEventListener('hidden.bs.modal', function () {
+        document.getElementById('corrigir-placa-nova').value = '';
+        document.getElementById('corrigir-resultado-busca').classList.add('d-none');
+        document.getElementById('corrigir-dados-veiculo').innerHTML = '';
+        document.getElementById('corrigir-alert').innerHTML = '';
+        document.getElementById('btn-confirmar-correcao').disabled = true;
+        _corrigirIdmov = null;
+    });
+
+    /* ── Remover linha pelo idmov ─────────────────── */
+    function removerLinhaPorIdmov(idmov) {
+        const tr = tbody.querySelector(`tr[data-idmov="${idmov}"]`);
+        if (tr) tr.remove();
+        if (tbody.querySelectorAll('tr[data-ts]').length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="op-empty">
+                <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
+                Nenhum evento nos últimos 10 minutos.
+            </td></tr>`;
+            totalEventos = 0;
+            txtTotal.textContent = '0';
+        }
+    }
+
+    /* ── Enviar ação ao backend ───────────────────── */
+    function enviarAcao(idmov, acao, motivo, callback) {
+        fetch('/api/operador/acao', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idmov, acao, motivo: motivo || null })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                removerLinhaPorIdmov(idmov);
+                totalEventos = Math.max(0, totalEventos - 1);
+                txtTotal.textContent = totalEventos;
+            } else {
+                alert('Erro ao registrar ação: ' + (data.message || 'Erro desconhecido'));
+            }
+            if (callback) callback(data.success);
+        })
+        .catch(() => alert('Falha de conexão ao registrar ação.'));
+    }
+
+    /* ── Modal de motivo ──────────────────────────── */
+    let _modalMotivoCb = null;
+    const modalMotivoEl = document.getElementById('modalMotivo');
+    const modalMotivo   = modalMotivoEl ? new bootstrap.Modal(modalMotivoEl) : null;
+
+    function abrirModalMotivo(desc, aviso, linkPerm, onConfirm) {
+        document.getElementById('modal-motivo-desc').textContent = desc;
+        document.getElementById('modal-motivo-texto').value = '';
+
+        const avisoEl = document.getElementById('modal-motivo-aviso');
+        if (aviso) {
+            avisoEl.textContent = aviso;
+            avisoEl.classList.remove('d-none');
+        } else {
+            avisoEl.classList.add('d-none');
+        }
+
+        const linkPermEl = document.getElementById('modal-motivo-link-perm');
+        if (linkPerm) {
+            document.getElementById('link-criar-perm').href = linkPerm;
+            linkPermEl.classList.remove('d-none');
+        } else {
+            linkPermEl.classList.add('d-none');
+        }
+
+        _modalMotivoCb = onConfirm;
+        modalMotivo.show();
+    }
+
+    document.getElementById('btn-modal-motivo-confirmar')?.addEventListener('click', function () {
+        const texto = document.getElementById('modal-motivo-texto').value.trim();
+        if (_modalMotivoCb) _modalMotivoCb(texto);
+        modalMotivo.hide();
+    });
+
+    /* ── Handlers dos botões de ação ─────────────── */
+    tbody.addEventListener('click', function (e) {
+        // ── CORRIGIR ──
+        const btnCorrigir = e.target.closest('.btn-op-corrigir');
+        if (btnCorrigir) {
+            _corrigirIdmov = btnCorrigir.dataset.idmov ? parseInt(btnCorrigir.dataset.idmov, 10) : null;
+            document.getElementById('corrigir-placa-atual').value = btnCorrigir.dataset.placa || '';
+            setAlertCorrigir('', '');
+            modalCorrigir.show();
+            return;
+        }
+
+        const btn = e.target.closest('.btn-op-ignorar, .btn-op-rejeitar, .btn-op-confirmar');
+        if (!btn) return;
+
+        const evData = JSON.parse(btn.dataset.ev.replace(/&quot;/g, '"'));
+        const { idmov, cad, perm, vag, placa, unidade } = evData;
+
+        /* ── IGNORAR ── */
+        if (btn.classList.contains('btn-op-ignorar')) {
+            enviarAcao(idmov, 'ignorar', null, null);
+            return;
+        }
+
+        /* ── REJEITAR ── */
+        if (btn.classList.contains('btn-op-rejeitar')) {
+            // Status B: cadastro OK + permissão OK + vagas OK → exige motivo
+            if (cad && perm && vag) {
+                abrirModalMotivo(
+                    'Informe o motivo da rejeição (obrigatório).',
+                    null, null,
+                    (texto) => {
+                        if (!texto) { alert('O motivo é obrigatório para esta rejeição.'); return; }
+                        enviarAcao(idmov, 'rejeitar', texto, null);
+                    }
+                );
+            } else {
+                enviarAcao(idmov, 'rejeitar', null, null);
+            }
+            return;
+        }
+
+        /* ── CONFIRMAR ── */
+        if (btn.classList.contains('btn-op-confirmar')) {
+            // Status A: tudo OK → direto
+            if (cad && perm && vag) {
+                enviarAcao(idmov, 'confirmar', null, null);
+                return;
+            }
+            // Status C: nada OK → confirma sem cadastro (backend grava semcadastro)
+            if (!cad && !perm && !vag) {
+                enviarAcao(idmov, 'confirmar', null, null);
+                return;
+            }
+            // Status E: cadastro OK, sem permissão → oferece criar permissão ou registrar motivo
+            if (cad && !perm) {
+                abrirModalMotivo(
+                    `Veículo cadastrado (${placa}${unidade ? ' — unidade ' + unidade : ''}) sem permissão válida. Informe o motivo ou crie uma permissão antes de confirmar.`,
+                    null,
+                    `/veiculos/${condId}`,
+                    (texto) => enviarAcao(idmov, 'confirmar', texto || null, null)
+                );
+                return;
+            }
+            // Status G: cadastro OK + permissão OK, sem vagas → exige justificativa
+            if (cad && perm && !vag) {
+                abrirModalMotivo(
+                    `Vagas esgotadas para a unidade ${unidade || '—'}. Informe o motivo para liberar a entrada mesmo assim.`,
+                    'Atenção: o limite de vagas desta unidade foi atingido.',
+                    null,
+                    (texto) => {
+                        if (!texto) { alert('O motivo é obrigatório quando não há vagas disponíveis.'); return; }
+                        enviarAcao(idmov, 'confirmar', texto, null);
+                    }
+                );
+                return;
+            }
+            // Fallback
+            enviarAcao(idmov, 'confirmar', null, null);
+        }
+    });
 
     /* ── Inicialização ────────────────────────────── */
     document.addEventListener('DOMContentLoaded', function () {

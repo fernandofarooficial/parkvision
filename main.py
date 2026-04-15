@@ -34,7 +34,7 @@ from visionlib.userlib import (api_listar_usuarios, api_criar_usuario, api_atual
                               api_listar_condominios_disponiveis, api_listar_condominios_usuario,
                               api_gerenciar_condominios_usuario)
 from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, processar_apontamento
-from visionlib.operlib import obter_eventos_recentes, obter_historico_db
+from visionlib.operlib import obter_eventos_recentes, obter_historico_db, executar_acao_operador
 
 app = Flask(__name__)
 
@@ -117,6 +117,27 @@ def api_operador_historico(condominio_id):
         return jsonify({'success': False, 'message': 'Acesso negado'}), 403
     eventos = obter_historico_db(condominio_id)
     return jsonify({'success': True, 'eventos': eventos})
+
+
+# API: ação do operador sobre um evento (confirmar / rejeitar / ignorar)
+@app.route('/api/operador/acao', methods=['POST'])
+def api_operador_acao():
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+
+    data = request.get_json() or {}
+    idmov  = data.get('idmov')
+    acao   = data.get('acao')
+    motivo = data.get('motivo')
+
+    if not idmov or not acao:
+        return jsonify({'success': False, 'message': 'Parâmetros obrigatórios ausentes'}), 400
+
+    idgente = usuario.get('idgente')
+    resultado = executar_acao_operador(int(idmov), acao, idgente, motivo)
+    status_http = 200 if resultado['success'] else 500
+    return jsonify(resultado), status_http
 
 
 # API: polling de novos eventos (memória — tempo real)

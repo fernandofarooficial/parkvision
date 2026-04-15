@@ -39,8 +39,10 @@ def gravar_movimento(movdic):
         return inforec
     # Checar se tivemos eventos anteriores para esta placa
     inforec['contav'] = checar_anteriores(inforec)
-    # Só processo se contav = 1, se for zero só grava o log
-    if inforec['contav'] == 1:
+    # Registrar se o evento é válido (não duplicata) antes de zerar o contav
+    valido = (inforec['contav'] == 1)
+    # Só processo se for válido; se for duplicata apenas grava o log
+    if valido:
         # obter nome do condomínio
         inforec['nome_condominio'] = obter_nome_condominio(inforec)
         # Verifica se a placa está cadastrada, só abre se estiver cadastrada
@@ -70,13 +72,13 @@ def gravar_movimento(movdic):
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
             inforec['status_permissao'] = 'NÃO CADASTRADO'
             teleg_placa_nao_cadastrada(inforec)
+        # Zerar contav antes de gravar: o operador decide a ação (confirmar/rejeitar/ignorar)
+        inforec['contav'] = 0
     # gravar o log
     gravar_log(inforec)
-    # Atualizar tela Operador em tempo real
-    adicionar_evento(inforec)
-    # Processar mensagens Telegram apenas para movimentos válidos (contav=1)
-    if inforec['contav'] == 1:
-        # Trata a mensagem para o Telegram
+    # Atualizar tela Operador em tempo real apenas para eventos válidos (não duplicatas)
+    if valido:
+        adicionar_evento(inforec)
         mensagem_telegram(inforec)
     #
     return inforec
@@ -140,14 +142,19 @@ def checar_anteriores(inforec):
     # abrir conexão com a base de dados
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
-    # Ler os últimos movimentos
-    query = "SELECT placa, contav, idcond, nowpost FROM movcar WHERE idcond = %s AND placa = %s ORDER BY nowpost DESC LIMIT 10"
+    # Ler os últimos movimentos (incluindo idgente para distinguir pendentes de rejeitados)
+    query = "SELECT placa, contav, idgente, idcond, nowpost FROM movcar WHERE idcond = %s AND placa = %s ORDER BY nowpost DESC LIMIT 10"
     values = (inforec['idcond'],inforec['placa'])
     cursor.execute(query, values)
     movimentos = cursor.fetchall()
-    # verificar se a placa já foi contabilizada anteriormente
+    # verificar se a placa já foi contabilizada anteriormente:
+    # - contav=1 (confirmado pelo operador) → duplicata
+    # - contav=0 e idgente IS NULL (pendente, aguardando operador) → duplicata
+    # - contav=0 e idgente IS NOT NULL (rejeitado/ignorado) → NÃO é duplicata
     for movimento in movimentos:
-        if movimento['contav'] == 1:
+        eh_pendente   = (movimento['contav'] == 0 and movimento['idgente'] is None)
+        eh_confirmado = (movimento['contav'] == 1)
+        if eh_pendente or eh_confirmado:
             tempo_diferenca = abs(inforec["momento"] - movimento['nowpost']).total_seconds()
             if tempo_diferenca < 90:  # Movimento duplicado em 90s
                 contav = 0  # Não contar esta vaga
@@ -175,6 +182,7 @@ def gravar_log(inforec):
              inforec['instante'],    inforec['direcao'])
     cursor.execute(query, valor)
     connection.commit()
+    inforec['idmov'] = cursor.lastrowid
     #
     cursor.close()
     connection.close()
