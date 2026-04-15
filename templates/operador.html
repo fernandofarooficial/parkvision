@@ -287,12 +287,83 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <div id="modal-motivo-link-perm" class="d-none">
-                    <a id="link-criar-perm" href="#" class="btn btn-outline-primary btn-sm me-2" target="_blank">
-                        <i class="bi bi-plus-circle me-1"></i>Criar Permissão
-                    </a>
-                </div>
                 <button type="button" class="btn btn-primary" id="btn-modal-motivo-confirmar">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: criar permissão inline (situação E) -->
+<div class="modal fade" id="modalPermE" tabindex="-1" aria-labelledby="modalPermELabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalPermELabel">
+                    <i class="bi bi-plus-circle me-2"></i>Criar Permissão —
+                    <span id="perm-e-placa" class="fw-bold font-monospace"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small mb-3">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Veículo cadastrado sem permissão válida. Crie a permissão abaixo para liberar a entrada automaticamente.
+                </div>
+                <form id="form-perm-e" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label">Unidade <span class="text-danger">*</span></label>
+                        <select class="form-select" id="perm-e-unidade" required>
+                            <option value="">Carregando unidades...</option>
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Data Início <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control" id="perm-e-data-inicio" required>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Hora Início <span class="text-danger">*</span></label>
+                                <input type="time" class="form-control" id="perm-e-hora-inicio" value="08:00" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row" id="perm-e-row-fim">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Data Fim</label>
+                                <input type="date" class="form-control" id="perm-e-data-fim">
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Hora Fim</label>
+                                <input type="time" class="form-control" id="perm-e-hora-fim" value="23:59">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="perm-e-indeterminado">
+                        <label class="form-check-label" for="perm-e-indeterminado">
+                            Tempo Indeterminado (sem data de fim)
+                        </label>
+                    </div>
+                    <div id="perm-e-alert"></div>
+                </form>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-perm-e-sem-permissao">
+                    <i class="bi bi-pencil me-1"></i>Confirmar sem criar permissão
+                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btn-perm-e-salvar">
+                        <span class="spinner-border spinner-border-sm d-none me-1" id="perm-e-spinner"></span>
+                        <i class="bi bi-plus-circle me-1"></i>Criar e Confirmar
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -730,7 +801,7 @@
     const modalMotivoEl = document.getElementById('modalMotivo');
     const modalMotivo   = modalMotivoEl ? new bootstrap.Modal(modalMotivoEl) : null;
 
-    function abrirModalMotivo(desc, aviso, linkPerm, onConfirm) {
+    function abrirModalMotivo(desc, aviso, onConfirm) {
         document.getElementById('modal-motivo-desc').textContent = desc;
         document.getElementById('modal-motivo-texto').value = '';
 
@@ -740,14 +811,6 @@
             avisoEl.classList.remove('d-none');
         } else {
             avisoEl.classList.add('d-none');
-        }
-
-        const linkPermEl = document.getElementById('modal-motivo-link-perm');
-        if (linkPerm) {
-            document.getElementById('link-criar-perm').href = linkPerm;
-            linkPermEl.classList.remove('d-none');
-        } else {
-            linkPermEl.classList.add('d-none');
         }
 
         _modalMotivoCb = onConfirm;
@@ -790,7 +853,7 @@
             if (cad && perm && vag) {
                 abrirModalMotivo(
                     'Informe o motivo da rejeição (obrigatório).',
-                    null, null,
+                    null,
                     (texto) => {
                         if (!texto) { alert('O motivo é obrigatório para esta rejeição.'); return; }
                         enviarAcao(idmov, 'rejeitar', texto, null);
@@ -814,14 +877,9 @@
                 enviarAcao(idmov, 'confirmar', null, null);
                 return;
             }
-            // Status E: cadastro OK, sem permissão → oferece criar permissão ou registrar motivo
+            // Status E: cadastro OK, sem permissão → abre modal para criar permissão inline
             if (cad && !perm) {
-                abrirModalMotivo(
-                    `Veículo cadastrado (${placa}${unidade ? ' — unidade ' + unidade : ''}) sem permissão válida. Informe o motivo ou crie uma permissão antes de confirmar.`,
-                    null,
-                    `/veiculos/${condId}`,
-                    (texto) => enviarAcao(idmov, 'confirmar', texto || null, null)
-                );
+                abrirModalPermE({ idmov, placa, unidade });
                 return;
             }
             // Status G: cadastro OK + permissão OK, sem vagas → exige justificativa
@@ -829,7 +887,6 @@
                 abrirModalMotivo(
                     `Vagas esgotadas para a unidade ${unidade || '—'}. Informe o motivo para liberar a entrada mesmo assim.`,
                     'Atenção: o limite de vagas desta unidade foi atingido.',
-                    null,
                     (texto) => {
                         if (!texto) { alert('O motivo é obrigatório quando não há vagas disponíveis.'); return; }
                         enviarAcao(idmov, 'confirmar', texto, null);
@@ -840,6 +897,141 @@
             // Fallback
             enviarAcao(idmov, 'confirmar', null, null);
         }
+    });
+
+    /* ── Modal: criar permissão inline (situação E) ── */
+    let _permEState = null;   // { idmov, placa, unidade }
+    let _permECriada = false; // flag: permissão foi criada com sucesso neste ciclo
+    const modalPermEEl = document.getElementById('modalPermE');
+    const modalPermE   = modalPermEEl ? new bootstrap.Modal(modalPermEEl) : null;
+
+    function setAlertPermE(msg, tipo) {
+        document.getElementById('perm-e-alert').innerHTML = msg
+            ? `<div class="alert alert-${tipo} small p-2 mb-0">${msg}</div>`
+            : '';
+    }
+
+    function carregarUnidadesPermE() {
+        fetch(`/api/unidades-condominio/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('perm-e-unidade');
+                sel.innerHTML = '<option value="">Selecione a unidade...</option>';
+                if (data.success && Array.isArray(data.data)) {
+                    data.data.forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = u;
+                        opt.textContent = u;
+                        sel.appendChild(opt);
+                    });
+                    if (_permEState?.unidade) sel.value = _permEState.unidade;
+                }
+            })
+            .catch(() => {
+                document.getElementById('perm-e-unidade').innerHTML =
+                    '<option value="">Erro ao carregar unidades</option>';
+            });
+    }
+
+    function abrirModalPermE(ev) {
+        _permEState  = { idmov: ev.idmov, placa: ev.placa, unidade: ev.unidade || '' };
+        _permECriada = false;
+
+        document.getElementById('perm-e-placa').textContent = ev.placa;
+
+        const hoje = new Date().toISOString().split('T')[0];
+        document.getElementById('perm-e-data-inicio').value = hoje;
+        document.getElementById('perm-e-hora-inicio').value = '08:00';
+        document.getElementById('perm-e-data-fim').value    = '';
+        document.getElementById('perm-e-hora-fim').value    = '23:59';
+        document.getElementById('perm-e-indeterminado').checked = false;
+        document.getElementById('perm-e-row-fim').style.display = '';
+        document.getElementById('btn-perm-e-salvar').disabled   = false;
+        setAlertPermE('', '');
+
+        carregarUnidadesPermE();
+        modalPermE.show();
+    }
+
+    // Ocultar campos de data/hora fim quando "Tempo Indeterminado" marcado
+    document.getElementById('perm-e-indeterminado')?.addEventListener('change', function () {
+        document.getElementById('perm-e-row-fim').style.display = this.checked ? 'none' : '';
+    });
+
+    // Criar permissão e confirmar movimento
+    document.getElementById('btn-perm-e-salvar')?.addEventListener('click', function () {
+        const unidade    = document.getElementById('perm-e-unidade').value.trim();
+        const dataInicio = document.getElementById('perm-e-data-inicio').value;
+        const horaInicio = document.getElementById('perm-e-hora-inicio').value || '08:00';
+        const indet      = document.getElementById('perm-e-indeterminado').checked;
+        const dataFim    = indet ? null : (document.getElementById('perm-e-data-fim').value || null);
+        const horaFim    = indet ? null : (document.getElementById('perm-e-hora-fim').value || '23:59');
+
+        if (!unidade)    { setAlertPermE('Selecione a unidade.', 'danger');        return; }
+        if (!dataInicio) { setAlertPermE('Informe a data de início.', 'danger');   return; }
+
+        const spinner = document.getElementById('perm-e-spinner');
+        spinner.classList.remove('d-none');
+        this.disabled = true;
+
+        fetch('/api/criar-permissao', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                condominio_id: condId,
+                placa:         _permEState.placa,
+                unidade,
+                dataInicio,
+                hora_inicio:   horaInicio,
+                dataFim,
+                hora_fim:      horaFim
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                _permECriada = true;
+                modalPermE.hide();
+                // enviarAcao é chamado no evento 'hidden' abaixo
+            } else {
+                setAlertPermE('Erro: ' + (data.message || 'Falha ao criar permissão.'), 'danger');
+                this.disabled = false;
+            }
+        })
+        .catch(() => {
+            setAlertPermE('Falha de conexão ao criar permissão.', 'danger');
+            this.disabled = false;
+        })
+        .finally(() => spinner.classList.add('d-none'));
+    });
+
+    // Confirmar sem criar permissão → abre modal de motivo manual
+    document.getElementById('btn-perm-e-sem-permissao')?.addEventListener('click', function () {
+        modalPermE.hide();
+        // Aguarda fechamento do modal antes de abrir o próximo
+        modalPermEEl.addEventListener('hidden.bs.modal', function onHidden() {
+            modalPermEEl.removeEventListener('hidden.bs.modal', onHidden);
+            abrirModalMotivo(
+                `Informe o motivo para confirmar sem permissão válida (${_permEState?.placa || ''}).`,
+                null,
+                (texto) => enviarAcao(_permEState.idmov, 'confirmar', texto || null, null)
+            );
+        });
+    });
+
+    // Ao fechar o modal: gravar movimento se permissão foi criada
+    modalPermEEl?.addEventListener('hidden.bs.modal', function () {
+        if (_permECriada && _permEState) {
+            enviarAcao(
+                _permEState.idmov,
+                'confirmar',
+                'Permissão criada durante a liberação do veículo',
+                null
+            );
+            _permECriada = false;
+        }
+        document.getElementById('btn-perm-e-salvar').disabled = false;
+        setAlertPermE('', '');
     });
 
     /* ── Inicialização ────────────────────────────── */
