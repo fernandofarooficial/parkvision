@@ -550,8 +550,26 @@
     /* ── Célula de botões de ação ─────────────────── */
     function celAcoes(ev) {
         if (!ev.idmov) return '<span class="text-muted small">—</span>';
+
+        if (ev.direcao === 'S') {
+            const { cad } = cenario(ev);
+            const d = JSON.stringify({ idmov: ev.idmov, cad, placa: ev.placa, direcao: 'S' })
+                          .replace(/"/g, '&quot;');
+            return `
+                <div class="d-flex gap-1 justify-content-center">
+                    <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
+                            title="Ignorar" data-ev="${d}">
+                        <i class="bi bi-eye-slash"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success btn-acao btn-op-confirmar"
+                            title="Confirmar saída" data-ev="${d}">
+                        <i class="bi bi-check-lg"></i>
+                    </button>
+                </div>`;
+        }
+
         const { cad, perm, vag } = cenario(ev);
-        const d = JSON.stringify({ idmov: ev.idmov, cad, perm, vag, placa: ev.placa, unidade: ev.unidade || '' })
+        const d = JSON.stringify({ idmov: ev.idmov, cad, perm, vag, placa: ev.placa, unidade: ev.unidade || '', direcao: 'E' })
                       .replace(/"/g, '&quot;');
         return `
             <div class="d-flex gap-1 justify-content-center">
@@ -958,12 +976,30 @@
 
         /* ── CONFIRMAR ── */
         if (btn.classList.contains('btn-op-confirmar')) {
+            // ── Saída ──
+            if (evData.direcao === 'S') {
+                if (cad) {
+                    enviarAcao(idmov, 'confirmar', null, null);
+                } else {
+                    abrirModalMotivo(
+                        'Veículo não cadastrado. Informe o motivo para liberar a saída.',
+                        'Atenção: este veículo não possui cadastro no sistema.',
+                        (texto) => {
+                            if (!texto) { alert('O motivo é obrigatório para veículo não cadastrado.'); return; }
+                            enviarAcao(idmov, 'confirmar', texto, null);
+                        }
+                    );
+                }
+                return;
+            }
+
+            // ── Entrada ──
             // Status A: tudo OK → direto
             if (cad && perm && vag) {
                 enviarAcao(idmov, 'confirmar', null, null);
                 return;
             }
-            // Status C: veículo não cadastrado → exige justificativa antes de confirmar
+            // Status C: veículo não cadastrado → exige justificativa
             if (!cad) {
                 abrirModalMotivo(
                     'Veículo não cadastrado. Informe o motivo para liberar a entrada.',
@@ -975,12 +1011,12 @@
                 );
                 return;
             }
-            // Status E: cadastro OK, sem permissão → abre modal para criar permissão inline
+            // Status E: cadastro OK, sem permissão → modal criar permissão
             if (cad && !perm) {
                 abrirModalPermE({ idmov, placa, unidade });
                 return;
             }
-            // Status G: cadastro OK + permissão OK, sem vagas → exige justificativa
+            // Status G: sem vagas → exige justificativa
             if (cad && perm && !vag) {
                 abrirModalMotivo(
                     `Vagas esgotadas para a unidade ${unidade || '—'}. Informe o motivo para liberar a entrada mesmo assim.`,
