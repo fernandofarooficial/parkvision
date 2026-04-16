@@ -207,6 +207,33 @@
         gap: .3rem;
     }
 
+    .camera-body {
+        transition: max-height .25s ease, opacity .2s ease;
+        overflow: hidden;
+    }
+
+    .camera-body.oculta {
+        max-height: 0 !important;
+        opacity: 0;
+    }
+
+    .btn-toggle-cam {
+        background: none;
+        border: none;
+        color: rgba(255,255,255,.75);
+        padding: 0 .15rem;
+        cursor: pointer;
+        line-height: 1;
+        font-size: .9rem;
+        transition: color .15s;
+    }
+
+    .btn-toggle-cam:hover { color: #fff; }
+
+    .camera-card-header.cam-desativada {
+        background: #495057;
+    }
+
     /* ── Botões de ação ──────────────────────────── */
     .btn-acao {
         padding: .2rem .45rem;
@@ -1109,52 +1136,101 @@
     let _cameraTimer = null;
     let _cameraIds = [];
 
+    /* Persistência da visibilidade por câmera no localStorage */
+    function _lsKey(idcam) { return `pv_cam_vis_${condId}_${idcam}`; }
+
+    function isCameraVisivel(idcam) {
+        const val = localStorage.getItem(_lsKey(idcam));
+        return val === null ? true : val === '1';   // padrão: visível
+    }
+
+    function setCameraVisivel(idcam, visivel) {
+        localStorage.setItem(_lsKey(idcam), visivel ? '1' : '0');
+        _aplicarVisibilidade(idcam, visivel);
+    }
+
+    function _aplicarVisibilidade(idcam, visivel) {
+        const body   = document.getElementById(`body-cam-${idcam}`);
+        const header = document.getElementById(`hdr-cam-${idcam}`);
+        const btn    = document.getElementById(`btn-toggle-cam-${idcam}`);
+        if (!body) return;
+        if (visivel) {
+            body.classList.remove('oculta');
+            header.classList.remove('cam-desativada');
+            btn.innerHTML = '<i class="bi bi-eye"></i>';
+            btn.title = 'Ocultar câmera';
+            // Recarregar imagem ao reexibir
+            const img = document.getElementById(`img-cam-${idcam}`);
+            if (img) img.src = `/api/camera/snapshot/${idcam}?t=${Date.now()}`;
+        } else {
+            body.classList.add('oculta');
+            header.classList.add('cam-desativada');
+            btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            btn.title = 'Exibir câmera';
+        }
+    }
+
     function criarCardCamera(idcam) {
         const col = document.createElement('div');
         col.className = 'col-6 col-md-4 col-xl-3';
         col.dataset.idcam = idcam;
         col.innerHTML = `
             <div class="camera-card">
-                <div class="camera-card-header">
+                <div class="camera-card-header" id="hdr-cam-${idcam}">
                     <span><i class="bi bi-camera-video me-1"></i>Câm. ${idcam}</span>
-                    <span class="spinner-border spinner-border-sm d-none" id="spin-cam-${idcam}" role="status"></span>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="spinner-border spinner-border-sm d-none"
+                              id="spin-cam-${idcam}" role="status"></span>
+                        <button class="btn-toggle-cam" id="btn-toggle-cam-${idcam}"
+                                title="Ocultar câmera" type="button">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
                 </div>
-                <img id="img-cam-${idcam}"
-                     class="camera-snapshot-img"
-                     src="/api/camera/snapshot/${idcam}?t=${Date.now()}"
-                     alt="Câmera ${idcam}">
-                <div id="err-cam-${idcam}" class="camera-snapshot-erro d-none">
-                    <i class="bi bi-exclamation-triangle fs-4"></i>
-                    <span>Sem sinal</span>
+                <div class="camera-body" id="body-cam-${idcam}"
+                     style="max-height:200px;">
+                    <img id="img-cam-${idcam}"
+                         class="camera-snapshot-img"
+                         src="/api/camera/snapshot/${idcam}?t=${Date.now()}"
+                         alt="Câmera ${idcam}">
+                    <div id="err-cam-${idcam}" class="camera-snapshot-erro d-none">
+                        <i class="bi bi-exclamation-triangle fs-4"></i>
+                        <span>Sem sinal</span>
+                    </div>
                 </div>
             </div>`;
+
+        /* Eventos de imagem */
         const img = col.querySelector(`#img-cam-${idcam}`);
         const err = col.querySelector(`#err-cam-${idcam}`);
-        img.addEventListener('error', () => {
-            img.classList.add('d-none');
-            err.classList.remove('d-none');
+        img.addEventListener('error', () => { img.classList.add('d-none'); err.classList.remove('d-none'); });
+        img.addEventListener('load',  () => { img.classList.remove('d-none'); err.classList.add('d-none'); });
+
+        /* Botão toggle */
+        col.querySelector(`#btn-toggle-cam-${idcam}`).addEventListener('click', () => {
+            setCameraVisivel(idcam, !isCameraVisivel(idcam));
         });
-        img.addEventListener('load', () => {
-            img.classList.remove('d-none');
-            err.classList.add('d-none');
-        });
+
+        /* Restaurar estado salvo */
+        if (!isCameraVisivel(idcam)) {
+            // aplicar após o elemento estar no DOM (setTimeout 0)
+            setTimeout(() => _aplicarVisibilidade(idcam, false), 0);
+        }
+
         return col;
     }
 
     function refreshCameras() {
         if (_cameraIds.length === 0) return;
         _cameraIds.forEach(idcam => {
+            if (!isCameraVisivel(idcam)) return;   // não buscar se oculta
             const spin = document.getElementById(`spin-cam-${idcam}`);
             if (spin) spin.classList.remove('d-none');
-            const novaUrl = `/api/camera/snapshot/${idcam}?t=${Date.now()}`;
             const tmp = new Image();
             tmp.onload = () => {
                 const img = document.getElementById(`img-cam-${idcam}`);
                 const err = document.getElementById(`err-cam-${idcam}`);
-                if (img) {
-                    img.src = tmp.src;
-                    img.classList.remove('d-none');
-                }
+                if (img) { img.src = tmp.src; img.classList.remove('d-none'); }
                 if (err) err.classList.add('d-none');
                 if (spin) spin.classList.add('d-none');
             };
@@ -1165,7 +1241,7 @@
                 if (err) err.classList.remove('d-none');
                 if (spin) spin.classList.add('d-none');
             };
-            tmp.src = novaUrl;
+            tmp.src = `/api/camera/snapshot/${idcam}?t=${Date.now()}`;
         });
         document.getElementById('cameras-ultimo-refresh').textContent =
             'Atualizado: ' + horaAtual();
@@ -1182,7 +1258,6 @@
                 grid.innerHTML = '';
                 _cameraIds.forEach(idcam => grid.appendChild(criarCardCamera(idcam)));
                 painel.classList.remove('d-none');
-                // iniciar refresh periódico
                 if (_cameraTimer) clearInterval(_cameraTimer);
                 _cameraTimer = setInterval(refreshCameras, CAMERA_REFRESH_MS);
             })
