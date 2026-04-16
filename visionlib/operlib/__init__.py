@@ -230,26 +230,31 @@ def _enviar_pulso_dispositivo(idcam, idcond):
         logger.error(f"_enviar_pulso_dispositivo: falha ao enviar pulso → {url} — {e}")
 
 
-def _calcular_statusmov(cursor, rec, acao):
+def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):
     """
     Calcula o statusmov conforme tabela de decisão da tela operador.
 
     Retorna:
         tuple: (statusmov: str, tem_cadastro: bool)
-            statusmov — Z, A, B, C, D, E, F ou G
+            statusmov — Z, A, B, C, D, E, F, G (entrada) ou I, J (saída)
             tem_cadastro — True se placa existe em cadveiculo
     """
     if acao == 'ignorar':
-        return 'Z', True  # tem_cadastro irrelevante para ignorar
+        return 'Z', True
 
-    # Verificar cadastro
+    # ── Câmera de saída: apenas verifica cadastro ──
+    if direcao_cam == 'S':
+        cursor.execute("SELECT placa FROM cadveiculo WHERE placa = %s", (rec['placa'],))
+        tem_cadastro = cursor.fetchone() is not None
+        return ('I' if tem_cadastro else 'J'), tem_cadastro
+
+    # ── Câmera de entrada: lógica completa ────────
     cursor.execute("SELECT placa FROM cadveiculo WHERE placa = %s", (rec['placa'],))
     tem_cadastro = cursor.fetchone() is not None
 
     if not tem_cadastro:
         return ('C' if acao == 'confirmar' else 'D'), False
 
-    # Verificar permissão vigente ou indefinida
     cursor.execute("""
         SELECT status_permissao FROM vw_autorizacoes
         WHERE idcond = %s AND placa = %s
@@ -261,7 +266,6 @@ def _calcular_statusmov(cursor, rec, acao):
     if not tem_permissao:
         return ('E' if acao == 'confirmar' else 'F'), True
 
-    # Verificar vagas disponíveis
     cursor.execute("""
         SELECT vu.vperm, COALESCE(ve.estacionados, 0) AS estacionados
         FROM vw_autorizacoes a
@@ -306,7 +310,7 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute(
-            "SELECT idmov, idlog, idcond, placa, idcam FROM movcar WHERE idmov = %s",
+            "SELECT idmov, idlog, idcond, placa, idcam, direcao FROM movcar WHERE idmov = %s",
             (idmov,)
         )
         rec = cursor.fetchone()
@@ -314,7 +318,8 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
             return {'success': False, 'message': 'Registro não encontrado'}
 
         novo_contav = contav_map[acao]
-        statusmov, tem_cadastro = _calcular_statusmov(cursor, rec, acao)
+        direcao_cam = rec.get('direcao') or 'E'
+        statusmov, tem_cadastro = _calcular_statusmov(cursor, rec, acao, direcao_cam)
 
         # Atualizar o movimento principal (pelo idmov — PK)
         cursor.execute(
@@ -354,9 +359,8 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
 
         conn.commit()
 
-        # Enviar pulso ao dispositivo nos status que exigem abertura do portão
-        # (A, C, E, G) — todos os casos de confirmação
-        if statusmov in ('A', 'C', 'E', 'G'):
+        # Enviar pulso: entrada (A, C, E, G) e saída (I, J)
+        if statusmov in ('A', 'C', 'E', 'G', 'I', 'J'):
             _enviar_pulso_dispositivo(rec.get('idcam'), rec.get('idcond'))
 
         return {'success': True, 'message': 'Ação registrada com sucesso'}
