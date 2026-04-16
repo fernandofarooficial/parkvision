@@ -2,7 +2,7 @@
 # MAIN
 # ------------------
 
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, Response
 import os
 import pytz
 import secrets
@@ -34,7 +34,8 @@ from visionlib.userlib import (api_listar_usuarios, api_criar_usuario, api_atual
                               api_listar_condominios_disponiveis, api_listar_condominios_usuario,
                               api_gerenciar_condominios_usuario)
 from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, processar_apontamento
-from visionlib.operlib import obter_eventos_recentes, obter_historico_db, executar_acao_operador
+from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
+                               obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp)
 
 app = Flask(__name__)
 
@@ -149,6 +150,37 @@ def api_operador_eventos(condominio_id):
     desde_ts = request.args.get('desde_ts', None)
     eventos = obter_eventos_recentes(condominio_id, desde_ts)
     return jsonify({'success': True, 'eventos': eventos})
+
+
+# API: câmeras com RTSP para a tela operador
+@app.route('/api/operador/cameras/<int:condominio_id>')
+def api_operador_cameras(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    cameras = obter_cameras_rtsp(condominio_id)
+    # Não expor a URL RTSP ao cliente — apenas o ID
+    cameras_safe = [{'idcam': c['idcam']} for c in cameras]
+    return jsonify({'success': True, 'cameras': cameras_safe})
+
+
+# API: snapshot JPEG de câmera via RTSP
+@app.route('/api/camera/snapshot/<int:idcam>')
+def api_camera_snapshot(idcam):
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+    rtsp_url = obter_rtsp_camera(idcam)
+    if not rtsp_url:
+        return jsonify({'success': False, 'message': 'Câmera sem RTSP configurado'}), 404
+    img_bytes = capturar_snapshot_rtsp(rtsp_url)
+    if img_bytes is None:
+        return jsonify({'success': False, 'message': 'Falha ao capturar imagem da câmera'}), 503
+    return Response(
+        img_bytes,
+        mimetype='image/jpeg',
+        headers={'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache'}
+    )
 
 
 # ===== NOVAS ROTAS DE AUTENTICAÇÃO E GESTÃO DE USUÁRIOS =====

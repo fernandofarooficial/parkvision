@@ -60,18 +60,18 @@ def gravar_movimento(movdic):
                 # checar quantidade de vagas permitidas
                 if inforec['qtde_estacionada'] >= inforec['vagas_permitidas']:
                     logger.info(f"[{placa}]: Todas as vagas ocupadas")
-                    teleg_sem_vaga(inforec)
+                    # teleg_sem_vaga(inforec)
                 else:
                     logger.info(f"[{placa}]: Todos critérios atendidos")
-                    teleg_veiculo_ok(inforec)
+                    # teleg_veiculo_ok(inforec)
             else:
                 logger.info(f"[{placa}]: Placa sem permissão válida")
-                teleg_veiculo_nao_autorizado(inforec)
+                # teleg_veiculo_nao_autorizado(inforec)
         else:
             logger.info(f"[{placa}]: Placa sem cadastro")
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
             inforec['status_permissao'] = 'NÃO CADASTRADO'
-            teleg_placa_nao_cadastrada(inforec)
+            # teleg_placa_nao_cadastrada(inforec)
         # Zerar contav antes de gravar: o operador decide a ação (confirmar/rejeitar/ignorar)
         inforec['contav'] = 0
     # gravar o log

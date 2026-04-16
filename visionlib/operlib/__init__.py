@@ -353,3 +353,102 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
     finally:
         cursor.close()
         conn.close()
+
+
+# ── Câmeras RTSP ──────────────────────────────────────────────────────────────
+
+def obter_cameras_rtsp(idcond):
+    """
+    Retorna as câmeras do condomínio que possuem o campo rtsp preenchido.
+
+    Parâmetros:
+        idcond (int): ID do condomínio
+
+    Retorna:
+        list[dict]: [{'idcam': ..., 'rtsp': ...}, ...]
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT idcam, rtsp
+            FROM cadcamera
+            WHERE idcond = %s
+              AND rtsp IS NOT NULL
+              AND TRIM(rtsp) <> ''
+            ORDER BY idcam
+        """, (idcond,))
+        return cursor.fetchall()
+    except Exception as e:
+        logger.error(f"obter_cameras_rtsp: erro — {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def obter_rtsp_camera(idcam):
+    """
+    Retorna a URL RTSP de uma câmera pelo ID.
+
+    Retorna:
+        str | None
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT rtsp FROM cadcamera WHERE idcam = %s LIMIT 1",
+            (idcam,)
+        )
+        row = cursor.fetchone()
+        return row['rtsp'] if row and row.get('rtsp') else None
+    except Exception as e:
+        logger.error(f"obter_rtsp_camera: erro — {e}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def capturar_snapshot_rtsp(rtsp_url):
+    """
+    Captura um frame JPEG de uma URL RTSP usando OpenCV.
+
+    Parâmetros:
+        rtsp_url (str): URL RTSP da câmera (ex: rtsp://user:pass@ip:port/stream)
+
+    Retorna:
+        bytes | None: imagem JPEG ou None em caso de falha
+    """
+    try:
+        import cv2
+        import os
+        # Forçar transporte TCP para maior compatibilidade
+        os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+        cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        try:
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+        except Exception:
+            pass  # versões antigas não suportam esses flags
+        if not cap.isOpened():
+            logger.warning(f"capturar_snapshot_rtsp: não foi possível abrir {rtsp_url}")
+            return None
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            logger.warning(f"capturar_snapshot_rtsp: frame vazio de {rtsp_url}")
+            return None
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ret:
+            return None
+        return buffer.tobytes()
+    except Exception as e:
+        logger.error(f"capturar_snapshot_rtsp: erro ({rtsp_url}) — {e}")
+        return None

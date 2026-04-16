@@ -146,6 +146,67 @@
         display: none;
     }
 
+    /* ── Painel de câmeras ───────────────────────── */
+    .cameras-painel {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        padding: .75rem 1rem;
+        margin-bottom: 1.2rem;
+        background: #f8f9fa;
+    }
+
+    .cameras-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: .6rem;
+    }
+
+    .cameras-header h6 {
+        margin: 0;
+        font-size: .9rem;
+        font-weight: 600;
+    }
+
+    .camera-card {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: .375rem;
+        overflow: hidden;
+    }
+
+    .camera-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: .3rem .6rem;
+        background: #343a40;
+        color: #fff;
+        font-size: .78rem;
+        font-weight: 500;
+    }
+
+    .camera-snapshot-img {
+        width: 100%;
+        height: 160px;
+        object-fit: cover;
+        display: block;
+        background: #212529;
+    }
+
+    .camera-snapshot-erro {
+        width: 100%;
+        height: 160px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #212529;
+        color: #6c757d;
+        font-size: .8rem;
+        flex-direction: column;
+        gap: .3rem;
+    }
+
     /* ── Botões de ação ──────────────────────────── */
     .btn-acao {
         padding: .2rem .45rem;
@@ -198,6 +259,15 @@
     <div class="op-status-item ms-auto">
         <span class="text-muted" id="txt-historico"></span>
     </div>
+</div>
+
+<!-- Painel de Câmeras (visível somente se existirem câmeras com RTSP) -->
+<div id="painel-cameras" class="cameras-painel d-none">
+    <div class="cameras-header">
+        <h6><i class="bi bi-camera-video me-2"></i>Câmeras ao Vivo</h6>
+        <small class="text-muted" id="cameras-ultimo-refresh"></small>
+    </div>
+    <div class="row g-2" id="cameras-grid"></div>
 </div>
 
 <!-- Tabela -->
@@ -1034,12 +1104,98 @@
         setAlertPermE('', '');
     });
 
+    /* ── Câmeras RTSP ─────────────────────────────── */
+    const CAMERA_REFRESH_MS = 10000;
+    let _cameraTimer = null;
+    let _cameraIds = [];
+
+    function criarCardCamera(idcam) {
+        const col = document.createElement('div');
+        col.className = 'col-6 col-md-4 col-xl-3';
+        col.dataset.idcam = idcam;
+        col.innerHTML = `
+            <div class="camera-card">
+                <div class="camera-card-header">
+                    <span><i class="bi bi-camera-video me-1"></i>Câm. ${idcam}</span>
+                    <span class="spinner-border spinner-border-sm d-none" id="spin-cam-${idcam}" role="status"></span>
+                </div>
+                <img id="img-cam-${idcam}"
+                     class="camera-snapshot-img"
+                     src="/api/camera/snapshot/${idcam}?t=${Date.now()}"
+                     alt="Câmera ${idcam}">
+                <div id="err-cam-${idcam}" class="camera-snapshot-erro d-none">
+                    <i class="bi bi-exclamation-triangle fs-4"></i>
+                    <span>Sem sinal</span>
+                </div>
+            </div>`;
+        const img = col.querySelector(`#img-cam-${idcam}`);
+        const err = col.querySelector(`#err-cam-${idcam}`);
+        img.addEventListener('error', () => {
+            img.classList.add('d-none');
+            err.classList.remove('d-none');
+        });
+        img.addEventListener('load', () => {
+            img.classList.remove('d-none');
+            err.classList.add('d-none');
+        });
+        return col;
+    }
+
+    function refreshCameras() {
+        if (_cameraIds.length === 0) return;
+        _cameraIds.forEach(idcam => {
+            const spin = document.getElementById(`spin-cam-${idcam}`);
+            if (spin) spin.classList.remove('d-none');
+            const novaUrl = `/api/camera/snapshot/${idcam}?t=${Date.now()}`;
+            const tmp = new Image();
+            tmp.onload = () => {
+                const img = document.getElementById(`img-cam-${idcam}`);
+                const err = document.getElementById(`err-cam-${idcam}`);
+                if (img) {
+                    img.src = tmp.src;
+                    img.classList.remove('d-none');
+                }
+                if (err) err.classList.add('d-none');
+                if (spin) spin.classList.add('d-none');
+            };
+            tmp.onerror = () => {
+                const img = document.getElementById(`img-cam-${idcam}`);
+                const err = document.getElementById(`err-cam-${idcam}`);
+                if (img) img.classList.add('d-none');
+                if (err) err.classList.remove('d-none');
+                if (spin) spin.classList.add('d-none');
+            };
+            tmp.src = novaUrl;
+        });
+        document.getElementById('cameras-ultimo-refresh').textContent =
+            'Atualizado: ' + horaAtual();
+    }
+
+    function carregarCameras() {
+        fetch(`/api/operador/cameras/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success || !data.cameras || data.cameras.length === 0) return;
+                _cameraIds = data.cameras.map(c => c.idcam);
+                const grid   = document.getElementById('cameras-grid');
+                const painel = document.getElementById('painel-cameras');
+                grid.innerHTML = '';
+                _cameraIds.forEach(idcam => grid.appendChild(criarCardCamera(idcam)));
+                painel.classList.remove('d-none');
+                // iniciar refresh periódico
+                if (_cameraTimer) clearInterval(_cameraTimer);
+                _cameraTimer = setInterval(refreshCameras, CAMERA_REFRESH_MS);
+            })
+            .catch(() => {});
+    }
+
     /* ── Inicialização ────────────────────────────── */
     document.addEventListener('DOMContentLoaded', function () {
         dotConn.className = 'op-dot op-dot-neutro';
         txtConn.textContent = 'Conectando...';
         carregarNomeCond();
         carregarHistorico();
+        carregarCameras();
     });
 
 })();
