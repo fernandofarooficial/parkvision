@@ -2,6 +2,7 @@
 # DBLIB
 # --------------------
 
+import json
 import logging
 from flask import jsonify
 from datetime import datetime
@@ -18,7 +19,7 @@ def gravar_movimento(movdic):
     # Carregar variáveis importantes e criar dicionário de retorno
     inforec = carregar_leitura(movdic)
     # Gravar o log bruto
-    gravar_log_bruto(inforec)
+    gravar_log_bruto(inforec, movdic)
     # Carregar dados da câmera primeiro para obter idcond correto
     infocamera = carregar_dados_camera(inforec)
     if infocamera is None:
@@ -101,16 +102,17 @@ def carregar_leitura(movdic):
     return inforec
 
 
-def gravar_log_bruto(inforec):
+def gravar_log_bruto(inforec, movdic=None):
     # gravar o log bruto
     connection = get_db_connection()
     cursor = connection.cursor()
     #
+    jsonbruto = json.dumps(movdic, ensure_ascii=False, default=str) if movdic is not None else None
     consulta = '''
-        INSERT INTO logbruto (idlog,placalida,nowpost,nomecam,idcam)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO logbruto (idlog,placalida,nowpost,nomecam,idcam,jsonbruto)
+        VALUES (%s, %s, %s, %s, %s, %s)
         '''
-    valores = (inforec['log_id'], inforec['placalida'], inforec['momento'], inforec['nome_camera'], inforec['camera_id'])
+    valores = (inforec['log_id'], inforec['placalida'], inforec['momento'], inforec['nome_camera'], inforec['camera_id'], jsonbruto)
     cursor.execute(consulta, valores)
     connection.commit()
     #
