@@ -444,10 +444,6 @@ def placadastrada(cond, pplaca):
     placaretornada = cursor.fetchall()
     if placaretornada:
         resultadoconsulta = True
-    else:
-        query = 'INSERT INTO semcadastro (idcond, placa) VALUES (%s, %s)'
-        cursor.execute(query, (cond, pplaca))
-        connection.commit()
     #
     cursor.close()
     connection.close()
