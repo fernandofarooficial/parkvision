@@ -316,6 +316,7 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
         novo_contav = contav_map[acao]
         statusmov, tem_cadastro = _calcular_statusmov(cursor, rec, acao)
 
+        # Atualizar o movimento principal (pelo idmov — PK)
         cursor.execute(
             "UPDATE movcar SET contav = %s, idgente = %s, statusmov = %s WHERE idmov = %s",
             (novo_contav, idgente, statusmov, idmov)
@@ -335,6 +336,21 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
                    ON DUPLICATE KEY UPDATE lup = NOW()""",
                 (rec['idcond'], rec['placa'])
             )
+
+        # Fechar automaticamente duplicatas pendentes da mesma placa no mesmo condomínio:
+        # outros eventos com contav=0 e idgente=NULL para a mesma placa são ignorados,
+        # evitando que o operador precise tratá-los individualmente.
+        cursor.execute("""
+            UPDATE movcar
+               SET idgente   = %s,
+                   statusmov = 'Z'
+             WHERE placa     = %s
+               AND idcond    = %s
+               AND idmov    != %s
+               AND contav    = 0
+               AND idgente   IS NULL
+               AND nowpost  >= NOW() - INTERVAL 10 MINUTE
+        """, (idgente, rec['placa'], rec['idcond'], idmov))
 
         conn.commit()
 
