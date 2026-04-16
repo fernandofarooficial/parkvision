@@ -160,7 +160,7 @@ def api_operador_cameras(condominio_id):
         return jsonify({'success': False, 'message': 'Acesso negado'}), 403
     cameras = obter_cameras_rtsp(condominio_id)
     # Não expor a URL RTSP ao cliente — apenas o ID
-    cameras_safe = [{'idcam': c['idcam']} for c in cameras]
+    cameras_safe = [{'idcam': c['idcam'], 'nomecamera': c.get('nomecamera') or f'Câm. {c["idcam"]}'} for c in cameras]
     return jsonify({'success': True, 'cameras': cameras_safe})
 
 

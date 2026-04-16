@@ -373,7 +373,7 @@ def obter_cameras_rtsp(idcond):
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT idcam, rtsp
+            SELECT idcam, nomecamera, rtsp
             FROM cadcamera
             WHERE idcond = %s
               AND rtsp IS NOT NULL

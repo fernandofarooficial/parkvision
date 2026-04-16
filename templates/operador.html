@@ -1170,14 +1170,15 @@
         }
     }
 
-    function criarCardCamera(idcam) {
+    function criarCardCamera(idcam, nomecamera) {
+        const label = nomecamera || `Câm. ${idcam}`;
         const col = document.createElement('div');
         col.className = 'col-6 col-md-4 col-xl-3';
         col.dataset.idcam = idcam;
         col.innerHTML = `
             <div class="camera-card">
                 <div class="camera-card-header" id="hdr-cam-${idcam}">
-                    <span><i class="bi bi-camera-video me-1"></i>Câm. ${idcam}</span>
+                    <span><i class="bi bi-camera-video me-1"></i>${label}</span>
                     <div class="d-flex align-items-center gap-2">
                         <span class="spinner-border spinner-border-sm d-none"
                               id="spin-cam-${idcam}" role="status"></span>
@@ -1192,7 +1193,7 @@
                     <img id="img-cam-${idcam}"
                          class="camera-snapshot-img"
                          src="/api/camera/snapshot/${idcam}?t=${Date.now()}"
-                         alt="Câmera ${idcam}">
+                         alt="${label}">
                     <div id="err-cam-${idcam}" class="camera-snapshot-erro d-none">
                         <i class="bi bi-exclamation-triangle fs-4"></i>
                         <span>Sem sinal</span>
@@ -1256,7 +1257,7 @@
                 const grid   = document.getElementById('cameras-grid');
                 const painel = document.getElementById('painel-cameras');
                 grid.innerHTML = '';
-                _cameraIds.forEach(idcam => grid.appendChild(criarCardCamera(idcam)));
+                data.cameras.forEach(c => grid.appendChild(criarCardCamera(c.idcam, c.nomecamera)));
                 painel.classList.remove('d-none');
                 if (_cameraTimer) clearInterval(_cameraTimer);
                 _cameraTimer = setInterval(refreshCameras, CAMERA_REFRESH_MS);
