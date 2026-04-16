@@ -303,13 +303,13 @@
         <table class="table table-hover table-bordered" id="tabela-operador">
             <thead>
                 <tr>
+                    <th style="width:120px">Direção</th>
                     <th style="width:155px">Data / Hora</th>
                     <th style="width:130px">Placa Efetiva</th>
                     <th style="width:130px">Placa Lida</th>
-                    <th style="width:90px">Unidade</th>
-                    <th style="width:120px">Direção</th>
-                    <th style="width:160px">Permissão</th>
-                    <th style="width:130px">Vagas Disponíveis</th>
+                    <th style="width:80px" class="text-center">Cadastro</th>
+                    <th style="width:80px" class="text-center">Permissão</th>
+                    <th style="width:70px" class="text-center">Vagas</th>
                     <th class="col-acoes text-center">Ações</th>
                 </tr>
             </thead>
@@ -495,19 +495,17 @@
     const qtdeNovos      = document.getElementById('qtde-novos');
 
     /* ── Helpers de status ────────────────────────── */
-    function badgeStatus(status) {
-        switch (status) {
-            case 'INDEFINIDA':
-                return '<span class="badge bg-primary"><i class="bi bi-infinity me-1"></i>INDEFINIDA</span>';
-            case 'VIGENTE':
-                return '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>VIGENTE</span>';
-            case 'VENCIDA':
-                return '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>VENCIDA</span>';
-            case 'NÃO CADASTRADO':
-                return '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>NÃO CADASTRADO</span>';
-            default:
-                return '<span class="badge bg-secondary"><i class="bi bi-question-circle me-1"></i>SEM PERMISSÃO</span>';
-        }
+    function celCadastro(statusPermissao) {
+        return statusPermissao !== 'NÃO CADASTRADO'
+            ? '<span class="badge bg-success">OK</span>'
+            : '<span class="badge bg-danger">NOK</span>';
+    }
+
+    function celPermissao(statusPermissao) {
+        const ok = statusPermissao === 'INDEFINIDA' || statusPermissao === 'VIGENTE';
+        return ok
+            ? '<span class="badge bg-success">OK</span>'
+            : '<span class="badge bg-danger">NOK</span>';
     }
 
     function celDirecao(direcao) {
@@ -522,12 +520,10 @@
     }
 
     function celVagas(vagas) {
-        if (vagas === null || vagas === undefined) {
-            return '<span class="vagas-nd">—</span>';
-        }
-        const n = parseInt(vagas, 10);
-        if (n > 0) return `<span class="vagas-ok"><i class="bi bi-p-circle me-1"></i>${n} livre(s)</span>`;
-        return `<span class="vagas-zero"><i class="bi bi-x-circle me-1"></i>Sem vagas</span>`;
+        if (vagas === null || vagas === undefined) return '<span class="text-muted">—</span>';
+        return parseInt(vagas, 10) > 0
+            ? '<span class="badge bg-success">OK</span>'
+            : '<span class="badge bg-danger">NOK</span>';
     }
 
     function celPlacaLida(efetiva, lida) {
@@ -585,15 +581,13 @@
         tr.dataset.ts = ev.ts;
         if (ev.idmov) tr.dataset.idmov = ev.idmov;
 
-        const unidade = ev.unidade ? ev.unidade : '<span class="text-muted">—</span>';
-
         tr.innerHTML = `
+            <td>${celDirecao(ev.direcao)}</td>
             <td class="text-nowrap">${ev.momento || '—'}</td>
             <td><span class="placa-efetiva">${ev.placa}</span></td>
             <td>${celPlacaLida(ev.placa, ev.placalida)}</td>
-            <td class="text-center">${unidade}</td>
-            <td>${celDirecao(ev.direcao)}</td>
-            <td>${badgeStatus(ev.status_permissao)}</td>
+            <td class="text-center">${celCadastro(ev.status_permissao)}</td>
+            <td class="text-center">${celPermissao(ev.status_permissao)}</td>
             <td class="text-center">${celVagas(ev.vagas_disponiveis)}</td>
             <td class="text-center">${celAcoes(ev)}</td>
         `;
