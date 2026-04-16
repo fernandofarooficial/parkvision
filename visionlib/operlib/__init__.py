@@ -355,6 +355,97 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
         conn.close()
 
 
+# ── Correção de placa pelo Operador ──────────────────────────────────────────
+
+def corrigir_placa_operador(idmov, placa_corrigida, idcond):
+    """
+    Corrige a placa de um movimento diretamente pela tela Operador.
+
+    Diferente da correção da tela de não-cadastrados, esta função não exige
+    que a placa esteja em semcadastro — opera apenas sobre movcar e registra
+    o mapeamento em deparaplacas para futuras correções automáticas.
+
+    Parâmetros:
+        idmov (int):          PK do registro em movcar
+        placa_corrigida (str): Placa correta já cadastrada em cadveiculo
+        idcond (int):          ID do condomínio (segurança)
+
+    Retorna:
+        dict: {'success': bool, 'message': str}
+    """
+    placa_corrigida = placa_corrigida.strip().upper()
+
+    conn = get_db_connection()
+    if not conn:
+        return {'success': False, 'message': 'Sem conexão com o banco de dados'}
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # 1. Buscar o movimento e a placa atual
+        cursor.execute(
+            "SELECT idmov, placa, idcond FROM movcar WHERE idmov = %s AND idcond = %s LIMIT 1",
+            (idmov, idcond)
+        )
+        mov = cursor.fetchone()
+        if not mov:
+            return {'success': False, 'message': 'Movimento não encontrado'}
+
+        placa_atual = mov['placa']
+
+        if placa_atual == placa_corrigida:
+            return {'success': False, 'message': 'A placa corrigida deve ser diferente da atual'}
+
+        # 2. Verificar se a placa corrigida existe em cadveiculo
+        cursor.execute(
+            "SELECT placa FROM cadveiculo WHERE placa = %s LIMIT 1",
+            (placa_corrigida,)
+        )
+        if not cursor.fetchone():
+            return {'success': False, 'message': 'Placa corrigida não encontrada no cadastro de veículos'}
+
+        # 3. Atualizar movcar: todos os movimentos pendentes com a placa errada neste condomínio
+        cursor.execute("""
+            UPDATE movcar
+            SET placa = %s
+            WHERE placa = %s AND idcond = %s AND contav = 0 AND idgente IS NULL
+        """, (placa_corrigida, placa_atual, idcond))
+        movimentos_atualizados = cursor.rowcount
+
+        # Garantir que o movimento específico também seja atualizado (ex: já processado)
+        if movimentos_atualizados == 0:
+            cursor.execute(
+                "UPDATE movcar SET placa = %s WHERE idmov = %s",
+                (placa_corrigida, idmov)
+            )
+            movimentos_atualizados = cursor.rowcount
+
+        # 4. Registrar mapeamento em deparaplacas para futura correção automática
+        try:
+            cursor.execute("""
+                INSERT INTO deparaplacas (placade, placapara)
+                VALUES (%s, %s)
+                ON DUPLICATE KEY UPDATE placapara = VALUES(placapara)
+            """, (placa_atual, placa_corrigida))
+        except Exception:
+            pass  # tabela pode não existir; não bloqueia a operação
+
+        conn.commit()
+        return {
+            'success': True,
+            'message': f'Placa corrigida: {placa_atual} → {placa_corrigida} '
+                       f'({movimentos_atualizados} movimento(s) atualizado(s))'
+        }
+
+    except Exception as e:
+        logger.error(f"corrigir_placa_operador: erro — {e}")
+        conn.rollback()
+        return {'success': False, 'message': 'Erro interno ao corrigir placa'}
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
 # ── Câmeras RTSP ──────────────────────────────────────────────────────────────
 
 def obter_cameras_rtsp(idcond):

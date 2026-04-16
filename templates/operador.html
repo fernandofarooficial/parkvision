@@ -823,10 +823,10 @@
         loading.classList.remove('d-none');
         this.disabled = true;
 
-        fetch('/api/corrigir-placa-veiculo', {
+        fetch('/api/operador/corrigir-placa', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ placa_atual: placaAtual, placa_corrigida: placaCorrigida, idcond: condId })
+            body: JSON.stringify({ idmov: _corrigirIdmov, placa_corrigida: placaCorrigida, idcond: condId })
         })
         .then(r => r.json())
         .then(data => {
@@ -969,9 +969,16 @@
                 enviarAcao(idmov, 'confirmar', null, null);
                 return;
             }
-            // Status C: nada OK → confirma sem cadastro (backend grava semcadastro)
-            if (!cad && !perm && !vag) {
-                enviarAcao(idmov, 'confirmar', null, null);
+            // Status C: veículo não cadastrado → exige justificativa antes de confirmar
+            if (!cad) {
+                abrirModalMotivo(
+                    'Veículo não cadastrado. Informe o motivo para liberar a entrada.',
+                    'Atenção: este veículo não possui cadastro no sistema.',
+                    (texto) => {
+                        if (!texto) { alert('O motivo é obrigatório para veículo não cadastrado.'); return; }
+                        enviarAcao(idmov, 'confirmar', texto, null);
+                    }
+                );
                 return;
             }
             // Status E: cadastro OK, sem permissão → abre modal para criar permissão inline

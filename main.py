@@ -35,7 +35,8 @@ from visionlib.userlib import (api_listar_usuarios, api_criar_usuario, api_atual
                               api_gerenciar_condominios_usuario)
 from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, processar_apontamento
 from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
-                               obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp)
+                               obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
+                               corrigir_placa_operador)
 
 app = Flask(__name__)
 
@@ -150,6 +151,23 @@ def api_operador_eventos(condominio_id):
     desde_ts = request.args.get('desde_ts', None)
     eventos = obter_eventos_recentes(condominio_id, desde_ts)
     return jsonify({'success': True, 'eventos': eventos})
+
+
+# API: correção de placa pelo operador
+@app.route('/api/operador/corrigir-placa', methods=['POST'])
+def api_operador_corrigir_placa():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+    data = request.get_json() or {}
+    idmov          = data.get('idmov')
+    placa_corrigida = data.get('placa_corrigida', '').strip().upper()
+    idcond         = data.get('idcond')
+    if not idmov or not placa_corrigida or not idcond:
+        return jsonify({'success': False, 'message': 'Parâmetros obrigatórios ausentes'}), 400
+    resultado = corrigir_placa_operador(int(idmov), placa_corrigida, int(idcond))
+    status_http = 200 if resultado['success'] else 422
+    return jsonify(resultado), status_http
 
 
 # API: câmeras com RTSP para a tela operador
