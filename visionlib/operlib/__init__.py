@@ -257,12 +257,64 @@ def _enviar_pulso_dispositivo(idcam, idcond):
         logger.error(f"_enviar_pulso_dispositivo: falha ao enviar pulso → {url} — {e}")
 
 
-def enviar_pulso_manual(idcam, idcond):
-    """Envia pulso ao dispositivo da câmera por ação manual do operador."""
-    if not _camera_tem_dispositivo(idcam):
-        return {'success': False, 'message': 'Câmera sem dispositivo configurado'}
-    _enviar_pulso_dispositivo(idcam, idcond)
-    return {'success': True, 'message': 'Pulso enviado'}
+def obter_cameras_dispositivo_por_direcao(idcond):
+    """
+    Retorna quais direções ('E', 'S') têm ao menos uma câmera com dispositivo configurado.
+
+    Retorna:
+        dict: {'E': bool, 'S': bool}
+    """
+    conn = get_db_connection()
+    if not conn:
+        return {'E': False, 'S': False}
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT DISTINCT cc.direcao
+            FROM cadcamera cc
+            JOIN caddisp cd ON cd.iddisp = cc.iddisp
+            WHERE cc.idcond = %s AND cc.iddisp IS NOT NULL
+        """, (idcond,))
+        direcoes = {row['direcao'] for row in cursor.fetchall()}
+        return {'E': 'E' in direcoes, 'S': 'S' in direcoes}
+    except Exception:
+        return {'E': False, 'S': False}
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def enviar_pulso_por_direcao(idcond, direcao):
+    """
+    Envia pulso manual a todas as câmeras com dispositivo da direção indicada.
+
+    Parâmetros:
+        idcond   (int): ID do condomínio
+        direcao  (str): 'E' (entrada) ou 'S' (saída)
+    """
+    conn = get_db_connection()
+    if not conn:
+        return {'success': False, 'message': 'Sem conexão com o banco'}
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT cc.idcam
+            FROM cadcamera cc
+            JOIN caddisp cd ON cd.iddisp = cc.iddisp
+            WHERE cc.idcond = %s AND cc.direcao = %s AND cc.iddisp IS NOT NULL
+        """, (idcond, direcao))
+        cameras = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+    if not cameras:
+        return {'success': False, 'message': 'Nenhuma câmera com dispositivo para esta direção'}
+
+    for cam in cameras:
+        _enviar_pulso_dispositivo(cam['idcam'], idcond)
+
+    return {'success': True, 'message': f'Pulso enviado ({len(cameras)} câmera(s))'}
 
 
 def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):

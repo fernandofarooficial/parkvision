@@ -36,7 +36,8 @@ from visionlib.userlib import (api_listar_usuarios, api_criar_usuario, api_atual
 from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, processar_apontamento
 from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
-                               corrigir_placa_operador, enviar_pulso_manual)
+                               corrigir_placa_operador, enviar_pulso_por_direcao,
+                               obter_cameras_dispositivo_por_direcao)
 
 app = Flask(__name__)
 
@@ -182,6 +183,16 @@ def api_operador_cameras(condominio_id):
     return jsonify({'success': True, 'cameras': cameras_safe})
 
 
+# API: disponibilidade de dispositivos por direção
+@app.route('/api/operador/dispositivos/<int:condominio_id>')
+def api_operador_dispositivos(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    direcoes = obter_cameras_dispositivo_por_direcao(condominio_id)
+    return jsonify({'success': True, 'direcoes': direcoes})
+
+
 # API: pulso manual de porta pelo operador
 @app.route('/api/operador/abrir-porta', methods=['POST'])
 def api_operador_abrir_porta():
@@ -189,11 +200,11 @@ def api_operador_abrir_porta():
     if not autenticado:
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
     data = request.get_json() or {}
-    idcam  = data.get('idcam')
-    idcond = data.get('idcond')
-    if not idcam or not idcond:
+    idcond  = data.get('idcond')
+    direcao = data.get('direcao')  # 'E' ou 'S'
+    if not idcond or direcao not in ('E', 'S'):
         return jsonify({'success': False, 'message': 'Parâmetros obrigatórios ausentes'}), 400
-    resultado = enviar_pulso_manual(int(idcam), int(idcond))
+    resultado = enviar_pulso_por_direcao(int(idcond), direcao)
     status_http = 200 if resultado['success'] else 422
     return jsonify(resultado), status_http
 

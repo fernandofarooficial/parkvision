@@ -242,7 +242,8 @@
     }
 
     .col-acoes {
-        width: 270px;
+        width: 145px;
+        white-space: nowrap;
     }
 </style>
 {% endblock %}
@@ -265,6 +266,14 @@
         <a id="btn-mapa" href="#" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-grid me-1"></i>Mapa de Vagas
         </a>
+        <button id="btn-abre-entrada" class="btn btn-sm btn-outline-primary" disabled
+                title="Nenhuma câmera de entrada com dispositivo configurado">
+            <i class="bi bi-door-open me-1"></i>Abre Entrada
+        </button>
+        <button id="btn-abre-saida" class="btn btn-sm btn-outline-warning" disabled
+                title="Nenhuma câmera de saída com dispositivo configurado">
+            <i class="bi bi-door-open me-1"></i>Abre Saída
+        </button>
     </div>
 </div>
 
@@ -551,22 +560,6 @@
         return { cad, perm, vag };
     }
 
-    /* ── Botões de abrir porta ────────────────────── */
-    function celBotoesPorta(ev) {
-        const temDisp = ev.tem_dispositivo === true || ev.tem_dispositivo === 1;
-        const idcam   = ev.idcam || '';
-        const dis     = temDisp ? '' : 'disabled title="Câmera sem dispositivo configurado"';
-        return `
-            <button class="btn btn-sm btn-outline-primary btn-op-porta ${temDisp ? '' : 'disabled'}"
-                    data-tipo="entrada" data-idcam="${idcam}" ${dis}>
-                Abre Entrada
-            </button>
-            <button class="btn btn-sm btn-outline-warning btn-op-porta ${temDisp ? '' : 'disabled'}"
-                    data-tipo="saida" data-idcam="${idcam}" ${dis}>
-                Abre Saída
-            </button>`;
-    }
-
     /* ── Célula de botões de ação ─────────────────── */
     function celAcoes(ev) {
         if (!ev.idmov) return '<span class="text-muted small">—</span>';
@@ -576,7 +569,7 @@
             const d = JSON.stringify({ idmov: ev.idmov, cad, placa: ev.placa, direcao: 'S' })
                           .replace(/"/g, '&quot;');
             return `
-                <div class="d-flex gap-1 justify-content-center flex-wrap">
+                <div class="d-flex gap-1 justify-content-center">
                     <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
                             title="Ignorar" data-ev="${d}">
                         <i class="bi bi-eye-slash"></i>
@@ -589,7 +582,6 @@
                             title="Confirmar saída" data-ev="${d}">
                         <i class="bi bi-check-lg"></i>
                     </button>
-                    ${celBotoesPorta(ev)}
                 </div>`;
         }
 
@@ -597,7 +589,7 @@
         const d = JSON.stringify({ idmov: ev.idmov, cad, perm, vag, placa: ev.placa, unidade: ev.unidade || '', direcao: 'E' })
                       .replace(/"/g, '&quot;');
         return `
-            <div class="d-flex gap-1 justify-content-center flex-wrap">
+            <div class="d-flex gap-1 justify-content-center">
                 <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
                         title="Ignorar" data-ev="${d}">
                     <i class="bi bi-eye-slash"></i>
@@ -614,7 +606,6 @@
                         title="Confirmar" data-ev="${d}">
                     <i class="bi bi-check-lg"></i>
                 </button>
-                ${celBotoesPorta(ev)}
             </div>`;
     }
 
@@ -777,6 +768,27 @@
 
         document.getElementById('btn-veiculos').href = `/veiculos/${condId}`;
         document.getElementById('btn-mapa').href    = `/mapa-vagas/${condId}`;
+    }
+
+    /* ── Verificar dispositivos e habilitar botões de porta ── */
+    function verificarDispositivos() {
+        fetch(`/api/operador/dispositivos/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) return;
+                const d = data.direcoes;
+                const btnE = document.getElementById('btn-abre-entrada');
+                const btnS = document.getElementById('btn-abre-saida');
+                if (d.E) {
+                    btnE.disabled = false;
+                    btnE.title = 'Enviar pulso de abertura de entrada';
+                }
+                if (d.S) {
+                    btnS.disabled = false;
+                    btnS.title = 'Enviar pulso de abertura de saída';
+                }
+            })
+            .catch(() => {});
     }
 
     /* ── Modal Corrigir Placa ─────────────────────── */
@@ -995,31 +1007,31 @@
         }, 10000);
     }
 
-    /* ── Handler botões Abre Porta ───────────────── */
-    tbody.addEventListener('click', function (e) {
-        const btnPorta = e.target.closest('.btn-op-porta');
-        if (btnPorta && !btnPorta.disabled) {
-            const idcam = parseInt(btnPorta.dataset.idcam, 10);
-            const tipo  = btnPorta.dataset.tipo;
-            btnPorta.disabled = true;
-            fetch('/api/operador/abrir-porta', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idcam, idcond: condId })
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    mostrarAvisoPorta(tipo);
-                } else {
-                    alert('Erro ao enviar pulso: ' + (data.message || 'Falha desconhecida'));
-                }
-            })
-            .catch(() => alert('Falha de conexão ao enviar pulso.'))
-            .finally(() => { btnPorta.disabled = false; });
-            return;
-        }
-    });
+    /* ── Handler botões Abre Porta (cabeçalho) ───── */
+    function configurarBotoesPorta() {
+        ['btn-abre-entrada', 'btn-abre-saida'].forEach(id => {
+            document.getElementById(id)?.addEventListener('click', function () {
+                const direcao = id === 'btn-abre-entrada' ? 'E' : 'S';
+                const tipo    = id === 'btn-abre-entrada' ? 'entrada' : 'saida';
+                this.disabled = true;
+                fetch('/api/operador/abrir-porta', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idcond: condId, direcao })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        mostrarAvisoPorta(tipo);
+                    } else {
+                        alert('Erro ao enviar pulso: ' + (data.message || 'Falha desconhecida'));
+                    }
+                })
+                .catch(() => alert('Falha de conexão ao enviar pulso.'))
+                .finally(() => { this.disabled = false; });
+            });
+        });
+    }
 
     /* ── Handlers dos botões de ação ─────────────── */
     tbody.addEventListener('click', function (e) {
@@ -1399,6 +1411,8 @@
         carregarNomeCond();
         carregarHistorico();
         carregarCameras();
+        verificarDispositivos();
+        configurarBotoesPorta();
     });
 
 })();
