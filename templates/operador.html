@@ -497,6 +497,30 @@
                                id="cad-c-placa" maxlength="8" placeholder="Placa do veículo">
                         <div class="form-text">Pré-preenchida com a placa lida. Corrija se necessário.</div>
                     </div>
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Marca <span class="text-danger">*</span></label>
+                                <select class="form-select" id="cad-c-marca" required>
+                                    <option value="">Carregando...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Modelo <span class="text-danger">*</span></label>
+                                <select class="form-select" id="cad-c-modelo" required disabled>
+                                    <option value="">Selecione a marca</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Cor <span class="text-danger">*</span></label>
+                        <select class="form-select" id="cad-c-cor" required>
+                            <option value="">Carregando...</option>
+                        </select>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">Unidade <span class="text-danger">*</span></label>
                         <select class="form-select" id="cad-c-unidade" required>
@@ -1378,12 +1402,84 @@
             });
     }
 
+    function carregarMarcasCadC() {
+        fetch('/api/marcas')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('cad-c-marca');
+                sel.innerHTML = '<option value="">Selecione a marca</option>';
+                if (data.success && Array.isArray(data.data)) {
+                    data.data.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.marca;
+                        opt.textContent = m.marca;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(() => {
+                document.getElementById('cad-c-marca').innerHTML =
+                    '<option value="">Erro ao carregar marcas</option>';
+            });
+    }
+
+    function carregarCoresCadC() {
+        fetch('/api/cores')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('cad-c-cor');
+                sel.innerHTML = '<option value="">Selecione a cor</option>';
+                if (data.success && Array.isArray(data.data)) {
+                    data.data.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.idcor;
+                        opt.textContent = c.nmcor;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(() => {
+                document.getElementById('cad-c-cor').innerHTML =
+                    '<option value="">Erro ao carregar cores</option>';
+            });
+    }
+
+    document.getElementById('cad-c-marca')?.addEventListener('change', function () {
+        const marca = this.value;
+        const selModelo = document.getElementById('cad-c-modelo');
+        selModelo.innerHTML = '<option value="">Carregando modelos...</option>';
+        selModelo.disabled = true;
+        if (!marca) {
+            selModelo.innerHTML = '<option value="">Selecione a marca</option>';
+            return;
+        }
+        fetch(`/api/modelos/${encodeURIComponent(marca)}`)
+            .then(r => r.json())
+            .then(data => {
+                selModelo.innerHTML = '<option value="">Selecione o modelo</option>';
+                if (data.success && Array.isArray(data.data)) {
+                    data.data.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.modelo;
+                        opt.textContent = m.modelo;
+                        selModelo.appendChild(opt);
+                    });
+                }
+                selModelo.disabled = false;
+            })
+            .catch(() => {
+                selModelo.innerHTML = '<option value="">Erro ao carregar modelos</option>';
+            });
+    });
+
     function abrirModalCadC(ev) {
         _cadCState  = { idmov: ev.idmov, placa: ev.placa };
         _cadCCriada = false;
 
         document.getElementById('cad-c-placa-orig').textContent = ev.placa;
         document.getElementById('cad-c-placa').value            = ev.placa;
+        document.getElementById('cad-c-modelo').innerHTML       = '<option value="">Selecione a marca</option>';
+        document.getElementById('cad-c-modelo').disabled        = true;
 
         const hoje = new Date().toISOString().split('T')[0];
         document.getElementById('cad-c-data-inicio').value    = hoje;
@@ -1395,6 +1491,8 @@
         document.getElementById('btn-cad-c-salvar').disabled   = false;
         setAlertCadC('', '');
 
+        carregarMarcasCadC();
+        carregarCoresCadC();
         carregarUnidadesCadC();
         modalCadC.show();
     }
@@ -1409,6 +1507,9 @@
 
     document.getElementById('btn-cad-c-salvar')?.addEventListener('click', async function () {
         const placaNova  = document.getElementById('cad-c-placa').value.trim().toUpperCase();
+        const marca      = document.getElementById('cad-c-marca').value.trim();
+        const modelo     = document.getElementById('cad-c-modelo').value.trim();
+        const idcor      = document.getElementById('cad-c-cor').value;
         const unidade    = document.getElementById('cad-c-unidade').value.trim();
         const dataInicio = document.getElementById('cad-c-data-inicio').value;
         const horaInicio = document.getElementById('cad-c-hora-inicio').value || '08:00';
@@ -1417,8 +1518,11 @@
         const horaFim    = indet ? null : (document.getElementById('cad-c-hora-fim').value || '23:59');
 
         if (!placaNova || placaNova.length < 7) { setAlertCadC('Informe uma placa válida (mínimo 7 caracteres).', 'danger'); return; }
-        if (!unidade)                            { setAlertCadC('Selecione a unidade.', 'danger');      return; }
-        if (!dataInicio)                         { setAlertCadC('Informe a data de início.', 'danger'); return; }
+        if (!marca)                              { setAlertCadC('Selecione a marca.', 'danger');           return; }
+        if (!modelo)                             { setAlertCadC('Selecione o modelo.', 'danger');          return; }
+        if (!idcor)                              { setAlertCadC('Selecione a cor.', 'danger');             return; }
+        if (!unidade)                            { setAlertCadC('Selecione a unidade.', 'danger');         return; }
+        if (!dataInicio)                         { setAlertCadC('Informe a data de início.', 'danger');    return; }
 
         const spinner = document.getElementById('cad-c-spinner');
         spinner.classList.remove('d-none');
@@ -1430,7 +1534,7 @@
             const r1 = await fetch('/api/cadveiculo', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ placa: placaNova })
+                body: JSON.stringify({ placa: placaNova, marca, modelo, idcor })
             });
             const d1 = await r1.json();
             if (!d1.success) {
