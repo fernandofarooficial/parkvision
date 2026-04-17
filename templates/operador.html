@@ -466,6 +466,11 @@
     </div>
 </div>
 
+<!-- Container de avisos de porta -->
+<div id="porta-toast-container"
+     style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;min-width:260px;">
+</div>
+
 {% endblock %}
 
 
@@ -547,6 +552,22 @@
         return { cad, perm, vag };
     }
 
+    /* ── Botões de abrir porta ────────────────────── */
+    function celBotoesPorta(ev) {
+        const temDisp = ev.tem_dispositivo === true || ev.tem_dispositivo === 1;
+        const idcam   = ev.idcam || '';
+        const dis     = temDisp ? '' : 'disabled title="Câmera sem dispositivo configurado"';
+        return `
+            <button class="btn btn-sm btn-outline-primary btn-op-porta ${temDisp ? '' : 'disabled'}"
+                    data-tipo="entrada" data-idcam="${idcam}" ${dis}>
+                Abre Entrada
+            </button>
+            <button class="btn btn-sm btn-outline-warning btn-op-porta ${temDisp ? '' : 'disabled'}"
+                    data-tipo="saida" data-idcam="${idcam}" ${dis}>
+                Abre Saída
+            </button>`;
+    }
+
     /* ── Célula de botões de ação ─────────────────── */
     function celAcoes(ev) {
         if (!ev.idmov) return '<span class="text-muted small">—</span>';
@@ -556,7 +577,7 @@
             const d = JSON.stringify({ idmov: ev.idmov, cad, placa: ev.placa, direcao: 'S' })
                           .replace(/"/g, '&quot;');
             return `
-                <div class="d-flex gap-1 justify-content-center">
+                <div class="d-flex gap-1 justify-content-center flex-wrap">
                     <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
                             title="Ignorar" data-ev="${d}">
                         <i class="bi bi-eye-slash"></i>
@@ -569,6 +590,7 @@
                             title="Confirmar saída" data-ev="${d}">
                         <i class="bi bi-check-lg"></i>
                     </button>
+                    ${celBotoesPorta(ev)}
                 </div>`;
         }
 
@@ -576,7 +598,7 @@
         const d = JSON.stringify({ idmov: ev.idmov, cad, perm, vag, placa: ev.placa, unidade: ev.unidade || '', direcao: 'E' })
                       .replace(/"/g, '&quot;');
         return `
-            <div class="d-flex gap-1 justify-content-center">
+            <div class="d-flex gap-1 justify-content-center flex-wrap">
                 <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
                         title="Ignorar" data-ev="${d}">
                     <i class="bi bi-eye-slash"></i>
@@ -593,6 +615,7 @@
                         title="Confirmar" data-ev="${d}">
                     <i class="bi bi-check-lg"></i>
                 </button>
+                ${celBotoesPorta(ev)}
             </div>`;
     }
 
@@ -945,6 +968,58 @@
         const texto = document.getElementById('modal-motivo-texto').value.trim();
         if (_modalMotivoCb) _modalMotivoCb(texto);
         modalMotivo.hide();
+    });
+
+    /* ── Aviso temporário de porta ───────────────── */
+    function mostrarAvisoPorta(tipo) {
+        const container = document.getElementById('porta-toast-container');
+        const label = tipo === 'entrada' ? 'Entrada' : 'Saída';
+        const cor   = tipo === 'entrada' ? '#0d6efd' : '#fd7e14';
+        const toast = document.createElement('div');
+        toast.style.cssText = `background:${cor};color:#fff;padding:.75rem 1.1rem;border-radius:.5rem;
+            box-shadow:0 2px 8px rgba(0,0,0,.25);font-weight:500;display:flex;align-items:center;gap:.6rem;`;
+        toast.innerHTML = `<i class="bi bi-door-open-fill"></i> Pulso de ${label} enviado ao dispositivo`;
+
+        const bar = document.createElement('div');
+        bar.style.cssText = `position:absolute;bottom:0;left:0;height:3px;background:rgba(255,255,255,.5);
+            width:100%;border-radius:0 0 .5rem .5rem;transition:width 10s linear;`;
+        toast.style.position = 'relative';
+        toast.appendChild(bar);
+        container.appendChild(toast);
+
+        requestAnimationFrame(() => { bar.style.width = '0%'; });
+
+        setTimeout(() => {
+            toast.style.transition = 'opacity .4s';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 400);
+        }, 10000);
+    }
+
+    /* ── Handler botões Abre Porta ───────────────── */
+    tbody.addEventListener('click', function (e) {
+        const btnPorta = e.target.closest('.btn-op-porta');
+        if (btnPorta && !btnPorta.disabled) {
+            const idcam = parseInt(btnPorta.dataset.idcam, 10);
+            const tipo  = btnPorta.dataset.tipo;
+            btnPorta.disabled = true;
+            fetch('/api/operador/abrir-porta', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idcam, idcond: condId })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarAvisoPorta(tipo);
+                } else {
+                    alert('Erro ao enviar pulso: ' + (data.message || 'Falha desconhecida'));
+                }
+            })
+            .catch(() => alert('Falha de conexão ao enviar pulso.'))
+            .finally(() => { btnPorta.disabled = false; });
+            return;
+        }
     });
 
     /* ── Handlers dos botões de ação ─────────────── */

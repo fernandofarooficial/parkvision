@@ -44,6 +44,7 @@ def adicionar_evento(inforec):
         vocup = inforec.get('qtde_estacionada') or 0
         vagas_disp = max(0, vperm - vocup)
 
+    idcam = inforec.get('camera_id')
     evento = {
         'idmov':            inforec.get('idmov'),
         'idlog':            inforec.get('log_id'),
@@ -55,6 +56,8 @@ def adicionar_evento(inforec):
         'unidade':          inforec.get('unidade', ''),
         'direcao':          inforec.get('direcao', ''),
         'ts':               time.time(),
+        'idcam':            idcam,
+        'tem_dispositivo':  _camera_tem_dispositivo(idcam),
     }
 
     with _event_lock:
@@ -122,6 +125,7 @@ def obter_historico_db(idcond, limit=50):
                 m.placalida,
                 m.instante AS momento,
                 m.direcao,
+                m.idcam,
                 CASE
                     WHEN cv.placa IS NULL THEN 'NÃO CADASTRADO'
                     ELSE COALESCE(
@@ -143,9 +147,11 @@ def obter_historico_db(idcond, limit=50):
                      LIMIT 1),
                     ''
                 ) AS unidade,
-                UNIX_TIMESTAMP(m.nowpost) AS ts
+                UNIX_TIMESTAMP(m.nowpost) AS ts,
+                CASE WHEN cc.iddisp IS NOT NULL THEN 1 ELSE 0 END AS tem_dispositivo
             FROM movcar m
             LEFT JOIN cadveiculo cv ON cv.placa = m.placa
+            LEFT JOIN cadcamera cc ON cc.idcam = m.idcam
             WHERE m.idcond = %s
               AND m.placa != '*ERROR*'
               AND m.contav = 0
@@ -157,9 +163,10 @@ def obter_historico_db(idcond, limit=50):
 
         rows = cursor.fetchall()
         for row in rows:
-            row['vagas_disponiveis'] = None          # Histórico não tem vagas snapshot
+            row['vagas_disponiveis'] = None
             if row['ts'] is not None:
                 row['ts'] = float(row['ts'])
+            row['tem_dispositivo'] = bool(row.get('tem_dispositivo'))
         return rows
 
     except Exception as e:
@@ -172,6 +179,26 @@ def obter_historico_db(idcond, limit=50):
 
 
 TEMPO_PULSO_MS = 500   # duração do pulso em milissegundos
+
+
+def _camera_tem_dispositivo(idcam):
+    if not idcam:
+        return False
+    conn = get_db_connection()
+    if not conn:
+        return False
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT 1 FROM cadcamera WHERE idcam = %s AND iddisp IS NOT NULL LIMIT 1",
+            (idcam,)
+        )
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def _enviar_pulso_dispositivo(idcam, idcond):
@@ -228,6 +255,14 @@ def _enviar_pulso_dispositivo(idcam, idcond):
         )
     except requests.exceptions.RequestException as e:
         logger.error(f"_enviar_pulso_dispositivo: falha ao enviar pulso → {url} — {e}")
+
+
+def enviar_pulso_manual(idcam, idcond):
+    """Envia pulso ao dispositivo da câmera por ação manual do operador."""
+    if not _camera_tem_dispositivo(idcam):
+        return {'success': False, 'message': 'Câmera sem dispositivo configurado'}
+    _enviar_pulso_dispositivo(idcam, idcond)
+    return {'success': True, 'message': 'Pulso enviado'}
 
 
 def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):

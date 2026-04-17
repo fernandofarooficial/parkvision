@@ -36,7 +36,7 @@ from visionlib.userlib import (api_listar_usuarios, api_criar_usuario, api_atual
 from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, processar_apontamento
 from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
-                               corrigir_placa_operador)
+                               corrigir_placa_operador, enviar_pulso_manual)
 
 app = Flask(__name__)
 
@@ -180,6 +180,22 @@ def api_operador_cameras(condominio_id):
     # Não expor a URL RTSP ao cliente — apenas o ID
     cameras_safe = [{'idcam': c['idcam'], 'nomecamera': c.get('nomecamera') or f'Câm. {c["idcam"]}'} for c in cameras]
     return jsonify({'success': True, 'cameras': cameras_safe})
+
+
+# API: pulso manual de porta pelo operador
+@app.route('/api/operador/abrir-porta', methods=['POST'])
+def api_operador_abrir_porta():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+    data = request.get_json() or {}
+    idcam  = data.get('idcam')
+    idcond = data.get('idcond')
+    if not idcam or not idcond:
+        return jsonify({'success': False, 'message': 'Parâmetros obrigatórios ausentes'}), 400
+    resultado = enviar_pulso_manual(int(idcam), int(idcond))
+    status_http = 200 if resultado['success'] else 422
+    return jsonify(resultado), status_http
 
 
 # API: snapshot JPEG de câmera via RTSP
