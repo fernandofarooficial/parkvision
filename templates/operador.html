@@ -474,6 +474,88 @@
     </div>
 </div>
 
+<!-- Modal: cadastrar veículo + permissão inline (situação C) -->
+<div class="modal fade" id="modalCadC" tabindex="-1" aria-labelledby="modalCadCLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="modalCadCLabel">
+                    <i class="bi bi-person-plus me-2"></i>Cadastrar Veículo —
+                    <span id="cad-c-placa-orig" class="fw-bold font-monospace"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning small mb-3">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    Veículo não cadastrado. Cadastre a placa e crie a permissão para liberar a entrada.
+                </div>
+                <form id="form-cad-c" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label">Placa <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control text-uppercase font-monospace fw-bold"
+                               id="cad-c-placa" maxlength="8" placeholder="Placa do veículo">
+                        <div class="form-text">Pré-preenchida com a placa lida. Corrija se necessário.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Unidade <span class="text-danger">*</span></label>
+                        <select class="form-select" id="cad-c-unidade" required>
+                            <option value="">Carregando unidades...</option>
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Data Início <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control" id="cad-c-data-inicio" required>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Hora Início <span class="text-danger">*</span></label>
+                                <input type="time" class="form-control" id="cad-c-hora-inicio" value="08:00" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row" id="cad-c-row-fim">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Data Fim</label>
+                                <input type="date" class="form-control" id="cad-c-data-fim">
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label">Hora Fim</label>
+                                <input type="time" class="form-control" id="cad-c-hora-fim" value="23:59">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="cad-c-indeterminado">
+                        <label class="form-check-label" for="cad-c-indeterminado">
+                            Tempo Indeterminado (sem data de fim)
+                        </label>
+                    </div>
+                    <div id="cad-c-alert"></div>
+                </form>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-cad-c-sem-cadastrar">
+                    <i class="bi bi-pencil me-1"></i>Confirmar sem cadastrar
+                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-warning" id="btn-cad-c-salvar">
+                        <span class="spinner-border spinner-border-sm d-none me-1" id="cad-c-spinner"></span>
+                        <i class="bi bi-person-check me-1"></i>Cadastrar e Confirmar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Container de avisos de porta -->
 <div id="porta-toast-container"
      style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;min-width:260px;">
@@ -1101,16 +1183,9 @@
                 enviarAcao(idmov, 'confirmar', null, null);
                 return;
             }
-            // Status C: veículo não cadastrado → exige justificativa
+            // Status C: veículo não cadastrado → oferecer cadastro ou motivo
             if (!cad) {
-                abrirModalMotivo(
-                    'Veículo não cadastrado. Informe o motivo para liberar a entrada.',
-                    'Atenção: este veículo não possui cadastro no sistema.',
-                    (texto) => {
-                        if (!texto) { alert('O motivo é obrigatório para veículo não cadastrado.'); return; }
-                        enviarAcao(idmov, 'confirmar', texto, null);
-                    }
-                );
+                abrirModalCadC({ idmov, placa });
                 return;
             }
             // Status E: cadastro OK, sem permissão → modal criar permissão
@@ -1268,6 +1343,173 @@
         }
         document.getElementById('btn-perm-e-salvar').disabled = false;
         setAlertPermE('', '');
+    });
+
+    /* ── Modal: cadastrar veículo + permissão inline (situação C) ── */
+    let _cadCState  = null;   // { idmov, placa }
+    let _cadCCriada = false;
+    const modalCadCEl = document.getElementById('modalCadC');
+    const modalCadC   = modalCadCEl ? new bootstrap.Modal(modalCadCEl) : null;
+
+    function setAlertCadC(msg, tipo) {
+        document.getElementById('cad-c-alert').innerHTML = msg
+            ? `<div class="alert alert-${tipo} small p-2 mb-0">${msg}</div>`
+            : '';
+    }
+
+    function carregarUnidadesCadC() {
+        fetch(`/api/unidades-condominio/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('cad-c-unidade');
+                sel.innerHTML = '<option value="">Selecione a unidade...</option>';
+                if (data.success && Array.isArray(data.data)) {
+                    data.data.forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = u;
+                        opt.textContent = u;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(() => {
+                document.getElementById('cad-c-unidade').innerHTML =
+                    '<option value="">Erro ao carregar unidades</option>';
+            });
+    }
+
+    function abrirModalCadC(ev) {
+        _cadCState  = { idmov: ev.idmov, placa: ev.placa };
+        _cadCCriada = false;
+
+        document.getElementById('cad-c-placa-orig').textContent = ev.placa;
+        document.getElementById('cad-c-placa').value            = ev.placa;
+
+        const hoje = new Date().toISOString().split('T')[0];
+        document.getElementById('cad-c-data-inicio').value    = hoje;
+        document.getElementById('cad-c-hora-inicio').value    = '08:00';
+        document.getElementById('cad-c-data-fim').value       = '';
+        document.getElementById('cad-c-hora-fim').value       = '23:59';
+        document.getElementById('cad-c-indeterminado').checked = false;
+        document.getElementById('cad-c-row-fim').style.display = '';
+        document.getElementById('btn-cad-c-salvar').disabled   = false;
+        setAlertCadC('', '');
+
+        carregarUnidadesCadC();
+        modalCadC.show();
+    }
+
+    document.getElementById('cad-c-placa')?.addEventListener('input', function () {
+        this.value = this.value.toUpperCase();
+    });
+
+    document.getElementById('cad-c-indeterminado')?.addEventListener('change', function () {
+        document.getElementById('cad-c-row-fim').style.display = this.checked ? 'none' : '';
+    });
+
+    document.getElementById('btn-cad-c-salvar')?.addEventListener('click', async function () {
+        const placaNova  = document.getElementById('cad-c-placa').value.trim().toUpperCase();
+        const unidade    = document.getElementById('cad-c-unidade').value.trim();
+        const dataInicio = document.getElementById('cad-c-data-inicio').value;
+        const horaInicio = document.getElementById('cad-c-hora-inicio').value || '08:00';
+        const indet      = document.getElementById('cad-c-indeterminado').checked;
+        const dataFim    = indet ? null : (document.getElementById('cad-c-data-fim').value || null);
+        const horaFim    = indet ? null : (document.getElementById('cad-c-hora-fim').value || '23:59');
+
+        if (!placaNova || placaNova.length < 7) { setAlertCadC('Informe uma placa válida (mínimo 7 caracteres).', 'danger'); return; }
+        if (!unidade)                            { setAlertCadC('Selecione a unidade.', 'danger');      return; }
+        if (!dataInicio)                         { setAlertCadC('Informe a data de início.', 'danger'); return; }
+
+        const spinner = document.getElementById('cad-c-spinner');
+        spinner.classList.remove('d-none');
+        this.disabled = true;
+        setAlertCadC('', '');
+
+        try {
+            // 1. Criar veículo em cadveiculo
+            const r1 = await fetch('/api/cadveiculo', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ placa: placaNova })
+            });
+            const d1 = await r1.json();
+            if (!d1.success) {
+                setAlertCadC('Erro ao cadastrar veículo: ' + (d1.message || 'Falha desconhecida.'), 'danger');
+                this.disabled = false;
+                return;
+            }
+
+            // 2. Criar permissão em cadperm
+            const r2 = await fetch('/api/criar-permissao', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    condominio_id: condId,
+                    placa:         placaNova,
+                    unidade,
+                    dataInicio,
+                    hora_inicio:   horaInicio,
+                    dataFim,
+                    hora_fim:      horaFim
+                })
+            });
+            const d2 = await r2.json();
+            if (!d2.success) {
+                setAlertCadC('Veículo cadastrado, mas erro ao criar permissão: ' + (d2.message || ''), 'warning');
+                this.disabled = false;
+                return;
+            }
+
+            // 3. Se a placa foi alterada, corrigir no movimento
+            if (placaNova !== _cadCState.placa) {
+                const r3 = await fetch('/api/operador/corrigir-placa', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idmov: _cadCState.idmov, placa_corrigida: placaNova, idcond: condId })
+                });
+                const d3 = await r3.json();
+                if (!d3.success) {
+                    setAlertCadC('Veículo e permissão criados, mas não foi possível corrigir a placa no movimento: ' + (d3.message || ''), 'warning');
+                    this.disabled = false;
+                    return;
+                }
+            }
+
+            _cadCCriada = true;
+            modalCadC.hide();
+
+        } catch (_) {
+            setAlertCadC('Falha de conexão. Tente novamente.', 'danger');
+            this.disabled = false;
+        } finally {
+            spinner.classList.add('d-none');
+        }
+    });
+
+    // Confirmar sem cadastrar → motivo obrigatório
+    document.getElementById('btn-cad-c-sem-cadastrar')?.addEventListener('click', function () {
+        modalCadC.hide();
+        modalCadCEl.addEventListener('hidden.bs.modal', function onHidden() {
+            modalCadCEl.removeEventListener('hidden.bs.modal', onHidden);
+            abrirModalMotivo(
+                `Veículo não cadastrado (${_cadCState?.placa || ''}). Informe o motivo para liberar mesmo assim.`,
+                'Atenção: este veículo não será cadastrado no sistema.',
+                (texto) => {
+                    if (!texto) { alert('O motivo é obrigatório para veículo não cadastrado.'); return; }
+                    enviarAcao(_cadCState.idmov, 'confirmar', texto, null);
+                }
+            );
+        });
+    });
+
+    // Ao fechar: confirmar movimento se veículo+permissão foram criados
+    modalCadCEl?.addEventListener('hidden.bs.modal', function () {
+        if (_cadCCriada && _cadCState) {
+            enviarAcao(_cadCState.idmov, 'confirmar', 'Veículo cadastrado durante liberação', null);
+            _cadCCriada = false;
+        }
+        document.getElementById('btn-cad-c-salvar').disabled = false;
+        setAlertCadC('', '');
     });
 
     /* ── Câmeras RTSP ─────────────────────────────── */
