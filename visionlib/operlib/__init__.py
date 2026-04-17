@@ -323,7 +323,7 @@ def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):
 
     Retorna:
         tuple: (statusmov: str, tem_cadastro: bool)
-            statusmov — Z, A, B, C, D, E, F, G (entrada) ou I, J (saída)
+            statusmov — Z, A, B, C, D, E, F, G, H (entrada) ou I, J (saída)
             tem_cadastro — True se placa existe em cadveiculo
     """
     if acao == 'ignorar':
@@ -370,7 +370,7 @@ def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):
     if tem_vagas:
         return ('A' if acao == 'confirmar' else 'B'), True
     else:
-        return ('G' if acao == 'confirmar' else 'F'), True
+        return ('G' if acao == 'confirmar' else 'H'), True
 
 
 def executar_acao_operador(idmov, acao, idgente, motivo=None):
