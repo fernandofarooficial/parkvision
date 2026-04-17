@@ -107,7 +107,11 @@ def gravar_log_bruto(inforec, movdic=None):
     connection = get_db_connection()
     cursor = connection.cursor()
     #
-    jsonbruto = json.dumps(movdic, ensure_ascii=False, default=str) if movdic is not None else None
+    if movdic is not None:
+        movdic_log = {k: ("Foto" if k == "imagebase64" else v) for k, v in movdic.items()}
+        jsonbruto = json.dumps(movdic_log, ensure_ascii=False, default=str)
+    else:
+        jsonbruto = None
     consulta = '''
         INSERT INTO logbruto (idlog,placalida,nowpost,nomecam,idcam,jsonbruto)
         VALUES (%s, %s, %s, %s, %s, %s)
