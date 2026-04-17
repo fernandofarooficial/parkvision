@@ -303,13 +303,13 @@
         <table class="table table-hover table-bordered" id="tabela-operador">
             <thead>
                 <tr>
-                    <th style="width:120px">Direção</th>
                     <th style="width:155px">Data / Hora</th>
                     <th style="width:130px">Placa Efetiva</th>
                     <th style="width:130px">Placa Lida</th>
                     <th style="width:80px" class="text-center">Cadastro</th>
                     <th style="width:80px" class="text-center">Permissão</th>
                     <th style="width:70px" class="text-center">Vagas</th>
+                    <th style="width:120px">Direção</th>
                     <th class="col-acoes text-center">Ações</th>
                 </tr>
             </thead>
@@ -604,13 +604,13 @@
         if (ev.idmov) tr.dataset.idmov = ev.idmov;
 
         tr.innerHTML = `
-            <td>${celDirecao(ev.direcao)}</td>
             <td class="text-nowrap">${ev.momento || '—'}</td>
             <td><span class="placa-efetiva">${ev.placa}</span></td>
             <td>${celPlacaLida(ev.placa, ev.placalida)}</td>
             <td class="text-center">${celCadastro(ev.status_permissao)}</td>
             <td class="text-center">${celPermissao(ev.status_permissao)}</td>
             <td class="text-center">${celVagas(ev.vagas_disponiveis)}</td>
+            <td>${celDirecao(ev.direcao)}</td>
             <td class="text-center">${celAcoes(ev)}</td>
         `;
         return tr;
