@@ -826,31 +826,58 @@
                     // Ordenar do mais antigo ao mais recente para inserir na ordem certa
                     const novos = data.eventos.sort((a, b) => a.ts - b.ts);
 
-                    // Remover placeholder "vazio" se existir
-                    const empty = tbody.querySelector('.op-empty');
-                    if (empty) tbody.innerHTML = '';
+                    const linhasParaAdicionar = [];
 
                     novos.forEach(ev => {
-                        const tr = criarLinha(ev, true);
-                        tbody.insertBefore(tr, tbody.firstChild);
                         if (ev.ts > ultimoTs) ultimoTs = ev.ts;
+
+                        // Saída com placa cadastrada → auto-abrir portão sem intervenção do operador
+                        if (ev.direcao === 'S' && ev.status_permissao !== 'NÃO CADASTRADO' && ev.idmov) {
+                            fetch('/api/operador/abrir-porta', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ idcond: condId, direcao: 'S' })
+                            })
+                            .then(r => r.json())
+                            .then(res => { if (res.success) mostrarAvisoPorta('saida', ev.placa); })
+                            .catch(() => {});
+
+                            fetch('/api/operador/acao', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ idmov: ev.idmov, acao: 'confirmar', motivo: null })
+                            }).catch(() => {});
+
+                            return;
+                        }
+
+                        linhasParaAdicionar.push(ev);
                     });
 
-                    totalEventos += novos.length;
-                    txtTotal.textContent = totalEventos;
+                    if (linhasParaAdicionar.length > 0) {
+                        // Remover placeholder "vazio" se existir
+                        const empty = tbody.querySelector('.op-empty');
+                        if (empty) tbody.innerHTML = '';
+
+                        linhasParaAdicionar.forEach(ev => {
+                            tbody.insertBefore(criarLinha(ev, true), tbody.firstChild);
+                        });
+
+                        totalEventos += linhasParaAdicionar.length;
+                        txtTotal.textContent = totalEventos;
+
+                        // Badge de "novos"
+                        novosAcumulados += linhasParaAdicionar.length;
+                        qtdeNovos.textContent = novosAcumulados;
+                        badgeNovos.style.display = 'inline-flex';
+                        clearTimeout(badgeNovos._timer);
+                        badgeNovos._timer = setTimeout(() => {
+                            badgeNovos.style.display = 'none';
+                            novosAcumulados = 0;
+                        }, 4000);
+                    }
+
                     txtUltimoUpd.textContent = horaAtual();
-
-                    // Badge de "novos"
-                    novosAcumulados += novos.length;
-                    qtdeNovos.textContent = novosAcumulados;
-                    badgeNovos.style.display = 'inline-flex';
-                    // Esconder o badge após 4s
-                    clearTimeout(badgeNovos._timer);
-                    badgeNovos._timer = setTimeout(() => {
-                        badgeNovos.style.display = 'none';
-                        novosAcumulados = 0;
-                    }, 4000);
-
                     setConectado(true);
                 }
             })
@@ -1088,14 +1115,17 @@
     });
 
     /* ── Aviso temporário de porta ───────────────── */
-    function mostrarAvisoPorta(tipo) {
+    function mostrarAvisoPorta(tipo, placa) {
         const container = document.getElementById('porta-toast-container');
         const label = tipo === 'entrada' ? 'Entrada' : 'Saída';
         const cor   = tipo === 'entrada' ? '#0d6efd' : '#fd7e14';
         const toast = document.createElement('div');
         toast.style.cssText = `background:${cor};color:#fff;padding:.75rem 1.1rem;border-radius:.5rem;
             box-shadow:0 2px 8px rgba(0,0,0,.25);font-weight:500;display:flex;align-items:center;gap:.6rem;`;
-        toast.innerHTML = `<i class="bi bi-door-open-fill"></i> Pulso de ${label} enviado ao dispositivo`;
+        const msg = placa
+            ? `<i class="bi bi-door-open-fill"></i> Portão de ${label} aberto — placa <strong style="font-family:monospace;letter-spacing:.05em">${placa}</strong>`
+            : `<i class="bi bi-door-open-fill"></i> Pulso de ${label} enviado ao dispositivo`;
+        toast.innerHTML = msg;
 
         const bar = document.createElement('div');
         bar.style.cssText = `position:absolute;bottom:0;left:0;height:3px;background:rgba(255,255,255,.5);
