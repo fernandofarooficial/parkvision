@@ -848,6 +848,9 @@
                                 body: JSON.stringify({ idmov: ev.idmov, acao: 'confirmar', motivo: null })
                             }).catch(() => {});
 
+                            // c1: remove da tabela caso já estivesse visível (sem tocar no banco)
+                            removerLinhaPorIdmov(ev.idmov);
+
                             return;
                         }
 
