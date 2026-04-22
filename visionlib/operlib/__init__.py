@@ -662,9 +662,7 @@ def obter_ultimas_saidas(idcond, limit=10):
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT placa,
-                   DATE_FORMAT(nowpost, '%%H:%%i:%%S') AS hora,
-                   DATE_FORMAT(nowpost, '%%d/%%m/%%Y') AS data
+            SELECT placa, nowpost
             FROM movcar
             WHERE idcond   = %s
               AND direcao  = 'S'
@@ -673,7 +671,16 @@ def obter_ultimas_saidas(idcond, limit=10):
             ORDER BY nowpost DESC
             LIMIT %s
         """, (idcond, limit))
-        return cursor.fetchall()
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            dt = row['nowpost']
+            result.append({
+                'placa': row['placa'],
+                'hora':  dt.strftime('%H:%M:%S') if dt else '—',
+                'data':  dt.strftime('%d/%m/%Y')  if dt else '—',
+            })
+        return result
     except Exception as e:
         logger.error(f"obter_ultimas_saidas: erro — {e}")
         return []
@@ -711,16 +718,26 @@ def obter_info_veiculo_operador(idcond, placa):
         cursor.execute("""
             SELECT a.unidade,
                    a.status_permissao,
-                   DATE_FORMAT(a.data_inicio, '%%d/%%m/%%Y') AS data_inicio,
-                   TIME_FORMAT(a.data_inicio, '%%H:%%i')     AS hora_inicio,
-                   DATE_FORMAT(a.data_fim,    '%%d/%%m/%%Y') AS data_fim,
-                   TIME_FORMAT(a.data_fim,    '%%H:%%i')     AS hora_fim
+                   a.data_inicio,
+                   a.data_fim
             FROM vw_autorizacoes a
             WHERE a.idcond = %s AND a.placa = %s
             ORDER BY a.rank_permissao
             LIMIT 1
         """, (idcond, placa))
-        permissao = cursor.fetchone()
+        row_perm = cursor.fetchone()
+        permissao = None
+        if row_perm:
+            def fmt_data(dt): return dt.strftime('%d/%m/%Y') if dt else None
+            def fmt_hora(dt): return dt.strftime('%H:%M')    if dt else None
+            permissao = {
+                'unidade':          row_perm['unidade'],
+                'status_permissao': row_perm['status_permissao'],
+                'data_inicio':      fmt_data(row_perm['data_inicio']),
+                'hora_inicio':      fmt_hora(row_perm['data_inicio']),
+                'data_fim':         fmt_data(row_perm['data_fim']),
+                'hora_fim':         fmt_hora(row_perm['data_fim']),
+            }
 
         # Vagas da unidade (total permitido e atualmente ocupadas)
         vagas = None
