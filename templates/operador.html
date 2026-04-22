@@ -642,11 +642,11 @@
 <!-- Painel: últimas liberações automáticas -->
 <div class="auto-painel mt-3">
     <div class="auto-painel-header">
-        <h6><i class="bi bi-lightning-charge-fill me-1 text-success"></i>Últimas Liberações Automáticas</h6>
-        <small class="text-muted" id="auto-contador">0 liberações</small>
+        <h6><i class="bi bi-arrow-up-circle-fill me-1 text-success"></i>Últimas Saídas</h6>
+        <small class="text-muted" id="auto-contador">0 saídas</small>
     </div>
     <div class="auto-lista" id="auto-lista">
-        <span class="auto-vazia">Nenhuma liberação automática ainda.</span>
+        <span class="auto-vazia">Nenhuma saída registrada ainda.</span>
     </div>
 </div>
 
@@ -672,7 +672,7 @@
     let totalEventos = 0;
     let pollingAtivo = false;
     let novosAcumulados = 0;
-    let autoLiberacoes = [];      // últimas 5 liberações automáticas
+    let ultimasSaidas = [];       // últimas 10 saídas (auto ou manual)
 
     /* ── Elementos ────────────────────────────────── */
     const tbody          = document.getElementById('tbody-operador');
@@ -922,8 +922,7 @@
                             // c1: remove da tabela caso já estivesse visível (sem tocar no banco)
                             removerLinhaPorIdmov(ev.idmov);
 
-                            // Registrar no painel de liberações automáticas
-                            registrarAutoLiberacao(ev.placa, ev.momento);
+                            registrarSaida(ev.placa, ev.momento, true);
 
                             return;
                         }
@@ -1096,9 +1095,11 @@
                 if (_corrigirDirecao === 'S') {
                     // Saída com placa válida: corrigiu → executa confirmar (envia pulso)
                     const idmovCorrigido = _corrigirIdmov;
+                    const placaCorrigidaFinal = document.getElementById('corrigir-placa-nova').value.trim().toUpperCase();
                     setTimeout(() => {
                         modalCorrigir.hide();
                         enviarAcao(idmovCorrigido, 'confirmar', null, null);
+                        registrarSaida(placaCorrigidaFinal, null, false);
                     }, 800);
                 } else {
                     setTimeout(() => {
@@ -1221,28 +1222,34 @@
     }
 
     /* ── Painel de liberações automáticas ───────── */
-    function registrarAutoLiberacao(placa, momento) {
+    function registrarSaida(placa, momento, automatica) {
         const hora = momento || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        autoLiberacoes.unshift({ placa, hora });
-        if (autoLiberacoes.length > 5) autoLiberacoes.length = 5;
-        renderizarAutoLiberacoes();
+        ultimasSaidas.unshift({ placa, hora, automatica });
+        if (ultimasSaidas.length > 10) ultimasSaidas.length = 10;
+        renderizarUltimasSaidas();
     }
 
-    function renderizarAutoLiberacoes() {
+    function renderizarUltimasSaidas() {
         const lista    = document.getElementById('auto-lista');
         const contador = document.getElementById('auto-contador');
-        if (autoLiberacoes.length === 0) {
-            lista.innerHTML = '<span class="auto-vazia">Nenhuma liberação automática ainda.</span>';
-            contador.textContent = '0 liberações';
+        if (ultimasSaidas.length === 0) {
+            lista.innerHTML = '<span class="auto-vazia">Nenhuma saída registrada ainda.</span>';
+            contador.textContent = '0 saídas';
             return;
         }
-        contador.textContent = `${autoLiberacoes.length} liberaç${autoLiberacoes.length === 1 ? 'ão' : 'ões'}`;
-        lista.innerHTML = autoLiberacoes.map(ev => `
+        contador.textContent = `${ultimasSaidas.length} saída${ultimasSaidas.length === 1 ? '' : 's'}`;
+        lista.innerHTML = ultimasSaidas.map(ev => {
+            const badge = ev.automatica
+                ? '<span class="badge bg-success" style="font-size:.65rem">Auto</span>'
+                : '<span class="badge bg-secondary" style="font-size:.65rem">Manual</span>';
+            return `
             <div class="auto-item">
-                <i class="bi bi-door-open-fill text-success"></i>
+                <i class="bi bi-arrow-up-circle-fill text-success"></i>
                 <span class="auto-item-placa">${ev.placa}</span>
+                ${badge}
                 <span class="auto-item-hora">${ev.hora}</span>
-            </div>`).join('');
+            </div>`;
+        }).join('');
     }
 
     /* ── Handler botões Abre Porta (cabeçalho) ───── */
@@ -1320,6 +1327,7 @@
             if (evData.direcao === 'S') {
                 if (cad) {
                     enviarAcao(idmov, 'confirmar', null, null);
+                    registrarSaida(placa, null, false);
                 } else {
                     abrirModalMotivo(
                         'Veículo não cadastrado. Informe o motivo para liberar a saída.',
@@ -1327,6 +1335,7 @@
                         (texto) => {
                             if (!texto) { alert('O motivo é obrigatório para veículo não cadastrado.'); return; }
                             enviarAcao(idmov, 'confirmar', texto, null);
+                            registrarSaida(placa, null, false);
                         }
                     );
                 }
