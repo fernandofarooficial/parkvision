@@ -652,6 +652,36 @@ def capturar_snapshot_rtsp(rtsp_url):
         return None
 
 
+def obter_ultimas_saidas(idcond, limit=10):
+    """
+    Retorna as últimas saídas confirmadas (contav=1, direcao='S') do condomínio.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT placa,
+                   DATE_FORMAT(nowpost, '%%H:%%i:%%S') AS hora,
+                   DATE_FORMAT(nowpost, '%%d/%%m/%%Y') AS data
+            FROM movcar
+            WHERE idcond   = %s
+              AND direcao  = 'S'
+              AND contav   = 1
+              AND placa   != '*ERROR*'
+            ORDER BY nowpost DESC
+            LIMIT %s
+        """, (idcond, limit))
+        return cursor.fetchall()
+    except Exception as e:
+        logger.error(f"obter_ultimas_saidas: erro — {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def obter_info_veiculo_operador(idcond, placa):
     """
     Retorna dados completos de um veículo para o painel de informações da tela Operador:

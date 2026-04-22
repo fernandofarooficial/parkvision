@@ -38,7 +38,7 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
                                corrigir_placa_operador, enviar_pulso_por_direcao,
                                obter_cameras_dispositivo_por_direcao,
-                               obter_info_veiculo_operador)
+                               obter_info_veiculo_operador, obter_ultimas_saidas)
 
 app = Flask(__name__)
 
@@ -192,6 +192,16 @@ def api_operador_dispositivos(condominio_id):
         return jsonify({'success': False, 'message': 'Acesso negado'}), 403
     direcoes = obter_cameras_dispositivo_por_direcao(condominio_id)
     return jsonify({'success': True, 'direcoes': direcoes})
+
+
+# API: últimas 10 saídas confirmadas para o painel da tela operador
+@app.route('/api/operador/ultimas-saidas/<int:condominio_id>')
+def api_operador_ultimas_saidas(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    saidas = obter_ultimas_saidas(condominio_id)
+    return jsonify({'success': True, 'saidas': saidas})
 
 
 # API: informações do veículo para painel da tela operador
