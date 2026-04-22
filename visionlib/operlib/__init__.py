@@ -741,22 +741,64 @@ def obter_info_veiculo_operador(idcond, placa):
 
         # Vagas da unidade (total permitido e atualmente ocupadas)
         vagas = None
+        estacionados = []
         if permissao and permissao.get('unidade'):
+            unidade = permissao['unidade']
+
             cursor.execute("""
-                SELECT vu.vperm                              AS total_permitidas,
-                       COALESCE(ve.estacionados, 0)          AS ocupadas
+                SELECT vu.vperm                     AS total_permitidas,
+                       COALESCE(ve.estacionados, 0) AS ocupadas
                 FROM vagasunidades vu
                 LEFT JOIN vw_estacionados ve
                        ON ve.idcond = vu.idcond AND ve.unidade = vu.unidade
                 WHERE vu.idcond = %s AND vu.unidade = %s
-            """, (idcond, permissao['unidade']))
+            """, (idcond, unidade))
             vagas = cursor.fetchone()
 
+            # Veículos atualmente estacionados na unidade:
+            # último movimento confirmado de cada placa é uma entrada (direcao='E')
+            # e a placa tem permissão para esta unidade neste condomínio.
+            cursor.execute("""
+                SELECT m.placa,
+                       COALESCE(ma.nmmarca,  'N/I') AS marca,
+                       COALESCE(mo.nmmodelo, 'N/I') AS modelo,
+                       COALESCE(co.nmcor,    'N/I') AS cor,
+                       m.nowpost                     AS entrada
+                FROM (
+                    SELECT placa, MAX(idmov) AS ultimo_idmov
+                    FROM movcar
+                    WHERE idcond = %s AND contav = 1
+                    GROUP BY placa
+                ) t
+                JOIN movcar m ON m.idmov = t.ultimo_idmov AND m.direcao = 'E'
+                LEFT JOIN cadveiculo cv  ON cv.placa     = m.placa
+                LEFT JOIN cadmodelo  mo  ON mo.idmodelo  = cv.idmodelo
+                LEFT JOIN cadmarca   ma  ON ma.idmarca   = mo.idmarca
+                LEFT JOIN cadcores   co  ON co.idcor     = cv.idcor
+                WHERE EXISTS (
+                    SELECT 1 FROM vw_autorizacoes a
+                    WHERE a.idcond  = %s
+                      AND a.placa   = m.placa
+                      AND a.unidade = %s
+                )
+                ORDER BY m.nowpost
+            """, (idcond, idcond, unidade))
+            for row in cursor.fetchall():
+                dt = row['entrada']
+                estacionados.append({
+                    'placa':   row['placa'],
+                    'marca':   row['marca'],
+                    'modelo':  row['modelo'],
+                    'cor':     row['cor'],
+                    'entrada': dt.strftime('%d/%m/%Y %H:%M') if dt else '—',
+                })
+
         return {
-            'success': True,
-            'veiculo':   veiculo,
-            'permissao': permissao,
-            'vagas':     vagas,
+            'success':      True,
+            'veiculo':      veiculo,
+            'permissao':    permissao,
+            'vagas':        vagas,
+            'estacionados': estacionados,
         }
 
     except Exception as e:
