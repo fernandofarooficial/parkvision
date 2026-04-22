@@ -301,8 +301,41 @@
     }
 
     .col-acoes {
-        width: 145px;
+        width: 175px;
         white-space: nowrap;
+    }
+
+    /* ── Modal info veículo ──────────────────────── */
+    .info-secao {
+        font-size: .85rem;
+    }
+
+    .info-secao .info-titulo {
+        font-size: .75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: #6c757d;
+        border-bottom: 1px solid #dee2e6;
+        padding-bottom: .25rem;
+        margin-bottom: .5rem;
+    }
+
+    .info-row {
+        display: flex;
+        gap: .5rem;
+        margin-bottom: .3rem;
+    }
+
+    .info-label {
+        min-width: 110px;
+        color: #6c757d;
+        flex-shrink: 0;
+    }
+
+    .info-value {
+        font-weight: 500;
+        color: #212529;
     }
 </style>
 {% endblock %}
@@ -377,7 +410,7 @@
                     <th style="width:80px" class="text-center">Permissão</th>
                     <th style="width:70px" class="text-center">Vagas</th>
                     <th style="width:120px">Direção</th>
-                    <th class="col-acoes text-center">Ações</th>
+                    <th class="col-acoes text-center" style="width:175px">Ações</th>
                 </tr>
             </thead>
             <tbody id="tbody-operador">
@@ -650,6 +683,99 @@
     </div>
 </div>
 
+<!-- Modal: informações do veículo -->
+<div class="modal fade" id="modalInfoVeiculo" tabindex="-1" aria-labelledby="modalInfoVeiculoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="modalInfoVeiculoLabel">
+                    <i class="bi bi-info-circle me-2"></i>Informações do Veículo —
+                    <span id="info-placa-titulo" class="fw-bold font-monospace"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="info-loading" class="text-center py-4 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>Carregando...
+                </div>
+                <div id="info-conteudo" class="d-none">
+
+                    <!-- Dados do veículo -->
+                    <div class="info-secao mb-3">
+                        <div class="info-titulo"><i class="bi bi-car-front me-1"></i>Veículo</div>
+                        <div class="info-row">
+                            <span class="info-label">Placa</span>
+                            <span class="info-value font-monospace fw-bold" id="info-v-placa">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Marca</span>
+                            <span class="info-value" id="info-v-marca">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Modelo</span>
+                            <span class="info-value" id="info-v-modelo">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Cor</span>
+                            <span class="info-value" id="info-v-cor">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Permissão -->
+                    <div class="info-secao mb-3" id="info-bloco-perm">
+                        <div class="info-titulo"><i class="bi bi-shield-check me-1"></i>Permissão</div>
+                        <div class="info-row">
+                            <span class="info-label">Unidade</span>
+                            <span class="info-value" id="info-p-unidade">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Status</span>
+                            <span class="info-value" id="info-p-status">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Início</span>
+                            <span class="info-value" id="info-p-inicio">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Fim</span>
+                            <span class="info-value" id="info-p-fim">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Vagas da unidade -->
+                    <div class="info-secao" id="info-bloco-vagas">
+                        <div class="info-titulo"><i class="bi bi-p-square me-1"></i>Vagas da Unidade</div>
+                        <div class="info-row">
+                            <span class="info-label">Permitidas</span>
+                            <span class="info-value" id="info-vagas-total">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Ocupadas agora</span>
+                            <span class="info-value" id="info-vagas-ocupadas">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Disponíveis</span>
+                            <span class="info-value" id="info-vagas-disp">—</span>
+                        </div>
+                    </div>
+
+                    <div id="info-sem-cadastro" class="alert alert-warning small d-none">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        Veículo não cadastrado no sistema.
+                    </div>
+                    <div id="info-sem-perm" class="alert alert-secondary small d-none">
+                        <i class="bi bi-shield-x me-1"></i>
+                        Nenhuma permissão encontrada para este veículo neste condomínio.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Container de avisos de porta -->
 <div id="porta-toast-container"
      style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;min-width:260px;">
@@ -738,8 +864,17 @@
     }
 
     /* ── Célula de botões de ação ─────────────────── */
+    function btnInfo(placa) {
+        return `<button class="btn btn-sm btn-outline-info btn-acao btn-op-info"
+                        title="Informações do veículo" data-placa="${placa}">
+                    <i class="bi bi-info-circle"></i>
+                </button>`;
+    }
+
     function celAcoes(ev) {
-        if (!ev.idmov) return '<span class="text-muted small">—</span>';
+        if (!ev.idmov) {
+            return `<div class="d-flex gap-1 justify-content-center">${btnInfo(ev.placa)}</div>`;
+        }
 
         if (ev.direcao === 'S') {
             const { cad } = cenario(ev);
@@ -747,6 +882,7 @@
                           .replace(/"/g, '&quot;');
             return `
                 <div class="d-flex gap-1 justify-content-center">
+                    ${btnInfo(ev.placa)}
                     <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
                             title="Ignorar" data-ev="${d}">
                         <i class="bi bi-eye-slash"></i>
@@ -767,6 +903,7 @@
                       .replace(/"/g, '&quot;');
         return `
             <div class="d-flex gap-1 justify-content-center">
+                ${btnInfo(ev.placa)}
                 <button class="btn btn-sm btn-outline-secondary btn-acao btn-op-ignorar"
                         title="Ignorar" data-ev="${d}">
                     <i class="bi bi-eye-slash"></i>
@@ -1756,6 +1893,99 @@
         document.getElementById('btn-cad-c-salvar').disabled = false;
         setAlertCadC('', '');
     });
+
+    /* ── Modal: informações do veículo ──────────── */
+    const modalInfoVeiculoEl = document.getElementById('modalInfoVeiculo');
+    const modalInfoVeiculo   = modalInfoVeiculoEl ? new bootstrap.Modal(modalInfoVeiculoEl) : null;
+
+    function abrirModalInfoVeiculo(placa) {
+        document.getElementById('info-placa-titulo').textContent = placa;
+        document.getElementById('info-loading').classList.remove('d-none');
+        document.getElementById('info-conteudo').classList.add('d-none');
+        modalInfoVeiculo.show();
+
+        fetch(`/api/operador/info-veiculo/${condId}/${encodeURIComponent(placa)}`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('info-loading').classList.add('d-none');
+                document.getElementById('info-conteudo').classList.remove('d-none');
+
+                const semCad  = document.getElementById('info-sem-cadastro');
+                const semPerm = document.getElementById('info-sem-perm');
+                const blocoV  = document.getElementById('info-bloco-perm');
+                const blocoG  = document.getElementById('info-bloco-vagas');
+
+                semCad.classList.add('d-none');
+                semPerm.classList.add('d-none');
+                blocoV.classList.remove('d-none');
+                blocoG.classList.remove('d-none');
+
+                if (!data.success || !data.veiculo) {
+                    semCad.classList.remove('d-none');
+                    blocoV.classList.add('d-none');
+                    blocoG.classList.add('d-none');
+                    ['info-v-placa','info-v-marca','info-v-modelo','info-v-cor'].forEach(id => {
+                        document.getElementById(id).textContent = '—';
+                    });
+                    return;
+                }
+
+                const v = data.veiculo;
+                document.getElementById('info-v-placa').textContent  = v.placa  || '—';
+                document.getElementById('info-v-marca').textContent  = v.marca  || '—';
+                document.getElementById('info-v-modelo').textContent = v.modelo || '—';
+                document.getElementById('info-v-cor').textContent    = v.cor    || '—';
+
+                const p = data.permissao;
+                if (!p) {
+                    semPerm.classList.remove('d-none');
+                    blocoV.classList.add('d-none');
+                    blocoG.classList.add('d-none');
+                } else {
+                    const statusBadge = {
+                        'VIGENTE':    '<span class="badge bg-success">Vigente</span>',
+                        'INDEFINIDA': '<span class="badge bg-primary">Indeterminada</span>',
+                        'VENCIDA':    '<span class="badge bg-danger">Vencida</span>',
+                        'SEM PERMISSÃO': '<span class="badge bg-secondary">Sem permissão</span>',
+                    };
+                    document.getElementById('info-p-unidade').textContent = p.unidade || '—';
+                    document.getElementById('info-p-status').innerHTML    = statusBadge[p.status_permissao] || p.status_permissao || '—';
+                    document.getElementById('info-p-inicio').textContent  =
+                        p.data_inicio ? `${p.data_inicio} ${p.hora_inicio || ''}`.trim() : '—';
+                    document.getElementById('info-p-fim').textContent     =
+                        p.data_fim    ? `${p.data_fim} ${p.hora_fim || ''}`.trim()    : 'Indeterminado';
+                }
+
+                const g = data.vagas;
+                if (!g) {
+                    blocoG.classList.add('d-none');
+                } else {
+                    const total   = parseInt(g.total_permitidas, 10) || 0;
+                    const ocupado = parseInt(g.ocupadas, 10)         || 0;
+                    const disp    = Math.max(0, total - ocupado);
+                    document.getElementById('info-vagas-total').textContent   = total;
+                    document.getElementById('info-vagas-ocupadas').textContent = ocupado;
+                    document.getElementById('info-vagas-disp').innerHTML      =
+                        disp > 0
+                            ? `<span class="text-success fw-bold">${disp}</span>`
+                            : `<span class="text-danger fw-bold">0</span>`;
+                }
+            })
+            .catch(() => {
+                document.getElementById('info-loading').classList.add('d-none');
+                document.getElementById('info-conteudo').classList.remove('d-none');
+                document.getElementById('info-sem-cadastro').classList.remove('d-none');
+                ['info-bloco-perm','info-bloco-vagas'].forEach(id =>
+                    document.getElementById(id).classList.add('d-none'));
+            });
+    }
+
+    tbody.addEventListener('click', function (e) {
+        const btnI = e.target.closest('.btn-op-info');
+        if (btnI) {
+            abrirModalInfoVeiculo(btnI.dataset.placa);
+        }
+    }, true);   // capture=true para disparar antes do handler principal
 
     /* ── Câmeras RTSP ─────────────────────────────── */
     const CAMERA_REFRESH_MS = 10000;

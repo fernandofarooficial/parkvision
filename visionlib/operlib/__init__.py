@@ -650,3 +650,72 @@ def capturar_snapshot_rtsp(rtsp_url):
     except Exception as e:
         logger.error(f"capturar_snapshot_rtsp: erro ({rtsp_url}) — {e}")
         return None
+
+
+def obter_info_veiculo_operador(idcond, placa):
+    """
+    Retorna dados completos de um veículo para o painel de informações da tela Operador:
+    dados cadastrais, melhor permissão vigente e ocupação atual da unidade.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return {'success': False, 'message': 'Sem conexão com o banco de dados'}
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Dados cadastrais do veículo
+        cursor.execute("""
+            SELECT cv.placa,
+                   COALESCE(ma.nmmarca, 'N/I')  AS marca,
+                   COALESCE(mo.nmmodelo, 'N/I') AS modelo,
+                   COALESCE(co.nmcor, 'N/I')    AS cor
+            FROM cadveiculo cv
+            LEFT JOIN cadmodelo mo ON cv.idmodelo = mo.idmodelo
+            LEFT JOIN cadmarca  ma ON mo.idmarca  = ma.idmarca
+            LEFT JOIN cadcores  co ON cv.idcor    = co.idcor
+            WHERE cv.placa = %s
+        """, (placa,))
+        veiculo = cursor.fetchone()
+
+        # Melhor permissão (rank mais alto)
+        cursor.execute("""
+            SELECT a.unidade,
+                   a.status_permissao,
+                   DATE_FORMAT(a.data_inicio, '%%d/%%m/%%Y') AS data_inicio,
+                   TIME_FORMAT(a.data_inicio, '%%H:%%i')     AS hora_inicio,
+                   DATE_FORMAT(a.data_fim,    '%%d/%%m/%%Y') AS data_fim,
+                   TIME_FORMAT(a.data_fim,    '%%H:%%i')     AS hora_fim
+            FROM vw_autorizacoes a
+            WHERE a.idcond = %s AND a.placa = %s
+            ORDER BY a.rank_permissao
+            LIMIT 1
+        """, (idcond, placa))
+        permissao = cursor.fetchone()
+
+        # Vagas da unidade (total permitido e atualmente ocupadas)
+        vagas = None
+        if permissao and permissao.get('unidade'):
+            cursor.execute("""
+                SELECT vu.vperm                              AS total_permitidas,
+                       COALESCE(ve.estacionados, 0)          AS ocupadas
+                FROM vagasunidades vu
+                LEFT JOIN vw_estacionados ve
+                       ON ve.idcond = vu.idcond AND ve.unidade = vu.unidade
+                WHERE vu.idcond = %s AND vu.unidade = %s
+            """, (idcond, permissao['unidade']))
+            vagas = cursor.fetchone()
+
+        return {
+            'success': True,
+            'veiculo':   veiculo,
+            'permissao': permissao,
+            'vagas':     vagas,
+        }
+
+    except Exception as e:
+        logger.error(f"obter_info_veiculo_operador: erro — {e}")
+        return {'success': False, 'message': 'Erro interno ao consultar informações'}
+
+    finally:
+        cursor.close()
+        conn.close()

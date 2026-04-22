@@ -37,7 +37,8 @@ from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, 
 from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
                                corrigir_placa_operador, enviar_pulso_por_direcao,
-                               obter_cameras_dispositivo_por_direcao)
+                               obter_cameras_dispositivo_por_direcao,
+                               obter_info_veiculo_operador)
 
 app = Flask(__name__)
 
@@ -118,7 +119,7 @@ def api_operador_historico(condominio_id):
     tem_acesso, _ = verificar_acesso_condominio(condominio_id)
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Acesso negado'}), 403
-    eventos = obter_historico_db(condominio_id)
+    eventos = obter_historico_db(condominio_id, limit=10)
     return jsonify({'success': True, 'eventos': eventos})
 
 
@@ -191,6 +192,16 @@ def api_operador_dispositivos(condominio_id):
         return jsonify({'success': False, 'message': 'Acesso negado'}), 403
     direcoes = obter_cameras_dispositivo_por_direcao(condominio_id)
     return jsonify({'success': True, 'direcoes': direcoes})
+
+
+# API: informações do veículo para painel da tela operador
+@app.route('/api/operador/info-veiculo/<int:condominio_id>/<placa>')
+def api_operador_info_veiculo(condominio_id, placa):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    resultado = obter_info_veiculo_operador(condominio_id, placa.upper())
+    return jsonify(resultado)
 
 
 # API: pulso manual de porta pelo operador
