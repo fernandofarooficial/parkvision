@@ -234,6 +234,66 @@
         background: #495057;
     }
 
+    /* ── Painel liberações automáticas ──────────── */
+    .auto-painel {
+        border: 1px solid #c3e6cb;
+        border-radius: .5rem;
+        padding: .6rem .9rem;
+        margin-bottom: 1.2rem;
+        background: #f0fff4;
+    }
+
+    .auto-painel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: .4rem;
+    }
+
+    .auto-painel-header h6 {
+        margin: 0;
+        font-size: .85rem;
+        font-weight: 600;
+        color: #155724;
+    }
+
+    .auto-lista {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+    }
+
+    .auto-item {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        background: #fff;
+        border: 1px solid #c3e6cb;
+        border-radius: .375rem;
+        padding: .25rem .55rem;
+        font-size: .8rem;
+        white-space: nowrap;
+        animation: highlight-row .6s ease-out;
+    }
+
+    .auto-item-placa {
+        font-family: monospace;
+        font-weight: 700;
+        letter-spacing: .04em;
+        color: #155724;
+    }
+
+    .auto-item-hora {
+        color: #6c757d;
+        font-size: .75rem;
+    }
+
+    .auto-vazia {
+        color: #6c757d;
+        font-size: .8rem;
+        font-style: italic;
+    }
+
     /* ── Botões de ação ──────────────────────────── */
     .btn-acao {
         padding: .2rem .45rem;
@@ -303,6 +363,17 @@
         <small class="text-muted" id="cameras-ultimo-refresh"></small>
     </div>
     <div class="row g-2" id="cameras-grid"></div>
+</div>
+
+<!-- Painel: últimas liberações automáticas -->
+<div class="auto-painel">
+    <div class="auto-painel-header">
+        <h6><i class="bi bi-lightning-charge-fill me-1 text-success"></i>Últimas Liberações Automáticas</h6>
+        <small class="text-muted" id="auto-contador">0 liberações</small>
+    </div>
+    <div class="auto-lista" id="auto-lista">
+        <span class="auto-vazia">Nenhuma liberação automática ainda.</span>
+    </div>
 </div>
 
 <!-- Tabela -->
@@ -602,6 +673,7 @@
     let totalEventos = 0;
     let pollingAtivo = false;
     let novosAcumulados = 0;
+    let autoLiberacoes = [];      // últimas 5 liberações automáticas
 
     /* ── Elementos ────────────────────────────────── */
     const tbody          = document.getElementById('tbody-operador');
@@ -850,6 +922,9 @@
 
                             // c1: remove da tabela caso já estivesse visível (sem tocar no banco)
                             removerLinhaPorIdmov(ev.idmov);
+
+                            // Registrar no painel de liberações automáticas
+                            registrarAutoLiberacao(ev.placa, ev.momento);
 
                             return;
                         }
@@ -1144,6 +1219,31 @@
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 400);
         }, 10000);
+    }
+
+    /* ── Painel de liberações automáticas ───────── */
+    function registrarAutoLiberacao(placa, momento) {
+        const hora = momento || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        autoLiberacoes.unshift({ placa, hora });
+        if (autoLiberacoes.length > 5) autoLiberacoes.length = 5;
+        renderizarAutoLiberacoes();
+    }
+
+    function renderizarAutoLiberacoes() {
+        const lista    = document.getElementById('auto-lista');
+        const contador = document.getElementById('auto-contador');
+        if (autoLiberacoes.length === 0) {
+            lista.innerHTML = '<span class="auto-vazia">Nenhuma liberação automática ainda.</span>';
+            contador.textContent = '0 liberações';
+            return;
+        }
+        contador.textContent = `${autoLiberacoes.length} liberaç${autoLiberacoes.length === 1 ? 'ão' : 'ões'}`;
+        lista.innerHTML = autoLiberacoes.map(ev => `
+            <div class="auto-item">
+                <i class="bi bi-door-open-fill text-success"></i>
+                <span class="auto-item-placa">${ev.placa}</span>
+                <span class="auto-item-hora">${ev.hora}</span>
+            </div>`).join('');
     }
 
     /* ── Handler botões Abre Porta (cabeçalho) ───── */
