@@ -83,3 +83,67 @@ def teleg_placa_nao_cadastrada(irec):
     enviar_mensagem_telegram(token, chat_id, msg)
     return
 
+
+def teleg_acao_operador(irec):
+    """
+    Envia notificação Telegram para exceções tratadas pelo operador.
+
+    statusmov esperados:
+        B — entrada recusada (veículo com permissão válida)
+        C — entrada confirmada, veículo sem cadastro
+        E — entrada confirmada, sem permissão válida
+        J — saída de veículo não cadastrado
+    """
+    try:
+        token, chat_id = teleg_info(irec['idcond'])
+    except Exception:
+        return
+    if not token or not chat_id:
+        return
+
+    statusmov = irec.get('statusmov', '')
+    placa     = irec.get('placa', 'N/I')
+    marca     = irec.get('marca', 'Não cadastrado')
+    modelo    = irec.get('modelo', 'Não cadastrado')
+    cor       = irec.get('cor', 'Não cadastrado')
+    unidade   = irec.get('unidade')
+    nmcond    = irec.get('nmcond', '')
+    motivo    = irec.get('motivo') or 'Não informado'
+
+    titulos = {
+        'B': '🚫 Entrada Recusada pelo Operador',
+        'C': '⚠️ Entrada Autorizada — Veículo Não Cadastrado',
+        'E': '⚠️ Entrada Autorizada — Sem Permissão',
+        'J': '⚠️ Saída de Veículo Não Cadastrado',
+    }
+    situacoes = {
+        'B': 'Veículo com permissão válida teve entrada recusada pelo operador',
+        'C': 'Operador autorizou entrada de veículo não cadastrado no sistema',
+        'E': 'Operador autorizou entrada de veículo sem permissão válida',
+        'J': 'Veículo não cadastrado no sistema registrou saída',
+    }
+
+    titulo   = titulos.get(statusmov, f'Ação do Operador ({statusmov})')
+    situacao = situacoes.get(statusmov, '')
+
+    linhas = [
+        f'ParkVision — {titulo}',
+        f'Condomínio: {nmcond}',
+        f'Situação: {situacao}',
+        '',
+        '🚗 Veículo',
+        f'Placa: {placa}',
+    ]
+
+    if marca != 'Não cadastrado' or modelo != 'Não cadastrado':
+        linhas.append(f'Marca / Modelo: {marca} {modelo}'.strip())
+    if cor != 'Não cadastrado':
+        linhas.append(f'Cor: {cor}')
+
+    if unidade:
+        linhas += ['', f'🏠 Unidade: {unidade}']
+
+    linhas += ['', f'📝 Motivo: {motivo}']
+
+    enviar_mensagem_telegram(token, chat_id, '\n'.join(linhas))
+

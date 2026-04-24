@@ -415,6 +415,54 @@ def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):
         return ('G' if acao == 'confirmar' else 'H'), True
 
 
+def _notificar_acao_telegram(cursor, rec, statusmov, motivo):
+    """Coleta dados complementares e envia notificação Telegram para ações excepcionais."""
+    from visionlib.teleglib import teleg_acao_operador
+
+    idcond = rec['idcond']
+    placa  = rec['placa']
+
+    cursor.execute("SELECT nmcond FROM cadcond WHERE idcond = %s LIMIT 1", (idcond,))
+    row = cursor.fetchone()
+    nmcond = row['nmcond'] if row else f'Cond. {idcond}'
+
+    cursor.execute("""
+        SELECT COALESCE(ma.nmmarca,  'Não cadastrado') AS marca,
+               COALESCE(mo.nmmodelo, 'Não cadastrado') AS modelo,
+               COALESCE(co.nmcor,    'Não cadastrado') AS cor
+        FROM cadveiculo cv
+        LEFT JOIN cadmodelo mo ON mo.idmodelo = cv.idmodelo
+        LEFT JOIN cadmarca  ma ON ma.idmarca  = mo.idmarca
+        LEFT JOIN cadcores  co ON co.idcor    = cv.idcor
+        WHERE cv.placa = %s
+    """, (placa,))
+    row_vei = cursor.fetchone()
+    marca   = row_vei['marca']  if row_vei else 'Não cadastrado'
+    modelo  = row_vei['modelo'] if row_vei else 'Não cadastrado'
+    cor     = row_vei['cor']    if row_vei else 'Não cadastrado'
+
+    cursor.execute("""
+        SELECT unidade FROM vw_autorizacoes
+        WHERE idcond = %s AND placa = %s
+        ORDER BY rank_permissao
+        LIMIT 1
+    """, (idcond, placa))
+    row_uni = cursor.fetchone()
+    unidade = row_uni['unidade'] if row_uni else None
+
+    teleg_acao_operador({
+        'idcond':    idcond,
+        'statusmov': statusmov,
+        'placa':     placa,
+        'marca':     marca,
+        'modelo':    modelo,
+        'cor':       cor,
+        'unidade':   unidade,
+        'nmcond':    nmcond,
+        'motivo':    motivo.strip() if motivo and motivo.strip() else None,
+    })
+
+
 def executar_acao_operador(idmov, acao, idgente, motivo=None):
     """
     Executa a ação do operador sobre um registro de movimento (movcar).
@@ -496,6 +544,13 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
         with _event_lock:
             ev_list = _event_store.get(rec['idcond'], [])
             _event_store[rec['idcond']] = [e for e in ev_list if e.get('idmov') != idmov]
+
+        # Notificação Telegram para situações excepcionais
+        if statusmov in ('B', 'C', 'E', 'J'):
+            try:
+                _notificar_acao_telegram(cursor, rec, statusmov, motivo)
+            except Exception as e_tg:
+                logger.warning(f"operlib._notificar_acao_telegram: {e_tg}")
 
         # Enviar pulso: entrada (A, C, E, G) e saída (I, J)
         if statusmov in ('A', 'C', 'E', 'G', 'I', 'J'):
