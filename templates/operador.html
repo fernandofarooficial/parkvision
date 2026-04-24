@@ -1433,8 +1433,16 @@
 
     function registrarSaida(placa, momento) {
         const agora = new Date();
-        const hora  = momento || agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const data  = agora.toLocaleDateString('pt-BR');
+        let hora, data;
+        if (momento) {
+            // momento vem do backend como 'DD/MM/YYYY HH:MM:SS'
+            const partes = momento.split(' ');
+            data = partes[0] || agora.toLocaleDateString('pt-BR');
+            hora = partes[1] || momento;
+        } else {
+            hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            data = agora.toLocaleDateString('pt-BR');
+        }
         // evitar duplicata imediata (mesma placa no mesmo segundo)
         if (ultimasSaidas.length > 0 && ultimasSaidas[0].placa === placa && ultimasSaidas[0].hora === hora) return;
         ultimasSaidas.unshift({ placa, hora, data });
