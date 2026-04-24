@@ -17,6 +17,8 @@ _event_store = {}       # {idcond: [event_dict, ...]}  — mais recente primeiro
 _event_lock = threading.Lock()
 MAX_EVENTOS_POR_COND = 200
 
+_cam_dispositivo_cache: dict = {}  # {idcam: bool} — evita N+1 por evento
+
 
 def adicionar_evento(inforec):
     """
@@ -184,6 +186,8 @@ TEMPO_PULSO_MS = 500   # duração do pulso em milissegundos
 def _camera_tem_dispositivo(idcam):
     if not idcam:
         return False
+    if idcam in _cam_dispositivo_cache:
+        return _cam_dispositivo_cache[idcam]
     conn = get_db_connection()
     if not conn:
         return False
@@ -193,7 +197,9 @@ def _camera_tem_dispositivo(idcam):
             "SELECT 1 FROM cadcamera WHERE idcam = %s AND iddisp IS NOT NULL LIMIT 1",
             (idcam,)
         )
-        return cursor.fetchone() is not None
+        result = cursor.fetchone() is not None
+        _cam_dispositivo_cache[idcam] = result
+        return result
     except Exception:
         return False
     finally:

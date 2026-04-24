@@ -72,6 +72,7 @@
 
     .op-table-scroll {
         max-height: calc(100vh - 280px);
+        min-height: 200px;
         overflow-y: auto;
     }
 
@@ -843,9 +844,10 @@
 
     function celVagas(vagas) {
         if (vagas === null || vagas === undefined) return '<span class="text-muted">—</span>';
-        return parseInt(vagas, 10) > 0
-            ? '<span class="badge bg-success">OK</span>'
-            : '<span class="badge bg-danger">NOK</span>';
+        const n = parseInt(vagas, 10);
+        return n > 0
+            ? `<span class="vagas-ok">${n}</span>`
+            : '<span class="vagas-zero">0</span>';
     }
 
     function celPlacaLida(efetiva, lida) {
@@ -1047,26 +1049,28 @@
 
                         // Saída com placa cadastrada → auto-abrir portão sem intervenção do operador
                         if (ev.direcao === 'S' && ev.status_permissao !== 'NÃO CADASTRADO' && ev.idmov) {
-                            fetch('/api/operador/abrir-porta', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ idcond: condId, direcao: 'S' })
-                            })
-                            .then(r => r.json())
-                            .then(res => { if (res.success) mostrarAvisoPorta('saida', ev.placa); })
-                            .catch(() => {});
-
+                            const _placa   = ev.placa;
+                            const _momento = ev.momento;
+                            const _idmov   = ev.idmov;
                             fetch('/api/operador/acao', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ idmov: ev.idmov, acao: 'confirmar', motivo: null })
-                            }).catch(() => {});
-
-                            // c1: remove da tabela caso já estivesse visível (sem tocar no banco)
-                            removerLinhaPorIdmov(ev.idmov);
-
-                            registrarSaida(ev.placa, ev.momento);
-
+                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null })
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                if (!data.success) return null;
+                                removerLinhaPorIdmov(_idmov);
+                                registrarSaida(_placa, _momento);
+                                return fetch('/api/operador/abrir-porta', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ idcond: condId, direcao: 'S' })
+                                });
+                            })
+                            .then(r => r && r.json())
+                            .then(res => { if (res && res.success) mostrarAvisoPorta('saida', _placa); })
+                            .catch(() => {});
                             return;
                         }
 
@@ -1301,11 +1305,11 @@
                 totalEventos = Math.max(0, totalEventos - 1);
                 txtTotal.textContent = totalEventos;
             } else {
-                alert('Erro ao registrar ação: ' + (data.message || 'Erro desconhecido'));
+                mostrarAlerta('Erro ao registrar ação: ' + (data.message || 'Erro desconhecido'));
             }
             if (callback) callback(data.success);
         })
-        .catch(() => alert('Falha de conexão ao registrar ação.'));
+        .catch(() => mostrarAlerta('Falha de conexão ao registrar ação.'));
     }
 
     /* ── Modal de motivo ──────────────────────────── */
@@ -1334,6 +1338,23 @@
         if (_modalMotivoCb) _modalMotivoCb(texto);
         modalMotivo.hide();
     });
+
+    /* ── Alerta não-bloqueante (substitui alert()) ── */
+    function mostrarAlerta(msg, tipo = 'danger') {
+        const container = document.getElementById('porta-toast-container');
+        const cores = { danger: '#dc3545', warning: '#e0a800', success: '#198754', info: '#0dcaf0' };
+        const cor = cores[tipo] || cores.danger;
+        const toast = document.createElement('div');
+        toast.style.cssText = `background:${cor};color:#fff;padding:.75rem 1.1rem;border-radius:.5rem;
+            box-shadow:0 2px 8px rgba(0,0,0,.25);font-weight:500;display:flex;align-items:center;gap:.6rem;`;
+        toast.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> ${msg}`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.transition = 'opacity .4s';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 400);
+        }, 5000);
+    }
 
     /* ── Aviso temporário de porta ───────────────── */
     function mostrarAvisoPorta(tipo, placa) {
@@ -1426,10 +1447,10 @@
                     if (data.success) {
                         mostrarAvisoPorta(tipo);
                     } else {
-                        alert('Erro ao enviar pulso: ' + (data.message || 'Falha desconhecida'));
+                        mostrarAlerta('Erro ao enviar pulso: ' + (data.message || 'Falha desconhecida'));
                     }
                 })
-                .catch(() => alert('Falha de conexão ao enviar pulso.'))
+                .catch(() => mostrarAlerta('Falha de conexão ao enviar pulso.'))
                 .finally(() => { this.disabled = false; });
             });
         });
@@ -1468,7 +1489,7 @@
                     'Informe o motivo da rejeição (obrigatório).',
                     null,
                     (texto) => {
-                        if (!texto) { alert('O motivo é obrigatório para esta rejeição.'); return; }
+                        if (!texto) { mostrarAlerta('O motivo é obrigatório para esta rejeição.', 'warning'); return; }
                         enviarAcao(idmov, 'rejeitar', texto, null);
                     }
                 );
@@ -1490,7 +1511,7 @@
                         'Veículo não cadastrado. Informe o motivo para liberar a saída.',
                         'Atenção: este veículo não possui cadastro no sistema.',
                         (texto) => {
-                            if (!texto) { alert('O motivo é obrigatório para veículo não cadastrado.'); return; }
+                            if (!texto) { mostrarAlerta('O motivo é obrigatório para veículo não cadastrado.', 'warning'); return; }
                             enviarAcao(idmov, 'confirmar', texto, null);
                             registrarSaida(placa, null);
                         }
@@ -1521,7 +1542,7 @@
                     `Vagas esgotadas para a unidade ${unidade || '—'}. Informe o motivo para liberar a entrada mesmo assim.`,
                     'Atenção: o limite de vagas desta unidade foi atingido.',
                     (texto) => {
-                        if (!texto) { alert('O motivo é obrigatório quando não há vagas disponíveis.'); return; }
+                        if (!texto) { mostrarAlerta('O motivo é obrigatório quando não há vagas disponíveis.', 'warning'); return; }
                         enviarAcao(idmov, 'confirmar', texto, null);
                     }
                 );
@@ -1640,31 +1661,28 @@
 
     // Confirmar sem criar permissão → abre modal de motivo manual
     document.getElementById('btn-perm-e-sem-permissao')?.addEventListener('click', function () {
+        const state = _permEState;  // captura antes do hide()
         modalPermE.hide();
-        // Aguarda fechamento do modal antes de abrir o próximo
         modalPermEEl.addEventListener('hidden.bs.modal', function onHidden() {
             modalPermEEl.removeEventListener('hidden.bs.modal', onHidden);
             abrirModalMotivo(
-                `Informe o motivo para confirmar sem permissão válida (${_permEState?.placa || ''}).`,
+                `Informe o motivo para confirmar sem permissão válida (${state?.placa || ''}).`,
                 null,
-                (texto) => enviarAcao(_permEState.idmov, 'confirmar', texto || null, null)
+                (texto) => enviarAcao(state?.idmov, 'confirmar', texto || null, null)
             );
         });
     });
 
     // Ao fechar o modal: gravar movimento se permissão foi criada
     modalPermEEl?.addEventListener('hidden.bs.modal', function () {
-        if (_permECriada && _permEState) {
-            enviarAcao(
-                _permEState.idmov,
-                'confirmar',
-                'Permissão criada durante a liberação do veículo',
-                null
-            );
-            _permECriada = false;
-        }
+        const state  = _permEState;
+        const criada = _permECriada;
+        _permECriada = false;
         document.getElementById('btn-perm-e-salvar').disabled = false;
         setAlertPermE('', '');
+        if (criada && state) {
+            enviarAcao(state.idmov, 'confirmar', 'Permissão criada durante a liberação do veículo', null);
+        }
     });
 
     /* ── Modal: cadastrar veículo + permissão inline (situação C) ── */
@@ -1890,15 +1908,16 @@
 
     // Confirmar sem cadastrar → motivo obrigatório
     document.getElementById('btn-cad-c-sem-cadastrar')?.addEventListener('click', function () {
+        const state = _cadCState;  // captura antes do hide()
         modalCadC.hide();
         modalCadCEl.addEventListener('hidden.bs.modal', function onHidden() {
             modalCadCEl.removeEventListener('hidden.bs.modal', onHidden);
             abrirModalMotivo(
-                `Veículo não cadastrado (${_cadCState?.placa || ''}). Informe o motivo para liberar mesmo assim.`,
+                `Veículo não cadastrado (${state?.placa || ''}). Informe o motivo para liberar mesmo assim.`,
                 'Atenção: este veículo não será cadastrado no sistema.',
                 (texto) => {
-                    if (!texto) { alert('O motivo é obrigatório para veículo não cadastrado.'); return; }
-                    enviarAcao(_cadCState.idmov, 'confirmar', texto, null);
+                    if (!texto) { mostrarAlerta('O motivo é obrigatório para veículo não cadastrado.', 'warning'); return; }
+                    enviarAcao(state.idmov, 'confirmar', texto, null);
                 }
             );
         });
@@ -1906,12 +1925,14 @@
 
     // Ao fechar: confirmar movimento se veículo+permissão foram criados
     modalCadCEl?.addEventListener('hidden.bs.modal', function () {
-        if (_cadCCriada && _cadCState) {
-            enviarAcao(_cadCState.idmov, 'confirmar', 'Veículo cadastrado durante liberação', null);
-            _cadCCriada = false;
-        }
+        const state  = _cadCState;
+        const criada = _cadCCriada;
+        _cadCCriada = false;
         document.getElementById('btn-cad-c-salvar').disabled = false;
         setAlertCadC('', '');
+        if (criada && state) {
+            enviarAcao(state.idmov, 'confirmar', 'Veículo cadastrado durante liberação', null);
+        }
     });
 
     /* ── Modal: informações do veículo ──────────── */
