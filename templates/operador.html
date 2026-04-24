@@ -424,10 +424,7 @@
         <i class="bi bi-clock text-secondary"></i>
         <span>Última atualização: <strong id="ultimo-update">—</strong></span>
     </div>
-    <div class="op-status-item">
-        <i class="bi bi-list-check text-secondary"></i>
-        <span>Eventos exibidos: <strong id="total-eventos">0</strong></span>
-    </div>
+    <span id="total-eventos" class="d-none"></span>
     <div class="op-status-item ms-auto">
         <span class="text-muted" id="txt-historico"></span>
     </div>
@@ -436,7 +433,7 @@
 <!-- Painel de vagas do condomínio -->
 <div class="vagas-cond-painel" id="vagas-resumo-container">
     <i class="bi bi-p-square-fill text-secondary me-1"></i>
-    <span class="vagas-cond-label">Vagas do condomínio:</span>
+    <span class="vagas-cond-label">Vagas:</span>
     <div class="vagas-resumo" id="vagas-resumo">
         <span class="vagas-resumo-nd">carregando...</span>
     </div>
@@ -2102,35 +2099,43 @@
     /* ── Resumo de vagas do condomínio ──────────── */
     function atualizarResumoVagas() {
         fetch(`/api/operador/vagas-cond/${condId}`)
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
             .then(data => {
                 const el = document.getElementById('vagas-resumo');
-                if (!data.success) { el.innerHTML = '<span class="vagas-resumo-nd">Vagas —</span>'; return; }
+                if (!data.success) {
+                    el.innerHTML = '<span class="vagas-resumo-nd">indisponível</span>';
+                    return;
+                }
 
                 const { limite, ocupadas, disponiveis } = data;
 
-                let htmlDisp = '';
-                if (disponiveis === null || disponiveis === undefined) {
-                    htmlDisp = '';
+                if (limite === 0) {
+                    // limite não configurado em cadcond — mostra só ocupação
+                    const cls = ocupadas > 0 ? 'vagas-resumo-ocup' : 'vagas-resumo-total';
+                    el.innerHTML = `<span class="vagas-resumo-badge ${cls}">
+                                        <i class="bi bi-car-front-fill"></i>${ocupadas} ocupada${ocupadas !== 1 ? 's' : ''}
+                                    </span>
+                                    <span class="vagas-resumo-nd ms-1">(total não configurado)</span>`;
                 } else {
-                    const cls = disponiveis > 0 ? 'vagas-resumo-disp-ok' : 'vagas-resumo-disp-zero';
-                    htmlDisp = `<span class="vagas-resumo-badge ${cls}" title="Disponíveis">
-                                    <i class="bi bi-check-circle"></i>${disponiveis} disp.
-                                </span>`;
+                    const clsDisp = disponiveis > 0 ? 'vagas-resumo-disp-ok' : 'vagas-resumo-disp-zero';
+                    el.innerHTML = `
+                        <span class="vagas-resumo-badge vagas-resumo-total" title="Total">
+                            <i class="bi bi-p-square-fill"></i>${limite} total
+                        </span>
+                        <span class="vagas-resumo-badge vagas-resumo-ocup" title="Ocupadas agora">
+                            <i class="bi bi-car-front-fill"></i>${ocupadas} ocupada${ocupadas !== 1 ? 's' : ''}
+                        </span>
+                        <span class="vagas-resumo-badge ${clsDisp}" title="Disponíveis">
+                            <i class="bi bi-check-circle-fill"></i>${disponiveis} disponíve${disponiveis !== 1 ? 'is' : 'l'}
+                        </span>`;
                 }
-
-                el.innerHTML = `
-                    <span class="vagas-resumo-badge vagas-resumo-total" title="Total (limite cadcond)">
-                        <i class="bi bi-p-square-fill"></i>${limite > 0 ? limite : '—'}
-                    </span>
-                    <span class="vagas-resumo-badge vagas-resumo-ocup" title="Ocupadas agora">
-                        <i class="bi bi-car-front-fill"></i>${ocupadas}
-                    </span>
-                    ${htmlDisp}`;
             })
             .catch(() => {
                 document.getElementById('vagas-resumo').innerHTML =
-                    '<span class="vagas-resumo-nd">Vagas —</span>';
+                    '<span class="vagas-resumo-nd">indisponível</span>';
             });
     }
 
