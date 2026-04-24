@@ -17,6 +17,11 @@ _event_store = {}       # {idcond: [event_dict, ...]}  — mais recente primeiro
 _event_lock = threading.Lock()
 MAX_EVENTOS_POR_COND = 200
 
+_acoes_store = {}       # {idcond: [acao_dict, ...]}  — ações recentes para broadcast
+_acoes_lock  = threading.Lock()
+MAX_ACOES_POR_COND     = 200
+JANELA_ACOES_SEGUNDOS  = 180   # 3 minutos
+
 _cam_dispositivo_cache: dict = {}  # {idcam: bool} — evita N+1 por evento
 
 
@@ -99,6 +104,37 @@ def obter_eventos_recentes(idcond, desde_ts=None, limit=100):
             pass
 
     return eventos[:limit]
+
+
+def registrar_acao_store(idcond, idmov, acao, placa, momento, direcao):
+    """Registra ação do operador no store em memória para broadcast a outros browsers."""
+    entrada = {
+        'idmov':   idmov,
+        'acao':    acao,
+        'placa':   placa,
+        'momento': momento,
+        'direcao': direcao,
+        'ts':      time.time(),
+    }
+    with _acoes_lock:
+        store = _acoes_store.setdefault(idcond, [])
+        store.insert(0, entrada)
+        if len(store) > MAX_ACOES_POR_COND:
+            _acoes_store[idcond] = store[:MAX_ACOES_POR_COND]
+
+
+def obter_acoes_recentes(idcond, desde_ts=None):
+    """Retorna ações recentes do store para polling do front-end."""
+    corte = time.time() - JANELA_ACOES_SEGUNDOS
+    with _acoes_lock:
+        acoes = list(_acoes_store.get(idcond, []))
+    acoes = [a for a in acoes if a['ts'] >= corte]
+    if desde_ts is not None:
+        try:
+            acoes = [a for a in acoes if a['ts'] > float(desde_ts)]
+        except (ValueError, TypeError):
+            pass
+    return acoes
 
 
 def obter_historico_db(idcond, limit=50):
@@ -451,6 +487,15 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
         """, (idgente, rec['placa'], rec['idcond'], idmov))
 
         conn.commit()
+
+        # Broadcast da ação para outros browsers via acoes_store
+        momento_str = time.strftime('%d/%m/%Y %H:%M:%S')
+        registrar_acao_store(rec['idcond'], idmov, acao, rec['placa'], momento_str, rec.get('direcao', 'E'))
+
+        # Remover evento do _event_store para novos browsers não verem evento já tratado
+        with _event_lock:
+            ev_list = _event_store.get(rec['idcond'], [])
+            _event_store[rec['idcond']] = [e for e in ev_list if e.get('idmov') != idmov]
 
         # Enviar pulso: entrada (A, C, E, G) e saída (I, J)
         if statusmov in ('A', 'C', 'E', 'G', 'I', 'J'):

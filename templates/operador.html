@@ -830,6 +830,8 @@
 
     /* ── Estado ───────────────────────────────────── */
     let ultimoTs = null;          // timestamp do evento mais recente visto
+    let ultimoAcaoTs = 0;         // timestamp da última ação vista (sync entre browsers)
+    const _acoesProprias = new Set(); // idmovs tratados por ESTE browser (evita double-process)
     let totalEventos = 0;
     let pollingAtivo = false;
     let novosAcumulados = 0;
@@ -1057,6 +1059,7 @@
         if (pollingAtivo) return;
         pollingAtivo = true;
         setTimeout(pollEventos, POLL_INTERVAL_MS);
+        setTimeout(pollAcoes,   POLL_INTERVAL_MS);
     }
 
     function pollEventos() {
@@ -1080,6 +1083,7 @@
                             const _placa   = ev.placa;
                             const _momento = ev.momento;
                             const _idmov   = ev.idmov;
+                            _acoesProprias.add(_idmov); // marcar antes do fetch para evitar re-processo pelo pollAcoes
                             fetch('/api/operador/acao', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -1136,6 +1140,26 @@
             .finally(() => {
                 setTimeout(pollEventos, POLL_INTERVAL_MS);
             });
+    }
+
+    /* ── Polling de ações (sincronização entre browsers) ─ */
+    function pollAcoes() {
+        fetch(`/api/operador/acoes/${condId}?desde_ts=${ultimoAcaoTs}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success || !Array.isArray(data.acoes)) return;
+                data.acoes.forEach(ac => {
+                    if (ac.ts > ultimoAcaoTs) ultimoAcaoTs = ac.ts;
+                    if (_acoesProprias.has(ac.idmov)) return; // já tratei localmente
+                    removerLinhaPorIdmov(ac.idmov);
+                    if (ac.acao === 'confirmar' && ac.direcao === 'S') {
+                        registrarSaida(ac.placa, ac.momento);
+                    }
+                    atualizarResumoVagas();
+                });
+            })
+            .catch(() => {})
+            .finally(() => setTimeout(pollAcoes, POLL_INTERVAL_MS));
     }
 
     /* ── Carregar nome do condomínio ──────────────── */
@@ -1321,6 +1345,7 @@
 
     /* ── Enviar ação ao backend ───────────────────── */
     function enviarAcao(idmov, acao, motivo, callback) {
+        _acoesProprias.add(idmov); // marcar antes do fetch para evitar re-processo pelo pollAcoes
         fetch('/api/operador/acao', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2266,11 +2291,12 @@
         carregarNomeCond();
         carregarHistorico();
         carregarUltimasSaidas();
+        setInterval(carregarUltimasSaidas, 8000);
         carregarCameras();
         verificarDispositivos();
         configurarBotoesPorta();
         atualizarResumoVagas();
-        setInterval(atualizarResumoVagas, 30000);
+        setInterval(atualizarResumoVagas, 10000);
     });
 
 })();
