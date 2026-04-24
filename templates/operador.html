@@ -135,30 +135,49 @@
     .vagas-zero   { color: #dc3545; font-weight: 600; }
     .vagas-nd     { color: #adb5bd; }
 
-    /* ── Resumo de vagas do condomínio ───────────── */
+    /* ── Painel de vagas do condomínio ───────────── */
+    .vagas-cond-painel {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .45rem 1rem;
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        margin-bottom: .75rem;
+        font-size: .875rem;
+        flex-wrap: wrap;
+    }
+
+    .vagas-cond-label {
+        color: #6c757d;
+        font-size: .8rem;
+        white-space: nowrap;
+    }
+
     .vagas-resumo {
         display: flex;
         align-items: center;
-        gap: .35rem;
-        font-size: .875rem;
-        white-space: nowrap;
+        gap: .4rem;
+        flex-wrap: wrap;
     }
 
     .vagas-resumo-badge {
         display: inline-flex;
         align-items: center;
-        gap: .25rem;
-        padding: .15rem .5rem;
+        gap: .3rem;
+        padding: .2rem .65rem;
         border-radius: .375rem;
-        font-weight: 600;
-        font-size: .8rem;
+        font-weight: 700;
+        font-size: .85rem;
+        white-space: nowrap;
     }
 
     .vagas-resumo-total    { background: #e9ecef; color: #495057; }
     .vagas-resumo-ocup     { background: #fff3cd; color: #664d03; }
     .vagas-resumo-disp-ok  { background: #d1e7dd; color: #0a3622; }
     .vagas-resumo-disp-zero{ background: #f8d7da; color: #58151c; }
-    .vagas-resumo-nd       { color: #adb5bd; font-style: italic; }
+    .vagas-resumo-nd       { color: #adb5bd; font-style: italic; font-size: .8rem; }
 
     /* ── Vazia ────────────────────────────────────── */
     .op-empty {
@@ -412,11 +431,14 @@
     <div class="op-status-item ms-auto">
         <span class="text-muted" id="txt-historico"></span>
     </div>
-    <div class="op-status-item" id="vagas-resumo-container" title="Vagas do condomínio">
-        <i class="bi bi-p-square text-secondary"></i>
-        <div class="vagas-resumo" id="vagas-resumo">
-            <span class="vagas-resumo-nd">Vagas —</span>
-        </div>
+</div>
+
+<!-- Painel de vagas do condomínio -->
+<div class="vagas-cond-painel" id="vagas-resumo-container">
+    <i class="bi bi-p-square-fill text-secondary me-1"></i>
+    <span class="vagas-cond-label">Vagas do condomínio:</span>
+    <div class="vagas-resumo" id="vagas-resumo">
+        <span class="vagas-resumo-nd">carregando...</span>
     </div>
 </div>
 
