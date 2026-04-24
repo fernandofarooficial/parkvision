@@ -658,6 +658,49 @@ def capturar_snapshot_rtsp(rtsp_url):
         return None
 
 
+def obter_resumo_vagas_cond(idcond):
+    """
+    Retorna o resumo de vagas do condomínio: limite total (cadcond.limite),
+    vagas ocupadas (vw_estacionados) e disponíveis.
+
+    Retorna:
+        dict: {'success': bool, 'limite': int, 'ocupadas': int, 'disponiveis': int|None}
+              disponiveis é None quando limite não está configurado em cadcond.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return {'success': False, 'message': 'Sem conexão com o banco de dados'}
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT COALESCE(limite, 0) AS limite FROM cadcond WHERE idcond = %s LIMIT 1",
+            (idcond,)
+        )
+        row = cursor.fetchone()
+        limite = int(row['limite']) if row else 0
+
+        cursor.execute(
+            "SELECT COALESCE(SUM(estacionados), 0) AS ocupadas FROM vw_estacionados WHERE idcond = %s",
+            (idcond,)
+        )
+        row2 = cursor.fetchone()
+        ocupadas = int(row2['ocupadas']) if row2 else 0
+
+        disponiveis = max(0, limite - ocupadas) if limite > 0 else None
+        return {
+            'success':     True,
+            'limite':      limite,
+            'ocupadas':    ocupadas,
+            'disponiveis': disponiveis,
+        }
+    except Exception as e:
+        logger.error(f"obter_resumo_vagas_cond: erro — {e}")
+        return {'success': False, 'message': 'Erro interno'}
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def obter_ultimas_saidas(idcond, limit=10):
     """
     Retorna as últimas saídas confirmadas (contav=1, direcao='S') do condomínio.
