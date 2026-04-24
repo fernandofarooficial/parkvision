@@ -8,8 +8,6 @@ from flask import jsonify
 from datetime import datetime
 from config.database import get_db_connection
 from visionlib.vplib import process_heimdall_plate
-from visionlib.teleglib import teleg_placa_nao_cadastrada, teleg_veiculo_ok
-from visionlib.teleglib import teleg_veiculo_nao_autorizado, teleg_sem_vaga
 from visionlib.operlib import adicionar_evento
 
 logger = logging.getLogger(__name__)
@@ -61,18 +59,14 @@ def gravar_movimento(movdic):
                 # checar quantidade de vagas permitidas
                 if inforec['qtde_estacionada'] >= inforec['vagas_permitidas']:
                     logger.info(f"[{placa}]: Todas as vagas ocupadas")
-                    # teleg_sem_vaga(inforec)
                 else:
                     logger.info(f"[{placa}]: Todos critérios atendidos")
-                    # teleg_veiculo_ok(inforec)
             else:
                 logger.info(f"[{placa}]: Placa sem permissão válida")
-                # teleg_veiculo_nao_autorizado(inforec)
         else:
             logger.info(f"[{placa}]: Placa sem cadastro")
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
             inforec['status_permissao'] = 'NÃO CADASTRADO'
-            # teleg_placa_nao_cadastrada(inforec)
         # Zerar contav antes de gravar: o operador decide a ação (confirmar/rejeitar/ignorar)
         inforec['contav'] = 0
     # gravar o log
@@ -80,7 +74,6 @@ def gravar_movimento(movdic):
     # Atualizar tela Operador em tempo real apenas para eventos válidos (não duplicatas)
     if valido:
         adicionar_evento(inforec)
-        mensagem_telegram(inforec)
     #
     return inforec
 
@@ -248,10 +241,7 @@ def obter_nome_condominio(inforec):
 
 
 
-def mensagem_telegram(inforec):
-    # Trata mensagens no telegram
-    logger.debug(f"mensagem_telegram: {inforec}")
-    return
+
 
 
 
