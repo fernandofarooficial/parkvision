@@ -179,6 +179,8 @@ def api_operador_cameras(condominio_id):
     tem_acesso, _ = verificar_acesso_condominio(condominio_id)
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    if os.getenv('CAMERAS_ENABLED', 'true').lower() == 'false':
+        return jsonify({'success': True, 'cameras': []})
     cameras = obter_cameras_rtsp(condominio_id)
     # Não expor a URL RTSP ao cliente — apenas o ID
     cameras_safe = [{'idcam': c['idcam'], 'nomecamera': c.get('nomecamera') or f'Câm. {c["idcam"]}'} for c in cameras]
