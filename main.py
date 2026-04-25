@@ -256,6 +256,8 @@ def api_operador_abrir_porta():
 # API: snapshot JPEG de câmera via RTSP
 @app.route('/api/camera/snapshot/<int:idcam>')
 def api_camera_snapshot(idcam):
+    if os.getenv('CAMERAS_ENABLED', 'true').lower() == 'false':
+        return jsonify({'success': False, 'message': 'Câmeras desabilitadas'}), 503
     autenticado, _ = verificar_autenticacao_usuario()
     if not autenticado:
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403

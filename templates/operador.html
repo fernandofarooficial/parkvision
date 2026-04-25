@@ -2178,9 +2178,7 @@
             header.classList.remove('cam-desativada');
             btn.innerHTML = '<i class="bi bi-eye"></i>';
             btn.title = 'Ocultar câmera';
-            // Recarregar imagem ao reexibir
-            const img = document.getElementById(`img-cam-${idcam}`);
-            if (img) img.src = `/api/camera/snapshot/${idcam}?t=${Date.now()}`;
+            _carregarImgCam(idcam);
         } else {
             body.classList.add('oculta');
             header.classList.add('cam-desativada');
@@ -2211,7 +2209,7 @@
                      style="max-height:200px;">
                     <img id="img-cam-${idcam}"
                          class="camera-snapshot-img"
-                         src="/api/camera/snapshot/${idcam}?t=${Date.now()}"
+                         data-src="/api/camera/snapshot/${idcam}"
                          alt="${label}">
                     <div id="err-cam-${idcam}" class="camera-snapshot-erro d-none">
                         <i class="bi bi-exclamation-triangle fs-4"></i>
@@ -2231,37 +2229,42 @@
             setCameraVisivel(idcam, !isCameraVisivel(idcam));
         });
 
-        /* Restaurar estado salvo */
+        /* Restaurar estado salvo — e disparar primeiro load se visível */
         if (!isCameraVisivel(idcam)) {
-            // aplicar após o elemento estar no DOM (setTimeout 0)
             setTimeout(() => _aplicarVisibilidade(idcam, false), 0);
+        } else {
+            setTimeout(() => _carregarImgCam(idcam), 0);
         }
 
         return col;
     }
 
+    function _carregarImgCam(idcam) {
+        const spin = document.getElementById(`spin-cam-${idcam}`);
+        if (spin) spin.classList.remove('d-none');
+        const tmp = new Image();
+        tmp.onload = () => {
+            const img = document.getElementById(`img-cam-${idcam}`);
+            const err = document.getElementById(`err-cam-${idcam}`);
+            if (img) { img.src = tmp.src; img.classList.remove('d-none'); }
+            if (err) err.classList.add('d-none');
+            if (spin) spin.classList.add('d-none');
+        };
+        tmp.onerror = () => {
+            const img = document.getElementById(`img-cam-${idcam}`);
+            const err = document.getElementById(`err-cam-${idcam}`);
+            if (img) img.classList.add('d-none');
+            if (err) err.classList.remove('d-none');
+            if (spin) spin.classList.add('d-none');
+        };
+        tmp.src = `/api/camera/snapshot/${idcam}?t=${Date.now()}`;
+    }
+
     function refreshCameras() {
         if (_cameraIds.length === 0) return;
         _cameraIds.forEach(idcam => {
-            if (!isCameraVisivel(idcam)) return;   // não buscar se oculta
-            const spin = document.getElementById(`spin-cam-${idcam}`);
-            if (spin) spin.classList.remove('d-none');
-            const tmp = new Image();
-            tmp.onload = () => {
-                const img = document.getElementById(`img-cam-${idcam}`);
-                const err = document.getElementById(`err-cam-${idcam}`);
-                if (img) { img.src = tmp.src; img.classList.remove('d-none'); }
-                if (err) err.classList.add('d-none');
-                if (spin) spin.classList.add('d-none');
-            };
-            tmp.onerror = () => {
-                const img = document.getElementById(`img-cam-${idcam}`);
-                const err = document.getElementById(`err-cam-${idcam}`);
-                if (img) img.classList.add('d-none');
-                if (err) err.classList.remove('d-none');
-                if (spin) spin.classList.add('d-none');
-            };
-            tmp.src = `/api/camera/snapshot/${idcam}?t=${Date.now()}`;
+            if (!isCameraVisivel(idcam)) return;
+            _carregarImgCam(idcam);
         });
         document.getElementById('cameras-ultimo-refresh').textContent =
             'Atualizado: ' + horaAtual();
