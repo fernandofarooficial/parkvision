@@ -5,6 +5,7 @@
 # Os eventos são mantidos em memória (por idcond) e alimentados pelo dblib
 # após cada leitura de placa válida.
 
+import os
 import time
 import threading
 import logging
@@ -727,11 +728,14 @@ def capturar_snapshot_rtsp(rtsp_url):
         rtsp_url (str): URL RTSP da câmera (ex: rtsp://user:pass@ip:port/stream)
 
     Retorna:
-        bytes | None: imagem JPEG ou None em caso de falha
+        bytes | None: imagem JPEG ou None em caso de falha / câmeras desabilitadas
     """
+    if os.getenv('CAMERAS_ENABLED', 'true').lower() == 'false':
+        logger.info("capturar_snapshot_rtsp: câmeras desabilitadas (CAMERAS_ENABLED=false)")
+        return None
+
     try:
         import cv2
-        import os
         # Forçar transporte TCP para maior compatibilidade
         os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
         cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
