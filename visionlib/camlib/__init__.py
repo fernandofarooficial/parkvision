@@ -255,10 +255,10 @@ def obter_status_cameras(idcond: int) -> list:
     try:
         cursor.execute("""
             SELECT idcam,
-                   COALESCE(nomecamera, CONCAT('Câm. ', idcam))  AS nome,
-                   cam_ativo                                      AS ativo,
-                   DATE_FORMAT(cam_checado_em, '%%d/%%m/%%Y %%H:%%i:%%S') AS checado_em,
-                   UNIX_TIMESTAMP(cam_checado_em)                AS checado_ts
+                   COALESCE(nomecamera, CONCAT('Câm. ', idcam)) AS nome,
+                   cam_ativo                                     AS ativo,
+                   cam_checado_em,
+                   UNIX_TIMESTAMP(cam_checado_em)               AS checado_ts
             FROM cadcamera
             WHERE idcond = %s
               AND rtsp IS NOT NULL AND TRIM(rtsp) <> ''
@@ -266,10 +266,17 @@ def obter_status_cameras(idcond: int) -> list:
             ORDER BY nomecamera
         """, (idcond,))
         rows = cursor.fetchall()
+        result = []
         for row in rows:
-            row['ativo']      = bool(row['ativo']) if row['ativo'] is not None else None
-            row['checado_ts'] = float(row['checado_ts']) if row['checado_ts'] else None
-        return rows
+            dt = row['cam_checado_em']
+            result.append({
+                'idcam':      row['idcam'],
+                'nome':       row['nome'],
+                'ativo':      bool(row['ativo']) if row['ativo'] is not None else None,
+                'checado_em': dt.strftime('%d/%m/%Y %H:%M:%S') if dt else None,
+                'checado_ts': float(row['checado_ts']) if row['checado_ts'] else None,
+            })
+        return result
     except Exception as e:
         logger.error(f"camlib.obter_status_cameras: {e}")
         return []
