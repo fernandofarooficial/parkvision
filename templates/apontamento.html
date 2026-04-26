@@ -15,7 +15,7 @@
                 <div class="card-body">
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle me-2"></i>
-                        Selecione um veículo com permissão vigente ou indefinida para registrar entrada ou saída manual.
+                        Selecione qualquer veículo cadastrado para registrar entrada ou saída manual.
                     </div>
 
                     <form id="form-apontamento">
@@ -26,6 +26,11 @@
                             </select>
                         </div>
 
+                        <div class="mb-3">
+                            <label for="motivo" class="form-label">Motivo <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="motivo" rows="3"
+                                      placeholder="Informe o motivo do apontamento manual..." required></textarea>
+                        </div>
 
                         <div class="row">
                             <div class="col-6">
@@ -89,17 +94,18 @@ let dadosApontamento = null;
 
 function carregarVeiculos() {
     const condominioId = obterCondominioId();
-    
+
     $.get(`/api/veiculos-vigentes/${condominioId}`)
         .done(function(response) {
             if (response.success) {
                 const select = $('#veiculo');
                 select.empty();
                 select.append('<option value="">Selecione um veículo...</option>');
-                
+
                 response.data.forEach(function(veiculo) {
-                    const texto = `${veiculo.placa} - ${veiculo.marca} ${veiculo.modelo} (${veiculo.nmcor}) - Unidade: ${veiculo.unidade}`;
-                    select.append(`<option value="${veiculo.placa}" data-unidade="${veiculo.unidade}">${texto}</option>`);
+                    const unidadeInfo = veiculo.unidade ? ` - Unidade: ${veiculo.unidade}` : '';
+                    const texto = `${veiculo.placa} - ${veiculo.marca} ${veiculo.modelo} (${veiculo.cor})${unidadeInfo}`;
+                    select.append(`<option value="${veiculo.placa}" data-unidade="${veiculo.unidade || ''}">${texto}</option>`);
                 });
             } else {
                 $('#veiculo').html('<option value="">Erro ao carregar veículos</option>');
@@ -115,23 +121,29 @@ function carregarVeiculos() {
 function configurarFormulario() {
     $('#form-apontamento').on('submit', function(e) {
         e.preventDefault();
-        
+
         const placa = $('#veiculo').val();
-        const unidade = $('#veiculo option:selected').data('unidade');
-        
+        const unidade = $('#veiculo option:selected').data('unidade') || '';
+        const motivo = $('#motivo').val().trim();
+
         if (!placa) {
             mostrarAlerta('warning', 'Selecione um veículo');
             return;
         }
-        
-        // Buscar último movimento para determinar direção
-        buscarUltimoMovimento(placa, unidade);
+
+        if (!motivo) {
+            mostrarAlerta('warning', 'O motivo do apontamento é obrigatório');
+            $('#motivo').focus();
+            return;
+        }
+
+        buscarUltimoMovimento(placa, unidade, motivo);
     });
 }
 
-function buscarUltimoMovimento(placa, unidade) {
+function buscarUltimoMovimento(placa, unidade, motivo) {
     const condominioId = obterCondominioId();
-    
+
     $.ajax({
         url: '/api/ultimo-movimento',
         type: 'POST',
@@ -145,24 +157,29 @@ function buscarUltimoMovimento(placa, unidade) {
         if (response.success) {
             const novaDirecao = response.ultima_direcao === 'E' ? 'S' : 'E';
             const textoMovimento = novaDirecao === 'E' ? 'ENTRADA' : 'SAÍDA';
-            
+
             dadosApontamento = {
                 placa: placa,
                 unidade: unidade,
                 direcao: novaDirecao,
+                motivo: motivo,
                 condominio_id: parseInt(condominioId)
             };
-            
-            // Mostrar modal de confirmação
+
+            const unidadeHtml = unidade
+                ? `<p><strong>Unidade:</strong> ${unidade}</p>`
+                : '';
+
             const info = `
                 <p><strong>Placa:</strong> ${placa}</p>
-                <p><strong>Unidade:</strong> ${unidade}</p>
+                ${unidadeHtml}
                 <p><strong>Movimento:</strong> <span class="badge ${novaDirecao === 'E' ? 'bg-success' : 'bg-danger'}">${textoMovimento}</span></p>
+                <p><strong>Motivo:</strong> ${motivo}</p>
             `;
-            
+
             $('#info-confirmacao').html(info);
             $('#modal-confirmacao').modal('show');
-            
+
         } else {
             mostrarAlerta('danger', 'Erro ao buscar último movimento: ' + response.message);
         }
@@ -177,7 +194,7 @@ function confirmarApontamento() {
         mostrarAlerta('danger', 'Dados do apontamento não encontrados');
         return;
     }
-    
+
     $.ajax({
         url: '/api/processar-apontamento',
         type: 'POST',
@@ -185,35 +202,37 @@ function confirmarApontamento() {
         data: JSON.stringify(dadosApontamento)
     })
     .done(function(response) {
-            if (response.success) {
-                $('#modal-confirmacao').modal('hide');
-                mostrarAlerta('success', 'Apontamento registrado com sucesso!');
-                
-                // Limpar formulário
-                $('#form-apontamento')[0].reset();
-                dadosApontamento = null;
-                
-                // Mostrar informações do movimento
-                mostrarInfoMovimento(response.movimento);
-                
-            } else {
-                $('#modal-confirmacao').modal('hide');
-                mostrarAlerta('danger', 'Erro ao processar apontamento: ' + response.message);
-            }
-        })
-        .fail(function() {
+        if (response.success) {
             $('#modal-confirmacao').modal('hide');
-            mostrarAlerta('danger', 'Erro de comunicação ao processar apontamento');
-        });
+            mostrarAlerta('success', 'Apontamento registrado com sucesso!');
+
+            $('#form-apontamento')[0].reset();
+            dadosApontamento = null;
+
+            mostrarInfoMovimento(response.movimento);
+
+        } else {
+            $('#modal-confirmacao').modal('hide');
+            mostrarAlerta('danger', 'Erro ao processar apontamento: ' + response.message);
+        }
+    })
+    .fail(function() {
+        $('#modal-confirmacao').modal('hide');
+        mostrarAlerta('danger', 'Erro de comunicação ao processar apontamento');
+    });
 }
 
 function mostrarInfoMovimento(movimento) {
     const textoMovimento = movimento.direcao === 'E' ? 'ENTRADA' : 'SAÍDA';
+    const unidadeHtml = movimento.unidade
+        ? `<p><strong>Unidade:</strong> ${movimento.unidade}</p>`
+        : '';
+
     const info = `
         <div class="row">
             <div class="col-md-6">
                 <p><strong>Placa:</strong> ${movimento.placa}</p>
-                <p><strong>Unidade:</strong> ${movimento.unidade}</p>
+                ${unidadeHtml}
                 <p><strong>Data/Hora:</strong> ${movimento.instante}</p>
             </div>
             <div class="col-md-6">
@@ -222,14 +241,18 @@ function mostrarInfoMovimento(movimento) {
                 <p><strong>Status:</strong> <span class="badge bg-info">Registrado</span></p>
             </div>
         </div>
+        <div class="row mt-2">
+            <div class="col-12">
+                <p><strong>Motivo:</strong> ${movimento.motivo}</p>
+            </div>
+        </div>
     `;
-    
+
     $('#detalhes-movimento').html(info);
     $('#info-movimento').show();
 }
 
 function obterCondominioId() {
-    // Extrair condominio_id da URL ou usar variável global
     const path = window.location.pathname;
     const match = path.match(/\/apontamento\/(\d+)/);
     return match ? match[1] : null;
@@ -245,16 +268,15 @@ function voltar() {
 }
 
 function mostrarAlerta(tipo, mensagem) {
-    // Remove alertas existentes
     $('.alert-dismissible').remove();
-    
+
     const alerta = `
         <div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
             ${mensagem}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     `;
-    
+
     $('.container-fluid').prepend(alerta);
 }
 </script>

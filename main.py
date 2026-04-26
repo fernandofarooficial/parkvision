@@ -33,7 +33,7 @@ from visionlib.userlib import (api_listar_usuarios, api_criar_usuario, api_atual
                               api_responder_solicitacao, api_liberar_condominio, api_remover_condominio,
                               api_listar_condominios_disponiveis, api_listar_condominios_usuario,
                               api_gerenciar_condominios_usuario)
-from visionlib.apontlib import obter_veiculos_vigentes, obter_ultimo_movimento, processar_apontamento
+from visionlib.apontlib import obter_veiculos_cadastrados, obter_ultimo_movimento, processar_apontamento
 from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
                                corrigir_placa_operador, enviar_pulso_por_direcao,
@@ -729,7 +729,7 @@ def api_veiculos_vigentes(condominio_id):
     tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado'})
-    return obter_veiculos_vigentes(condominio_id)
+    return obter_veiculos_cadastrados(condominio_id)
 
 # API para obter último movimento de um veículo
 @app.route('/api/ultimo-movimento', methods=['POST'])
