@@ -472,7 +472,7 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
         idmov (int):    PK do registro em movcar
         acao (str):     'confirmar' | 'rejeitar' | 'ignorar'
         idgente (int):  ID do usuário que realizou a ação (movcar.idgente)
-        motivo (str):   Texto opcional para registrar na tabela motivo
+        motivo (str):   Texto opcional para registrar em movcar.motivo
 
     Retorna:
         dict: {'success': bool, 'message': str}
@@ -507,8 +507,8 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
 
         if motivo and motivo.strip():
             cursor.execute(
-                "INSERT INTO motivo (idlog, motivo) VALUES (%s, %s)",
-                (rec['idlog'], motivo.strip())
+                "UPDATE movcar SET motivo = %s WHERE idmov = %s",
+                (motivo.strip(), idmov)
             )
 
         # Status C: confirmar veículo não cadastrado → gravar em semcadastro
