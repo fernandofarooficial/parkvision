@@ -40,6 +40,7 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_cameras_dispositivo_por_direcao,
                                obter_info_veiculo_operador, obter_ultimas_saidas,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
+from visionlib.camlib import iniciar_monitor_cameras, obter_status_cameras
 
 app = Flask(__name__)
 
@@ -251,6 +252,17 @@ def api_operador_abrir_porta():
     resultado = enviar_pulso_por_direcao(int(idcond), direcao)
     status_http = 200 if resultado['success'] else 422
     return jsonify(resultado), status_http
+
+
+# API: status das câmeras (monitoramento background — resultado da última verificação)
+@app.route('/api/operador/monitor-cameras/<int:condominio_id>')
+def api_operador_monitor_cameras(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    cameras = obter_status_cameras(condominio_id)
+    cameras_enabled = os.getenv('CAMERAS_ENABLED', 'true').lower() != 'false'
+    return jsonify({'success': True, 'cameras': cameras, 'cameras_enabled': cameras_enabled})
 
 
 # API: snapshot JPEG de câmera via RTSP
@@ -929,6 +941,12 @@ def api_logs_tail():
 
     except OSError as e:
         return jsonify({'success': False, 'message': f'Erro ao ler log: {e}'})
+
+# ── Monitor de câmeras em background ──────────────────────────────────────────
+# WERKZEUG_RUN_MAIN='true' indica o processo filho do reloader (desenvolvimento).
+# Em produção ou sem reloader, a variável não está definida — inicia normalmente.
+if os.environ.get('WERKZEUG_RUN_MAIN', 'false') == 'true' or not os.environ.get('WERKZEUG_RUN_MAIN'):
+    iniciar_monitor_cameras()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

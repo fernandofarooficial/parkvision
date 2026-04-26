@@ -362,6 +362,45 @@
         font-weight: 500;
         color: #212529;
     }
+
+    /* ── Monitor de câmeras ──────────────────────────── */
+    .monitor-cam-painel {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        padding: .6rem .9rem;
+        background: #f8f9fa;
+        margin-bottom: 1.2rem;
+    }
+
+    .monitor-cam-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: .5rem;
+    }
+
+    .monitor-cam-header h6 {
+        margin: 0;
+        font-size: .9rem;
+        font-weight: 600;
+    }
+
+    .monitor-cam-item {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: .375rem;
+        padding: .25rem .6rem;
+        font-size: .82rem;
+        white-space: nowrap;
+    }
+
+    .monitor-cam-nome {
+        font-weight: 500;
+        color: #212529;
+    }
 </style>
 {% endblock %}
 
@@ -415,6 +454,15 @@
     <div class="op-status-item ms-auto">
         <span class="text-muted" id="txt-historico"></span>
     </div>
+</div>
+
+<!-- Painel: status das câmeras (monitoramento background) -->
+<div id="painel-monitor-cameras" class="monitor-cam-painel d-none">
+    <div class="monitor-cam-header">
+        <h6><i class="bi bi-activity me-2"></i>Status das Câmeras</h6>
+        <small class="text-muted" id="monitor-cam-ts-geral"></small>
+    </div>
+    <div class="d-flex flex-wrap gap-2" id="monitor-cam-lista"></div>
 </div>
 
 <!-- Painel de Câmeras (visível somente se existirem câmeras com RTSP) -->
@@ -2287,6 +2335,39 @@
             .catch(() => {});
     }
 
+    /* ── Status das câmeras (monitor background) ──── */
+    function carregarStatusCameras() {
+        fetch(`/api/operador/monitor-cameras/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success || !Array.isArray(data.cameras) || data.cameras.length === 0) return;
+
+                const painel  = document.getElementById('painel-monitor-cameras');
+                const lista   = document.getElementById('monitor-cam-lista');
+                const tsGeral = document.getElementById('monitor-cam-ts-geral');
+
+                // Timestamp da verificação mais recente
+                const ref = data.cameras.reduce((best, c) => {
+                    return (!best || (c.checado_ts && c.checado_ts > best.ts))
+                        ? { ts: c.checado_ts, em: c.checado_em }
+                        : best;
+                }, null);
+                tsGeral.textContent = ref ? 'Última verificação: ' + ref.em : '';
+
+                lista.innerHTML = data.cameras.map(c => {
+                    const cls = c.ativo ? 'bg-success' : 'bg-danger';
+                    const txt = c.ativo ? 'Ativo' : 'Inativo';
+                    return `<div class="monitor-cam-item">
+                                <span class="badge ${cls}">${txt}</span>
+                                <span class="monitor-cam-nome">${c.nome}</span>
+                            </div>`;
+                }).join('');
+
+                painel.classList.remove('d-none');
+            })
+            .catch(() => {});
+    }
+
     /* ── Inicialização ────────────────────────────── */
     document.addEventListener('DOMContentLoaded', function () {
         dotConn.className = 'op-dot op-dot-neutro';
@@ -2300,6 +2381,8 @@
         configurarBotoesPorta();
         atualizarResumoVagas();
         setInterval(atualizarResumoVagas, 10000);
+        carregarStatusCameras();
+        setInterval(carregarStatusCameras, 5 * 60 * 1000);
     });
 
 })();
