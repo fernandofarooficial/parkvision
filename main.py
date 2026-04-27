@@ -38,7 +38,7 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
                                corrigir_placa_operador, enviar_pulso_por_direcao,
                                obter_cameras_dispositivo_por_direcao,
-                               obter_info_veiculo_operador, obter_ultimas_saidas,
+                               obter_info_veiculo_operador, obter_ultimos_movimentos,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
 from visionlib.camlib import iniciar_monitor_cameras, obter_status_cameras
 
@@ -198,14 +198,14 @@ def api_operador_dispositivos(condominio_id):
     return jsonify({'success': True, 'direcoes': direcoes})
 
 
-# API: últimas 10 saídas confirmadas para o painel da tela operador
-@app.route('/api/operador/ultimas-saidas/<int:condominio_id>')
-def api_operador_ultimas_saidas(condominio_id):
+# API: últimos 10 movimentos confirmados (entrada ou saída) para o painel da tela operador
+@app.route('/api/operador/ultimos-movimentos/<int:condominio_id>')
+def api_operador_ultimos_movimentos(condominio_id):
     tem_acesso, _ = verificar_acesso_condominio(condominio_id)
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Acesso negado'}), 403
-    saidas = obter_ultimas_saidas(condominio_id)
-    return jsonify({'success': True, 'saidas': saidas})
+    movimentos = obter_ultimos_movimentos(condominio_id)
+    return jsonify({'success': True, 'movimentos': movimentos})
 
 
 # API: ações recentes do operador para sincronização entre browsers

@@ -749,14 +749,14 @@
     </div>
 </div>
 
-<!-- Painel: últimas liberações automáticas -->
+<!-- Painel: últimos movimentos confirmados -->
 <div class="auto-painel mt-3">
     <div class="auto-painel-header">
-        <h6><i class="bi bi-arrow-up-circle-fill me-1 text-success"></i>Últimas Saídas</h6>
-        <small class="text-muted" id="auto-contador">0 saídas</small>
+        <h6><i class="bi bi-clock-history me-1 text-secondary"></i>Últimos Movimentos</h6>
+        <small class="text-muted" id="auto-contador">0 movimentos</small>
     </div>
     <div class="auto-lista" id="auto-lista">
-        <span class="auto-vazia">Nenhuma saída registrada ainda.</span>
+        <span class="auto-vazia">Nenhum movimento registrado ainda.</span>
     </div>
 </div>
 
@@ -883,7 +883,7 @@
     let totalEventos = 0;
     let pollingAtivo = false;
     let novosAcumulados = 0;
-    let ultimasSaidas = [];       // últimas 10 saídas (auto ou manual)
+    let ultimosMovimentos = [];   // últimos 10 movimentos confirmados (E ou S)
 
     /* ── Elementos ────────────────────────────────── */
     const tbody          = document.getElementById('tbody-operador');
@@ -1126,12 +1126,12 @@
                     novos.forEach(ev => {
                         if (ev.ts > ultimoTs) ultimoTs = ev.ts;
 
-                        // Saída com placa cadastrada → auto-abrir portão sem intervenção do operador
+                        // Saída com placa cadastrada → auto-confirmar sem intervenção do operador
                         if (ev.direcao === 'S' && ev.status_permissao !== 'NÃO CADASTRADO' && ev.idmov) {
                             const _placa   = ev.placa;
                             const _momento = ev.momento;
                             const _idmov   = ev.idmov;
-                            _acoesProprias.add(_idmov); // marcar antes do fetch para evitar re-processo pelo pollAcoes
+                            _acoesProprias.add(_idmov);
                             fetch('/api/operador/acao', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -1141,7 +1141,7 @@
                             .then(data => {
                                 if (!data.success) return null;
                                 removerLinhaPorIdmov(_idmov);
-                                registrarSaida(_placa, _momento);
+                                registrarMovimento(_placa, _momento, 'S');
                                 return fetch('/api/operador/abrir-porta', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -1150,6 +1150,30 @@
                             })
                             .then(r => r && r.json())
                             .then(res => { if (res && res.success) mostrarAvisoPorta('saida', _placa); })
+                            .catch(() => {});
+                            return;
+                        }
+
+                        // Entrada statusmov A: cadastrado + permissão válida + vagas → auto-confirmar e abrir portão
+                        if (ev.direcao === 'E' && ev.idmov &&
+                            (ev.status_permissao === 'VIGENTE' || ev.status_permissao === 'INDEFINIDA') &&
+                            ev.vagas_disponiveis !== null && parseInt(ev.vagas_disponiveis, 10) > 0) {
+                            const _placa   = ev.placa;
+                            const _momento = ev.momento;
+                            const _idmov   = ev.idmov;
+                            _acoesProprias.add(_idmov);
+                            fetch('/api/operador/acao', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null })
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                if (!data.success) return;
+                                removerLinhaPorIdmov(_idmov);
+                                registrarMovimento(_placa, _momento, 'E');
+                                mostrarAvisoPorta('entrada', _placa);
+                            })
                             .catch(() => {});
                             return;
                         }
@@ -1200,8 +1224,8 @@
                     if (ac.ts > ultimoAcaoTs) ultimoAcaoTs = ac.ts;
                     if (_acoesProprias.has(ac.idmov)) return; // já tratei localmente
                     removerLinhaPorIdmov(ac.idmov);
-                    if (ac.acao === 'confirmar' && ac.direcao === 'S') {
-                        registrarSaida(ac.placa, ac.momento);
+                    if (ac.acao === 'confirmar') {
+                        registrarMovimento(ac.placa, ac.momento, ac.direcao);
                     }
                     atualizarResumoVagas();
                 });
@@ -1346,7 +1370,7 @@
                     setTimeout(() => {
                         modalCorrigir.hide();
                         enviarAcao(idmovCorrigido, 'confirmar', null, null);
-                        registrarSaida(placaCorrigidaFinal, null);
+                        registrarMovimento(placaCorrigidaFinal, null, 'S');
                     }, 800);
                 } else {
                     setTimeout(() => {
@@ -1487,28 +1511,28 @@
         }, 10000);
     }
 
-    /* ── Painel de liberações automáticas ───────── */
-    function carregarUltimasSaidas() {
-        fetch(`/api/operador/ultimas-saidas/${condId}`)
+    /* ── Painel de últimos movimentos ───────────── */
+    function carregarUltimosMovimentos() {
+        fetch(`/api/operador/ultimos-movimentos/${condId}`)
             .then(r => r.json())
             .then(data => {
-                if (data.success && Array.isArray(data.saidas)) {
-                    ultimasSaidas = data.saidas.map(s => ({
-                        placa: s.placa,
-                        hora:  s.hora,
-                        data:  s.data,
+                if (data.success && Array.isArray(data.movimentos)) {
+                    ultimosMovimentos = data.movimentos.map(m => ({
+                        placa:   m.placa,
+                        direcao: m.direcao,
+                        hora:    m.hora,
+                        data:    m.data,
                     }));
-                    renderizarUltimasSaidas();
+                    renderizarUltimosMovimentos();
                 }
             })
             .catch(() => {});
     }
 
-    function registrarSaida(placa, momento) {
+    function registrarMovimento(placa, momento, direcao) {
         const agora = new Date();
         let hora, data;
         if (momento) {
-            // momento vem do backend como 'DD/MM/YYYY HH:MM:SS'
             const partes = momento.split(' ');
             data = partes[0] || agora.toLocaleDateString('pt-BR');
             hora = partes[1] || momento;
@@ -1516,28 +1540,37 @@
             hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             data = agora.toLocaleDateString('pt-BR');
         }
-        // evitar duplicata imediata (mesma placa no mesmo segundo)
-        if (ultimasSaidas.length > 0 && ultimasSaidas[0].placa === placa && ultimasSaidas[0].hora === hora) return;
-        ultimasSaidas.unshift({ placa, hora, data });
-        if (ultimasSaidas.length > 10) ultimasSaidas.length = 10;
-        renderizarUltimasSaidas();
+        // evitar duplicata imediata (mesma placa + direção no mesmo segundo)
+        if (ultimosMovimentos.length > 0 &&
+            ultimosMovimentos[0].placa === placa &&
+            ultimosMovimentos[0].direcao === direcao &&
+            ultimosMovimentos[0].hora === hora) return;
+        ultimosMovimentos.unshift({ placa, direcao, hora, data });
+        if (ultimosMovimentos.length > 10) ultimosMovimentos.length = 10;
+        renderizarUltimosMovimentos();
     }
 
-    function renderizarUltimasSaidas() {
+    function renderizarUltimosMovimentos() {
         const lista    = document.getElementById('auto-lista');
         const contador = document.getElementById('auto-contador');
-        if (ultimasSaidas.length === 0) {
-            lista.innerHTML = '<span class="auto-vazia">Nenhuma saída registrada ainda.</span>';
-            contador.textContent = '0 saídas';
+        if (ultimosMovimentos.length === 0) {
+            lista.innerHTML = '<span class="auto-vazia">Nenhum movimento registrado ainda.</span>';
+            contador.textContent = '0 movimentos';
             return;
         }
-        contador.textContent = `${ultimasSaidas.length} saída${ultimasSaidas.length === 1 ? '' : 's'}`;
-        lista.innerHTML = ultimasSaidas.map((ev, i) => `
+        contador.textContent = `${ultimosMovimentos.length} movimento${ultimosMovimentos.length === 1 ? '' : 's'}`;
+        lista.innerHTML = ultimosMovimentos.map((ev, i) => {
+            const isEntrada = ev.direcao === 'E';
+            const icon = isEntrada
+                ? '<i class="bi bi-arrow-down-circle-fill text-primary"></i>'
+                : '<i class="bi bi-arrow-up-circle-fill text-success"></i>';
+            return `
             <div class="auto-item${i === 0 ? ' row-nova' : ''}">
-                <i class="bi bi-arrow-up-circle-fill text-success"></i>
+                ${icon}
                 <span class="auto-item-placa">${ev.placa}</span>
                 <span class="auto-item-hora">${ev.data ? ev.data + ' ' : ''}${ev.hora}</span>
-            </div>`).join('');
+            </div>`;
+        }).join('');
     }
 
     /* ── Handler botões Abre Porta (cabeçalho) ───── */
@@ -1615,7 +1648,7 @@
             if (evData.direcao === 'S') {
                 if (cad) {
                     enviarAcao(idmov, 'confirmar', null, null);
-                    registrarSaida(placa, null);
+                    registrarMovimento(placa, null, 'S');
                 } else {
                     abrirModalMotivo(
                         'Veículo não cadastrado. Informe o motivo para liberar a saída.',
@@ -1623,7 +1656,7 @@
                         (texto) => {
                             if (!texto) { mostrarAlerta('O motivo é obrigatório para veículo não cadastrado.', 'warning'); return; }
                             enviarAcao(idmov, 'confirmar', texto, null);
-                            registrarSaida(placa, null);
+                            registrarMovimento(placa, null, 'S');
                         }
                     );
                 }
@@ -1631,9 +1664,11 @@
             }
 
             // ── Entrada ──
-            // Status A: tudo OK → direto
+            // Status A: tudo OK → confirmar e abrir portão
             if (cad && perm && vag) {
-                enviarAcao(idmov, 'confirmar', null, null);
+                enviarAcao(idmov, 'confirmar', null, (ok) => {
+                    if (ok) { registrarMovimento(placa, null, 'E'); mostrarAvisoPorta('entrada', placa); }
+                });
                 return;
             }
             // Status C: veículo não cadastrado → oferecer cadastro ou motivo
@@ -1653,7 +1688,9 @@
                     'Atenção: o limite de vagas desta unidade foi atingido.',
                     (texto) => {
                         if (!texto) { mostrarAlerta('O motivo é obrigatório quando não há vagas disponíveis.', 'warning'); return; }
-                        enviarAcao(idmov, 'confirmar', texto, null);
+                        enviarAcao(idmov, 'confirmar', texto, (ok) => {
+                            if (ok) { registrarMovimento(placa, null, 'E'); mostrarAvisoPorta('entrada', placa); }
+                        });
                     }
                 );
                 return;
@@ -1778,7 +1815,9 @@
             abrirModalMotivo(
                 `Informe o motivo para confirmar sem permissão válida (${state?.placa || ''}).`,
                 null,
-                (texto) => enviarAcao(state?.idmov, 'confirmar', texto || null, null)
+                (texto) => enviarAcao(state?.idmov, 'confirmar', texto || null, (ok) => {
+                    if (ok) { registrarMovimento(state?.placa, null, 'E'); mostrarAvisoPorta('entrada', state?.placa); }
+                })
             );
         });
     });
@@ -1791,7 +1830,9 @@
         document.getElementById('btn-perm-e-salvar').disabled = false;
         setAlertPermE('', '');
         if (criada && state) {
-            enviarAcao(state.idmov, 'confirmar', 'Permissão criada durante a liberação do veículo', null);
+            enviarAcao(state.idmov, 'confirmar', 'Permissão criada durante a liberação do veículo', (ok) => {
+                if (ok) { registrarMovimento(state.placa, null, 'E'); mostrarAvisoPorta('entrada', state.placa); }
+            });
         }
     });
 
@@ -2027,7 +2068,9 @@
                 'Atenção: este veículo não será cadastrado no sistema.',
                 (texto) => {
                     if (!texto) { mostrarAlerta('O motivo é obrigatório para veículo não cadastrado.', 'warning'); return; }
-                    enviarAcao(state.idmov, 'confirmar', texto, null);
+                    enviarAcao(state.idmov, 'confirmar', texto, (ok) => {
+                        if (ok) { registrarMovimento(state.placa, null, 'E'); mostrarAvisoPorta('entrada', state.placa); }
+                    });
                 }
             );
         });
@@ -2041,7 +2084,9 @@
         document.getElementById('btn-cad-c-salvar').disabled = false;
         setAlertCadC('', '');
         if (criada && state) {
-            enviarAcao(state.idmov, 'confirmar', 'Veículo cadastrado durante liberação', null);
+            enviarAcao(state.idmov, 'confirmar', 'Veículo cadastrado durante liberação', (ok) => {
+                if (ok) { registrarMovimento(state.placa, null, 'E'); mostrarAvisoPorta('entrada', state.placa); }
+            });
         }
     });
 
@@ -2374,8 +2419,8 @@
         txtConn.textContent = 'Conectando...';
         carregarNomeCond();
         carregarHistorico();
-        carregarUltimasSaidas();
-        setInterval(carregarUltimasSaidas, 8000);
+        carregarUltimosMovimentos();
+        setInterval(carregarUltimosMovimentos, 8000);
         carregarCameras();
         verificarDispositivos();
         configurarBotoesPorta();

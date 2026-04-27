@@ -805,9 +805,9 @@ def obter_resumo_vagas_cond(idcond):
         conn.close()
 
 
-def obter_ultimas_saidas(idcond, limit=10):
+def obter_ultimos_movimentos(idcond, limit=10):
     """
-    Retorna as últimas saídas confirmadas (contav=1, direcao='S') do condomínio.
+    Retorna os últimos movimentos válidos (contav=1, entrada ou saída) do condomínio.
     """
     conn = get_db_connection()
     if not conn:
@@ -815,10 +815,9 @@ def obter_ultimas_saidas(idcond, limit=10):
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT placa, nowpost
+            SELECT placa, direcao, nowpost
             FROM movcar
             WHERE idcond   = %s
-              AND direcao  = 'S'
               AND contav   = 1
               AND placa   != '*ERROR*'
             ORDER BY nowpost DESC
@@ -829,13 +828,14 @@ def obter_ultimas_saidas(idcond, limit=10):
         for row in rows:
             dt = row['nowpost']
             result.append({
-                'placa': row['placa'],
-                'hora':  dt.strftime('%H:%M:%S') if dt else '—',
-                'data':  dt.strftime('%d/%m/%Y')  if dt else '—',
+                'placa':   row['placa'],
+                'direcao': row['direcao'],
+                'hora':    dt.strftime('%H:%M:%S') if dt else '—',
+                'data':    dt.strftime('%d/%m/%Y')  if dt else '—',
             })
         return result
     except Exception as e:
-        logger.error(f"obter_ultimas_saidas: erro — {e}")
+        logger.error(f"obter_ultimos_movimentos: erro — {e}")
         return []
     finally:
         cursor.close()
