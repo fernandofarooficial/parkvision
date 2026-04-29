@@ -417,7 +417,7 @@
         fetch(`/api/logs/tail?offset=${lastOffset}`)
             .then(r => r.json())
             .then(data => {
-                if (!data.success) { setConectado(false); return; }
+                if (!data.success) { setConectado(false, data.message); return; }
 
                 setConectado(true);
                 txtUltima.textContent = new Date().toLocaleTimeString('pt-BR');
@@ -468,7 +468,7 @@
 
                 scrollFundo();
             })
-            .catch(() => setConectado(false))
+            .catch(err => setConectado(false, 'Falha de rede: ' + err.message))
             .finally(() => setTimeout(poll, POLL_MS));
     }
 
@@ -478,9 +478,13 @@
     }
 
     /* ── Indicador de conexão ────────────────────── */
-    function setConectado(ok) {
+    function setConectado(ok, detalhe) {
         dotConn.className = 'op-dot ' + (ok ? 'op-dot-ok' : 'op-dot-erro');
-        txtConn.textContent = ok ? 'Monitorando' : 'Erro de conexão — tentando novamente...';
+        if (ok) {
+            txtConn.textContent = 'Monitorando';
+        } else {
+            txtConn.textContent = 'Erro de conexão — tentando novamente...' + (detalhe ? ' (' + detalhe + ')' : '');
+        }
     }
 
     /* ── Toast ───────────────────────────────────── */

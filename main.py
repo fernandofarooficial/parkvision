@@ -959,8 +959,8 @@ def api_logs_tail():
         return jsonify({'success': True, 'lines': lines, 'next_offset': next_offset,
                         'total_lines': total_lines, 'truncated': False})
 
-    except OSError as e:
-        return jsonify({'success': False, 'message': f'Erro ao ler log: {e}'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro ao ler log: {type(e).__name__}: {e}'})
 
 
 @app.route('/api/logs/limpar', methods=['POST'])
