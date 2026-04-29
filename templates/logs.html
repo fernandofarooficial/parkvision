@@ -1,138 +1,565 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ParkVision - Monitor de Logs</title>
-    <style>
-        body { font-family: monospace; background: #000; color: #00ff00; margin: 0; padding: 20px; }
-        .header { color: #fff; text-align: center; margin-bottom: 20px; }
-        .controls { margin-bottom: 20px; text-align: center; }
-        .controls button {
-            padding: 10px 20px; margin: 5px;
-            background: #333; color: #fff; border: none; cursor: pointer; border-radius: 5px;
-        }
-        .controls button:hover { background: #555; }
-        .controls button.active { background: #007700; }
-        .controls select {
-            padding: 10px; margin: 5px;
-            background: #333; color: #fff; border: 1px solid #555; border-radius: 5px;
-        }
-        #logs {
-            border: 1px solid #333; padding: 10px; height: 80vh; overflow-y: scroll;
-            background: #111; white-space: pre-wrap; font-size: 12px; line-height: 1.4;
-        }
-        .log-debug { color: #00ffff; }
-        .log-info  { color: #00ff00; }
-        .log-warning { color: #ffff00; }
-        .log-error { color: #ff0000; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>ParkVision - Monitor de Logs</h1>
-    </div>
+{% extends "base.html" %}
 
-    <div class="controls">
-        <button id="pauseBtn" onclick="togglePause()">Pausar</button>
-        <button onclick="clearLogs()">Limpar</button>
-        <button onclick="downloadLogs()">Download</button>
-        <button id="autoScrollBtn" onclick="toggleAutoScroll()" class="active">Auto-Scroll</button>
-        <select id="levelFilter" onchange="filterLogs()">
+{% block title %}ParkVision — Logs do Sistema{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Layout ───────────────────────────────────── */
+    .log-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: .5rem;
+    }
+
+    .log-titulo {
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    /* ── Barra de status ──────────────────────────── */
+    .log-status-bar {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        padding: .5rem 1rem;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        margin-bottom: .75rem;
+        font-size: .875rem;
+        flex-wrap: wrap;
+    }
+
+    .log-status-item {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        white-space: nowrap;
+    }
+
+    .op-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .op-dot-ok     { background: #198754; animation: pulse-green 2s infinite; }
+    .op-dot-erro   { background: #dc3545; }
+    .op-dot-neutro { background: #6c757d; }
+
+    @keyframes pulse-green {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: .4; }
+    }
+
+    /* ── Barra de progresso ───────────────────────── */
+    .log-progress-wrap {
+        margin-bottom: .75rem;
+    }
+
+    .log-progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: .8rem;
+        color: #6c757d;
+        margin-bottom: .2rem;
+    }
+
+    /* ── Área de logs ─────────────────────────────── */
+    .log-area-wrapper {
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        overflow: hidden;
+    }
+
+    .log-area {
+        height: calc(100vh - 320px);
+        min-height: 300px;
+        overflow-y: auto;
+        background: #fff;
+        font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+        font-size: .815rem;
+    }
+
+    #log-table {
+        margin: 0;
+        border-collapse: collapse;
+        width: 100%;
+    }
+
+    #log-table thead th {
+        position: sticky;
+        top: 0;
+        background: #343a40;
+        color: #fff;
+        font-weight: 500;
+        border-color: #495057;
+        padding: .5rem .75rem;
+        z-index: 1;
+        white-space: nowrap;
+        font-size: .82rem;
+    }
+
+    #log-table tbody td {
+        padding: .3rem .75rem;
+        vertical-align: middle;
+        border-color: #f0f0f0;
+    }
+
+    .log-ts {
+        color: #6c757d;
+        white-space: nowrap;
+        width: 80px;
+    }
+
+    .log-nivel {
+        width: 90px;
+        text-align: center;
+    }
+
+    .log-msg {
+        word-break: break-word;
+        max-width: 0;          /* força a coluna a ceder espaço */
+        width: 100%;
+    }
+
+    /* ── Cores por nível ──────────────────────────── */
+    tr.nivel-INFO    { background: #fff; }
+    tr.nivel-INFO td { color: #212529; }
+
+    tr.nivel-WARNING    { background: #fff9e6; }
+    tr.nivel-WARNING td { color: #664d03; }
+
+    tr.nivel-ERROR    { background: #fff0f0; }
+    tr.nivel-ERROR td { color: #842029; }
+
+    tr.nivel-DEBUG    { background: #f8f9fa; }
+    tr.nivel-DEBUG td { color: #6c757d; }
+
+    tr.nivel-OUTRO    { background: #fff; }
+    tr.nivel-OUTRO td { color: #6c757d; }
+
+    /* linha nova — pisca */
+    tr.log-nova {
+        animation: highlight-log .6s ease-out;
+    }
+
+    @keyframes highlight-log {
+        0%   { background-color: #d1ecf1; }
+        100% { background-color: transparent; }
+    }
+
+    /* ── Vazio ────────────────────────────────────── */
+    .log-empty {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+
+    /* ── Toast container ──────────────────────────── */
+    #toast-container {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: .5rem;
+        min-width: 260px;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+<!-- Cabeçalho -->
+<div class="log-header">
+    <div>
+        <h1 class="log-titulo"><i class="bi bi-journal-text me-2"></i>Logs do Sistema</h1>
+        <p class="text-muted mb-0" style="font-size:.9rem">Somente administradores — auto-limpa ao atingir 300 linhas</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <!-- Filtro de nível -->
+        <select id="sel-nivel" class="form-select form-select-sm" style="width:auto">
             <option value="">Todos os níveis</option>
-            <option value="DEBUG">DEBUG</option>
             <option value="INFO">INFO</option>
             <option value="WARNING">WARNING</option>
             <option value="ERROR">ERROR</option>
+            <option value="DEBUG">DEBUG</option>
         </select>
+
+        <!-- Pause / Retomar -->
+        <button id="btn-pausar" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-pause-fill me-1"></i>Pausar
+        </button>
+
+        <!-- Auto-scroll -->
+        <button id="btn-scroll" class="btn btn-sm btn-outline-secondary active" title="Auto-scroll ativo">
+            <i class="bi bi-arrow-down-square me-1"></i>Auto-scroll
+        </button>
+
+        <!-- Limpar -->
+        <button id="btn-limpar" class="btn btn-sm btn-danger">
+            <span class="spinner-border spinner-border-sm d-none me-1" id="limpar-spinner"></span>
+            <i class="bi bi-trash3 me-1"></i>Limpar Log
+        </button>
     </div>
+</div>
 
-    <div id="logs"></div>
+<!-- Barra de status -->
+<div class="log-status-bar">
+    <div class="log-status-item">
+        <span class="op-dot op-dot-neutro" id="dot-conn"></span>
+        <span id="txt-conn">Conectando...</span>
+    </div>
+    <div class="log-status-item">
+        <i class="bi bi-clock text-secondary"></i>
+        <span>Última atualização: <strong id="txt-ultima">—</strong></span>
+    </div>
+    <div class="log-status-item ms-auto">
+        <i class="bi bi-list-ol text-secondary"></i>
+        <span><strong id="txt-total">0</strong> / 300 linhas no arquivo</span>
+    </div>
+</div>
 
-    <script>
-        let isPaused = false;
-        let autoScroll = true;
-        let logBuffer = [];
-        let lastOffset = 0;
+<!-- Barra de progresso (linhas do arquivo vs limite) -->
+<div class="log-progress-wrap">
+    <div class="log-progress-label">
+        <span>Uso do log</span>
+        <span id="txt-pct">0%</span>
+    </div>
+    <div class="progress" style="height:6px">
+        <div id="barra-progresso"
+             class="progress-bar bg-success"
+             role="progressbar"
+             style="width:0%"
+             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+        </div>
+    </div>
+</div>
 
-        function formatLogLine(line) {
-            if (line.includes('[DEBUG]'))   return '<span class="log-debug">'   + escapeHtml(line) + '</span>';
-            if (line.includes('[INFO]'))    return '<span class="log-info">'    + escapeHtml(line) + '</span>';
-            if (line.includes('[WARNING]')) return '<span class="log-warning">' + escapeHtml(line) + '</span>';
-            if (line.includes('[ERROR]'))   return '<span class="log-error">'   + escapeHtml(line) + '</span>';
-            return escapeHtml(line);
+<!-- Tabela de logs -->
+<div class="log-area-wrapper">
+    <div class="log-area" id="log-area">
+        <table class="table table-bordered table-hover" id="log-table">
+            <thead>
+                <tr>
+                    <th style="width:80px">Hora</th>
+                    <th style="width:90px" class="text-center">Nível</th>
+                    <th>Mensagem</th>
+                </tr>
+            </thead>
+            <tbody id="log-tbody">
+                <tr>
+                    <td colspan="3" class="log-empty">
+                        <i class="bi bi-hourglass-split fs-3 d-block mb-2"></i>
+                        Carregando logs...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Container de toasts -->
+<div id="toast-container"></div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+
+    const POLL_MS    = 2000;
+    const MAX_BUFFER = 300;
+
+    /* ── Estado ──────────────────────────────────── */
+    let lastOffset   = 0;
+    let totalLinhas  = 0;
+    let pausado      = false;
+    let autoScroll   = true;
+    let nivelFiltro  = '';
+    let buffer       = [];   // [{ts, nivel, msg, raw}]
+    let primeiraVez  = true;
+
+    /* ── Elementos ───────────────────────────────── */
+    const tbody      = document.getElementById('log-tbody');
+    const logArea    = document.getElementById('log-area');
+    const dotConn    = document.getElementById('dot-conn');
+    const txtConn    = document.getElementById('txt-conn');
+    const txtUltima  = document.getElementById('txt-ultima');
+    const txtTotal   = document.getElementById('txt-total');
+    const txtPct     = document.getElementById('txt-pct');
+    const barra      = document.getElementById('barra-progresso');
+
+    /* ── Parser de linha ─────────────────────────── */
+    const RE_LOG = /^(\d{2}:\d{2}:\d{2})\s+\[(\w+)\]\s+(.*)$/;
+
+    function parseLinha(raw) {
+        const m = raw.match(RE_LOG);
+        if (m) return { ts: m[1], nivel: m[2].toUpperCase(), msg: m[3], raw };
+        return { ts: '—', nivel: 'OUTRO', msg: raw, raw };
+    }
+
+    /* ── Badge de nível ──────────────────────────── */
+    const BADGE = {
+        INFO:    '<span class="badge bg-primary">INFO</span>',
+        WARNING: '<span class="badge bg-warning text-dark">WARNING</span>',
+        ERROR:   '<span class="badge bg-danger">ERROR</span>',
+        DEBUG:   '<span class="badge bg-secondary">DEBUG</span>',
+    };
+
+    function badgeNivel(nivel) {
+        return BADGE[nivel] || `<span class="badge bg-light text-dark">${nivel}</span>`;
+    }
+
+    /* ── Criar linha da tabela ───────────────────── */
+    function criarTr(entry, nova) {
+        const tr = document.createElement('tr');
+        tr.className = `nivel-${entry.nivel}${nova ? ' log-nova' : ''}`;
+
+        const tdTs = document.createElement('td');
+        tdTs.className = 'log-ts';
+        tdTs.textContent = entry.ts;
+
+        const tdNivel = document.createElement('td');
+        tdNivel.className = 'log-nivel';
+        tdNivel.innerHTML = badgeNivel(entry.nivel);
+
+        const tdMsg = document.createElement('td');
+        tdMsg.className = 'log-msg';
+        tdMsg.textContent = entry.msg;
+
+        tr.appendChild(tdTs);
+        tr.appendChild(tdNivel);
+        tr.appendChild(tdMsg);
+        return tr;
+    }
+
+    /* ── Visibilidade conforme filtro ────────────── */
+    function visivelNoFiltro(nivel) {
+        return !nivelFiltro || nivel === nivelFiltro;
+    }
+
+    /* ── Renderizar tabela completa ──────────────── */
+    function renderizarTudo() {
+        const filtrado = nivelFiltro ? buffer.filter(e => e.nivel === nivelFiltro) : buffer;
+
+        if (filtrado.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" class="log-empty">
+                <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                Nenhum registro${nivelFiltro ? ' para o nível ' + nivelFiltro : ''}.
+            </td></tr>`;
+            return;
         }
 
-        function escapeHtml(text) {
-            return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        // Reescrever tbody inteiro (usado após truncagem ou troca de filtro)
+        const frag = document.createDocumentFragment();
+        filtrado.forEach(e => frag.appendChild(criarTr(e, false)));
+        tbody.innerHTML = '';
+        tbody.appendChild(frag);
+    }
+
+    /* ── Adicionar linhas novas ao tbody ─────────── */
+    function acrescentarLinhas(entries) {
+        // Remover placeholder vazio
+        const empty = tbody.querySelector('.log-empty');
+        if (empty) tbody.innerHTML = '';
+
+        entries.forEach(e => {
+            if (visivelNoFiltro(e.nivel)) {
+                tbody.appendChild(criarTr(e, true));
+            }
+        });
+    }
+
+    /* ── Atualizar barra de progresso ────────────── */
+    function atualizarProgresso(total) {
+        totalLinhas = total;
+        txtTotal.textContent = total;
+        const pct = Math.min(100, Math.round((total / 300) * 100));
+        txtPct.textContent = pct + '%';
+        barra.style.width  = pct + '%';
+        barra.setAttribute('aria-valuenow', pct);
+
+        if (pct >= 90) {
+            barra.className = 'progress-bar bg-danger';
+        } else if (pct >= 70) {
+            barra.className = 'progress-bar bg-warning';
+        } else {
+            barra.className = 'progress-bar bg-success';
         }
+    }
 
-        function fetchLogs() {
-            if (isPaused) return;
+    /* ── Limpar estado do viewer ─────────────────── */
+    function limparViewer() {
+        buffer    = [];
+        lastOffset = 0;
+        tbody.innerHTML = `<tr><td colspan="3" class="log-empty">
+            <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
+            Log limpo — aguardando novas entradas...
+        </td></tr>`;
+        atualizarProgresso(0);
+    }
 
-            fetch('/api/logs/tail?offset=' + lastOffset)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.lines && data.lines.length > 0) {
-                        lastOffset = data.next_offset;
-                        const logsDiv = document.getElementById('logs');
-                        const level = document.getElementById('levelFilter').value;
+    /* ── Polling principal ───────────────────────── */
+    function poll() {
+        if (pausado) { setTimeout(poll, POLL_MS); return; }
 
-                        data.lines.forEach(line => {
-                            logBuffer.push(line);
-                            if (!level || line.includes('[' + level + ']')) {
-                                logsDiv.innerHTML += formatLogLine(line) + '\n';
-                            }
-                        });
+        fetch(`/api/logs/tail?offset=${lastOffset}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { setConectado(false); return; }
 
-                        if (autoScroll) logsDiv.scrollTop = logsDiv.scrollHeight;
+                setConectado(true);
+                txtUltima.textContent = new Date().toLocaleTimeString('pt-BR');
 
-                        if (logBuffer.length > 2000) logBuffer = logBuffer.slice(-1000);
+                atualizarProgresso(data.total_lines ?? totalLinhas);
+
+                // Auto-truncagem detectada no backend
+                if (data.truncated) {
+                    limparViewer();
+                    lastOffset = data.next_offset ?? 0;
+                    mostrarToast('Log limpo automaticamente (300 linhas atingidas)', 'warning');
+                    // Inserir a linha de aviso retornada
+                    if (Array.isArray(data.lines) && data.lines.length > 0) {
+                        const entries = data.lines.map(parseLinha);
+                        buffer.push(...entries);
+                        acrescentarLinhas(entries);
                     }
-                })
-                .catch(err => console.log('Erro ao buscar logs:', err));
-        }
+                    scrollFundo();
+                    return;
+                }
 
-        function togglePause() {
-            isPaused = !isPaused;
-            const btn = document.getElementById('pauseBtn');
-            btn.textContent = isPaused ? 'Continuar' : 'Pausar';
-            btn.className = isPaused ? 'active' : '';
-        }
+                lastOffset = data.next_offset ?? lastOffset;
 
-        function clearLogs() {
-            document.getElementById('logs').innerHTML = '';
-            logBuffer = [];
-        }
+                if (!Array.isArray(data.lines) || data.lines.length === 0) {
+                    if (primeiraVez) {
+                        tbody.innerHTML = `<tr><td colspan="3" class="log-empty">
+                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                            Nenhum registro no log ainda.
+                        </td></tr>`;
+                        primeiraVez = false;
+                    }
+                    return;
+                }
 
-        function toggleAutoScroll() {
-            autoScroll = !autoScroll;
-            document.getElementById('autoScrollBtn').className = autoScroll ? 'active' : '';
-        }
+                primeiraVez = false;
+                const entries = data.lines.map(parseLinha);
 
-        function downloadLogs() {
-            const logs = document.getElementById('logs').innerText;
-            const blob = new Blob([logs], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'parkvision-logs-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }
+                if (lastOffset === 0) {
+                    // Carga inicial — renderizar tudo de uma vez
+                    buffer = entries.slice(-MAX_BUFFER);
+                    renderizarTudo();
+                } else {
+                    // Incremento — adicionar ao buffer e ao tbody
+                    buffer.push(...entries);
+                    if (buffer.length > MAX_BUFFER) buffer = buffer.slice(-MAX_BUFFER);
+                    acrescentarLinhas(entries);
+                }
 
-        function filterLogs() {
-            const level = document.getElementById('levelFilter').value;
-            const logsDiv = document.getElementById('logs');
-            const filtered = level ? logBuffer.filter(l => l.includes('[' + level + ']')) : logBuffer;
-            logsDiv.innerHTML = filtered.map(formatLogLine).join('\n');
-            if (autoScroll) logsDiv.scrollTop = logsDiv.scrollHeight;
-        }
+                scrollFundo();
+            })
+            .catch(() => setConectado(false))
+            .finally(() => setTimeout(poll, POLL_MS));
+    }
 
-        setInterval(fetchLogs, 2000);
-        fetchLogs();
-    </script>
-</body>
-</html>
+    /* ── Auto-scroll ─────────────────────────────── */
+    function scrollFundo() {
+        if (autoScroll) logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    /* ── Indicador de conexão ────────────────────── */
+    function setConectado(ok) {
+        dotConn.className = 'op-dot ' + (ok ? 'op-dot-ok' : 'op-dot-erro');
+        txtConn.textContent = ok ? 'Monitorando' : 'Erro de conexão — tentando novamente...';
+    }
+
+    /* ── Toast ───────────────────────────────────── */
+    function mostrarToast(msg, tipo) {
+        const cores = {
+            success: '#198754', danger: '#dc3545',
+            warning: '#e0a800', info:   '#0d6efd'
+        };
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        el.style.cssText = `background:${cores[tipo]||cores.info};color:#fff;
+            padding:.75rem 1.1rem;border-radius:.5rem;
+            box-shadow:0 2px 8px rgba(0,0,0,.25);
+            font-weight:500;display:flex;align-items:center;gap:.6rem;`;
+        el.innerHTML = `<i class="bi bi-info-circle-fill"></i> ${msg}`;
+        container.appendChild(el);
+        setTimeout(() => {
+            el.style.transition = 'opacity .4s';
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 400);
+        }, 5000);
+    }
+
+    /* ── Botão: Pausar / Retomar ─────────────────── */
+    document.getElementById('btn-pausar').addEventListener('click', function () {
+        pausado = !pausado;
+        this.innerHTML = pausado
+            ? '<i class="bi bi-play-fill me-1"></i>Retomar'
+            : '<i class="bi bi-pause-fill me-1"></i>Pausar';
+        this.className = pausado
+            ? 'btn btn-sm btn-warning'
+            : 'btn btn-sm btn-outline-secondary';
+    });
+
+    /* ── Botão: Auto-scroll ──────────────────────── */
+    document.getElementById('btn-scroll').addEventListener('click', function () {
+        autoScroll = !autoScroll;
+        this.className = autoScroll
+            ? 'btn btn-sm btn-outline-secondary active'
+            : 'btn btn-sm btn-outline-secondary';
+        this.title = autoScroll ? 'Auto-scroll ativo' : 'Auto-scroll inativo';
+        if (autoScroll) scrollFundo();
+    });
+
+    /* ── Filtro de nível ─────────────────────────── */
+    document.getElementById('sel-nivel').addEventListener('change', function () {
+        nivelFiltro = this.value;
+        renderizarTudo();
+    });
+
+    /* ── Botão: Limpar ───────────────────────────── */
+    document.getElementById('btn-limpar').addEventListener('click', function () {
+        if (!confirm('Limpar o arquivo de log agora? Esta ação não pode ser desfeita.')) return;
+
+        const spinner = document.getElementById('limpar-spinner');
+        spinner.classList.remove('d-none');
+        this.disabled = true;
+
+        fetch('/api/logs/limpar', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    limparViewer();
+                    mostrarToast('Log limpo com sucesso.', 'success');
+                } else {
+                    mostrarToast('Erro: ' + (data.message || 'Falha ao limpar.'), 'danger');
+                }
+            })
+            .catch(() => mostrarToast('Falha de conexão ao limpar o log.', 'danger'))
+            .finally(() => {
+                spinner.classList.add('d-none');
+                document.getElementById('btn-limpar').disabled = false;
+            });
+    });
+
+    /* ── Iniciar ─────────────────────────────────── */
+    dotConn.className = 'op-dot op-dot-neutro';
+    poll();
+
+})();
+</script>
+{% endblock %}

@@ -907,10 +907,13 @@ def logs_viewer():
 
 @app.route('/api/logs/tail')
 def api_logs_tail():
-    """Retorna novas linhas do arquivo de log a partir de um offset"""
+    """Retorna novas linhas do arquivo de log a partir de um offset.
+    Auto-trunca o arquivo quando atinge MAX_LINHAS.
+    """
     if not verificar_permissao_tipo_usuario(['ADM']):
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
 
+    MAX_LINHAS = 300
     log_file = 'parkvision.log'
     try:
         offset = int(request.args.get('offset', 0))
@@ -919,28 +922,59 @@ def api_logs_tail():
 
     try:
         if not os.path.exists(log_file):
-            return jsonify({'success': True, 'lines': [], 'next_offset': 0})
+            return jsonify({'success': True, 'lines': [], 'next_offset': 0,
+                            'total_lines': 0, 'truncated': False})
 
+        # Contar linhas totais para decidir se auto-trunca
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            total_lines = sum(1 for linha in f if linha.strip())
+
+        # Auto-limpar ao atingir o limite
+        if total_lines >= MAX_LINHAS:
+            agora = datetime.datetime.now(BRASIL_TZ).strftime('%H:%M:%S')
+            msg = f'{agora} [INFO] === Log limpo automaticamente após {total_lines} linhas ==='
+            with open(log_file, 'w', encoding='utf-8') as f:
+                f.write(msg + '\n')
+            return jsonify({'success': True, 'lines': [msg],
+                            'next_offset': len(msg.encode('utf-8')) + 1,
+                            'total_lines': 1, 'truncated': True})
+
+        # Leitura incremental por offset de bytes
         with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
             f.seek(0, 2)
             file_size = f.tell()
-
             if offset > file_size:
                 offset = 0
-
             if offset == 0 and file_size > 50000:
                 f.seek(-50000, 2)
                 f.readline()
             else:
                 f.seek(offset)
-
             lines = [line.rstrip('\n') for line in f.readlines() if line.strip()]
             next_offset = f.tell()
 
-        return jsonify({'success': True, 'lines': lines, 'next_offset': next_offset})
+        return jsonify({'success': True, 'lines': lines, 'next_offset': next_offset,
+                        'total_lines': total_lines, 'truncated': False})
 
     except OSError as e:
         return jsonify({'success': False, 'message': f'Erro ao ler log: {e}'})
+
+
+@app.route('/api/logs/limpar', methods=['POST'])
+def api_logs_limpar():
+    """Trunca o arquivo de log manualmente (somente ADM)."""
+    if not verificar_permissao_tipo_usuario(['ADM']):
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+
+    log_file = 'parkvision.log'
+    try:
+        agora = datetime.datetime.now(BRASIL_TZ).strftime('%H:%M:%S')
+        msg = f'{agora} [INFO] === Log limpo pelo administrador ==='
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write(msg + '\n')
+        return jsonify({'success': True, 'message': 'Log limpo com sucesso'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro ao limpar log: {e}'})
 
 # ── Monitor de câmeras em background ──────────────────────────────────────────
 # WERKZEUG_RUN_MAIN='true' indica o processo filho do reloader (desenvolvimento).
