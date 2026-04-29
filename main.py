@@ -939,19 +939,22 @@ def api_logs_tail():
                             'next_offset': len(msg.encode('utf-8')) + 1,
                             'total_lines': 1, 'truncated': True})
 
-        # Leitura incremental por offset de bytes
-        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+        # Leitura incremental por offset de bytes (modo binário para seek relativo)
+        with open(log_file, 'rb') as f:
             f.seek(0, 2)
             file_size = f.tell()
             if offset > file_size:
                 offset = 0
             if offset == 0 and file_size > 50000:
                 f.seek(-50000, 2)
-                f.readline()
+                f.readline()  # descartar linha parcial
             else:
                 f.seek(offset)
-            lines = [line.rstrip('\n') for line in f.readlines() if line.strip()]
+            raw = f.read()
             next_offset = f.tell()
+
+        text = raw.decode('utf-8', errors='replace')
+        lines = [ln for ln in text.splitlines() if ln.strip()]
 
         return jsonify({'success': True, 'lines': lines, 'next_offset': next_offset,
                         'total_lines': total_lines, 'truncated': False})
