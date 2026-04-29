@@ -56,19 +56,21 @@ def _migrar_tabela() -> None:
 
 # ── Verificação de câmera ─────────────────────────────────────────────────────
 
-def _check_rtsp_alive(rtsp_url: str, timeout: int = 3) -> bool:
-    """Verifica se câmera responde via TCP + RTSP OPTIONS — leve, sem OpenCV."""
+def _check_rtsp_alive(rtsp_url: str, timeout: int = 4) -> bool:
+    """
+    Verifica se câmera responde via TCP na porta RTSP.
+    Apenas testa a abertura de conexão TCP — não exige resposta RTSP,
+    evitando falsos negativos em câmeras que aceitam a porta mas
+    ignoram ou demoram para responder ao handshake RTSP/OPTIONS.
+    """
     try:
         parsed = urlparse(rtsp_url)
         host   = parsed.hostname
         port   = parsed.port or 554
         if not host:
             return False
-        with socket.create_connection((host, port), timeout=timeout) as sock:
-            sock.settimeout(timeout)
-            sock.sendall(b'OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\n')
-            data = sock.recv(256)
-            return b'RTSP' in data
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
     except Exception:
         return False
 
@@ -230,7 +232,7 @@ def iniciar_monitor_cameras() -> None:
 
     _migrar_tabela()
 
-    interval_min = max(1, int(os.getenv('CAM_MONITOR_INTERVAL_MIN', '10')))
+    interval_min = max(1, int(os.getenv('CAM_MONITOR_INTERVAL_MIN', '3')))
     interval_sec = interval_min * 60
 
     t = threading.Thread(

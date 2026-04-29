@@ -36,11 +36,18 @@ def setup_logging(app):
         file_handler.setFormatter(formatter)
         file_handler.setLevel(logging.INFO)  # Só INFO e acima
         
-        # Configurar APENAS o app.logger
+        # Configurar o app.logger (rotas Flask)
         app.logger.setLevel(logging.INFO)
         app.logger.addHandler(file_handler)
         app.logger.propagate = False
-        
+
+        # Configurar o logger raiz de visionlib para capturar todos os módulos
+        # (camlib, dblib, operlib, etc.) — sem este bloco esses logs eram descartados
+        visionlib_logger = logging.getLogger('visionlib')
+        visionlib_logger.setLevel(logging.INFO)
+        visionlib_logger.addHandler(file_handler)
+        visionlib_logger.propagate = False
+
         # Log inicial
         app.logger.info('ParkVision iniciado - Sistema de logs ativo')
         
