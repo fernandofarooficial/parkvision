@@ -208,6 +208,9 @@ def contar_vagas_ocupadas(inforec):
 
 
 def obter_vagas_permitidas(inforec):
+    # se for Prestador, Avulso ou Visitante colocar 10 vagas permitidas
+    if inforec['unidade'] in ("Avulso", "Prestador", "Visitante"):
+        return 10
     # obter quantidade de vagas permitidas
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
