@@ -119,6 +119,9 @@
             <button id="btn-modulo-veiculo" class="btn btn-warning">
                 <i class="bi bi-truck me-2"></i>Veículo
             </button>
+            <button class="btn btn-info text-white" onclick="abrirEscolherPlacaConsulta()">
+                <i class="bi bi-search me-1"></i>Consultar
+            </button>
         </div>
     </div>
 </div>
@@ -430,6 +433,10 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" class="btn btn-info text-white" id="btn-consultar-veiculo-modal"
+                        onclick="abrirConsultaVeiculo(document.getElementById('modal-placa').textContent)">
+                    <i class="bi bi-search me-1"></i>Consultar Veículo
+                </button>
                 <!-- Botão dinâmico para cadastrar veículo não cadastrado -->
                 <button type="button" class="btn btn-success" id="btn-cadastrar-nao-cadastrado" style="display: none;">
                     <i class="bi bi-plus-circle me-1"></i>Cadastrar Veículo

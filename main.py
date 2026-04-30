@@ -17,7 +17,7 @@ from visionlib.condlib import obter_dados_condminios, lista_condominios
 from visionlib.permlib import criar_permissao, modificar_permissao, buscar_permissao, obter_unidades_condominio
 from visionlib.carlib import cadastrar_veiculo_nao_cadastrado, criar_veiculo_cadveiculo, modificar_veiculo_cadveiculo
 from visionlib.carlib import obter_veiculos_nao_cadastrados, buscar_veiculo_cadveiculo, gerenciar_apelido, excluir_veiculo_nao_cadastrado, corrigir_placa_veiculo
-from visionlib.listlib import obter_lista_veiculos, veiculo_detalhes, detalhes_unidade
+from visionlib.listlib import obter_lista_veiculos, veiculo_detalhes, detalhes_unidade, consulta_veiculo
 from visionlib.dashlib import obter_mapa_vagas, obter_resumo
 from visionlib.rellib import (obter_relatorio_permissoes_validas, obter_relatorio_movimento_veiculos, 
                               obter_relatorio_mapa_vagas, obter_relatorio_veiculos_condominio, 
@@ -532,6 +532,13 @@ def api_veiculo_detalhes(condominio_id, placa):
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado'})
     return veiculo_detalhes(condominio_id, placa)
+
+
+# API de consulta global de veículo (dados cadastrais + todas as permissões)
+# Biblioteca listlib
+@app.route('/api/consulta-veiculo/<placa>')
+def api_consulta_veiculo(placa):
+    return consulta_veiculo(placa)
 
 
 # API para obter detalhes de uma unidade específica

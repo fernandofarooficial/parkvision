@@ -270,3 +270,83 @@ def detalhes_unidade(condominio_id, unidade):
     finally:
         cursor.close()
         conn.close()
+
+
+# API de consulta global de veículo (dados cadastrais + todas as permissões)
+# Referências no programa principal
+# @app.route('/api/consulta-veiculo/<placa>')
+# def api_consulta_veiculo(placa):
+def consulta_veiculo(placa):
+    from visionlib.authlib import verificar_autenticacao_usuario
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+
+    placa = placa.upper().strip()
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Erro de conexão com o banco'})
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT v.placa,
+                   COALESCE(ma.nmmarca,  'N/I') AS marca,
+                   COALESCE(mo.nmmodelo, 'N/I') AS modelo,
+                   COALESCE(c.nmcor,     'N/I') AS cor
+            FROM cadveiculo v
+            LEFT JOIN cadmodelo mo ON mo.idmodelo = v.idmodelo
+            LEFT JOIN cadmarca  ma ON ma.idmarca  = mo.idmarca
+            LEFT JOIN cadcor     c ON  c.idcor    = v.idcor
+            WHERE v.placa = %s
+        """, (placa,))
+        veiculo = cursor.fetchone()
+
+        if not veiculo:
+            return jsonify({'success': False, 'message': 'Veículo não encontrado'})
+
+        cursor.execute("""
+            SELECT cc.nmcond AS condominio,
+                   p.unidade,
+                   p.data_inicio,
+                   p.data_fim
+            FROM cadperm  p
+            JOIN cadcond cc ON cc.idcond = p.idcond
+            WHERE p.placa = %s
+            ORDER BY p.data_inicio DESC
+        """, (placa,))
+
+        now = datetime.now()
+        permissoes = []
+        for row in cursor.fetchall():
+            di = row['data_inicio']
+            df = row['data_fim']
+            if df is None:
+                status = 'INDEFINIDA'
+            elif di > now:
+                status = 'FUTURA'
+            elif df >= now:
+                status = 'VIGENTE'
+            else:
+                status = 'VENCIDA'
+
+            permissoes.append({
+                'condominio':  row['condominio'],
+                'unidade':     row['unidade'] or '—',
+                'data_inicio': di.strftime('%d/%m/%Y %H:%M') if di else '—',
+                'data_fim':    df.strftime('%d/%m/%Y %H:%M') if df else 'Indefinido',
+                'status':      status,
+            })
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'veiculo':    dict(veiculo),
+                'permissoes': permissoes,
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro ao consultar veículo: {e}'})
+    finally:
+        cursor.close()
+        conn.close()
