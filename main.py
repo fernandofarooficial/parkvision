@@ -63,6 +63,13 @@ BRASIL_TZ = pytz.timezone('America/Sao_Paulo')
 # Configurar timezone da aplicação
 os.environ['TZ'] = 'America/Sao_Paulo'
 
+# Caminho absoluto do arquivo de log (evita problemas de cwd no Windows)
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'parkvision.log')
+
+# Configurar logging para arquivo e loggers do visionlib
+from logging_config import setup_logging
+setup_logging(app)
+
 
 # Rotas para páginas HTML
 @app.route('/')
@@ -914,14 +921,14 @@ def api_logs_tail():
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
 
     MAX_LINHAS = 300
-    log_file = 'parkvision.log'
+    log_file = LOG_FILE
     try:
         offset = int(request.args.get('offset', 0))
     except (ValueError, TypeError):
         offset = 0
 
     try:
-        if not os.path.exists(log_file):
+        if not os.path.isfile(log_file):
             return jsonify({'success': True, 'lines': [], 'next_offset': 0,
                             'total_lines': 0, 'truncated': False})
 
@@ -969,7 +976,7 @@ def api_logs_limpar():
     if not verificar_permissao_tipo_usuario(['ADM']):
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
 
-    log_file = 'parkvision.log'
+    log_file = LOG_FILE
     try:
         agora = datetime.datetime.now(BRASIL_TZ).strftime('%H:%M:%S')
         msg = f'{agora} [INFO] === Log limpo pelo administrador ==='

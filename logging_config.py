@@ -6,6 +6,8 @@ import sys
 import os
 from logging.handlers import RotatingFileHandler
 
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'parkvision.log')
+
 def setup_logging(app):
     """
     Configura sistema de logging TOTALMENTE LIMPO
@@ -28,10 +30,10 @@ def setup_logging(app):
         
         # UM ÚNICO HANDLER para arquivo
         file_handler = RotatingFileHandler(
-            'parkvision.log', 
+            LOG_FILE,
             maxBytes=5*1024*1024,  # 5MB
             backupCount=3,
-            encoding='utf-8'  # Garantir encoding UTF-8
+            encoding='utf-8'
         )
         file_handler.setFormatter(formatter)
         file_handler.setLevel(logging.INFO)  # Só INFO e acima
