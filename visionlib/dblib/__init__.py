@@ -29,7 +29,7 @@ def gravar_movimento(movdic):
     verifica_placa = process_heimdall_plate(inforec['placalida'], inforec['idcond'], 0.8)
     placa = verifica_placa['corrected_plate']
     inforec['placa'] = placa
-    logger.info(f"Placa checada - Placa lida: {inforec['placalida']} - Placa de trabalho: {inforec['placa']}")
+    logger.info(f"Placa checada - Placa lida: {inforec['placalida']} - Placa de trabalho: {inforec['placa']} - Post: {inforec['instante']}")
     # Verifica se a placa é válida
     if not verifica_placa['found_match'] or placa == '*ERROR*':
         # placa inválida - grava log mas não considera o registro
