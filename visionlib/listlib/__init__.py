@@ -297,7 +297,7 @@ def consulta_veiculo(placa):
             FROM cadveiculo v
             LEFT JOIN cadmodelo mo ON mo.idmodelo = v.idmodelo
             LEFT JOIN cadmarca  ma ON ma.idmarca  = mo.idmarca
-            LEFT JOIN cadcor     c ON  c.idcor    = v.idcor
+            LEFT JOIN cadcores   c ON  c.idcor    = v.idcor
             WHERE v.placa = %s
         """, (placa,))
         veiculo = cursor.fetchone()
