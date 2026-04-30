@@ -911,40 +911,68 @@ def logs_viewer():
 
 @app.route('/api/logs/tail')
 def api_logs_tail():
-    """Retorna novas entradas do buffer de log em memória."""
+    """Retorna novas linhas do arquivo de log a partir de um offset de bytes."""
     if not verificar_permissao_tipo_usuario(['ADM']):
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
 
+    from logging_config import LOG_FILE
+
+    MAX_LINHAS = 300
     try:
-        desde_seq = int(request.args.get('offset', 0))
+        offset = int(request.args.get('offset', 0))
     except (ValueError, TypeError):
-        desde_seq = 0
+        offset = 0
 
     try:
-        from logging_config import obter_logs_desde
-        entradas, total, ultimo_seq = obter_logs_desde(desde_seq)
-        lines = [msg for _, msg in entradas]
-        return jsonify({
-            'success': True,
-            'lines': lines,
-            'next_offset': ultimo_seq,
-            'total_lines': total,
-            'truncated': False
-        })
+        if not os.path.isfile(LOG_FILE):
+            return jsonify({'success': True, 'lines': [], 'next_offset': 0,
+                            'total_lines': 0, 'truncated': False})
+
+        with open(LOG_FILE, 'r', encoding='utf-8', errors='replace') as f:
+            total_lines = sum(1 for ln in f if ln.strip())
+
+        if total_lines >= MAX_LINHAS:
+            agora = datetime.datetime.now(BRASIL_TZ).strftime('%H:%M:%S')
+            msg = f'{agora} [INFO] === Log limpo automaticamente após {total_lines} linhas ==='
+            with open(LOG_FILE, 'w', encoding='utf-8') as f:
+                f.write(msg + '\n')
+            return jsonify({'success': True, 'lines': [msg],
+                            'next_offset': len(msg.encode('utf-8')) + 1,
+                            'total_lines': 1, 'truncated': True})
+
+        with open(LOG_FILE, 'rb') as f:
+            f.seek(0, 2)
+            file_size = f.tell()
+            if offset > file_size:
+                offset = 0
+            if offset == 0 and file_size > 50000:
+                f.seek(-50000, 2)
+                f.readline()
+            else:
+                f.seek(offset)
+            raw = f.read()
+            next_offset = f.tell()
+
+        lines = [ln for ln in raw.decode('utf-8', errors='replace').splitlines() if ln.strip()]
+        return jsonify({'success': True, 'lines': lines, 'next_offset': next_offset,
+                        'total_lines': total_lines, 'truncated': False})
+
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Erro: {type(e).__name__}: {e}'})
+        return jsonify({'success': False, 'message': f'Erro ao ler log: {type(e).__name__}: {e}'})
 
 
 @app.route('/api/logs/limpar', methods=['POST'])
 def api_logs_limpar():
-    """Limpa o buffer de log em memória (somente ADM)."""
+    """Trunca o arquivo de log (somente ADM)."""
     if not verificar_permissao_tipo_usuario(['ADM']):
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
 
+    from logging_config import LOG_FILE
     try:
-        from logging_config import limpar_log_buffer
-        limpar_log_buffer()
-        app.logger.info('Log limpo pelo administrador')
+        agora = datetime.datetime.now(BRASIL_TZ).strftime('%H:%M:%S')
+        msg = f'{agora} [INFO] === Log limpo pelo administrador ==='
+        with open(LOG_FILE, 'w', encoding='utf-8') as f:
+            f.write(msg + '\n')
         return jsonify({'success': True, 'message': 'Log limpo com sucesso'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro ao limpar log: {e}'})
