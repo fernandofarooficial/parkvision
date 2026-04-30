@@ -63,10 +63,7 @@ BRASIL_TZ = pytz.timezone('America/Sao_Paulo')
 # Configurar timezone da aplicação
 os.environ['TZ'] = 'America/Sao_Paulo'
 
-# Caminho absoluto do arquivo de log (evita problemas de cwd no Windows)
-LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'parkvision.log')
-
-# Configurar logging para arquivo e loggers do visionlib
+# Configurar logging (arquivo + buffer em memória para UI de logs)
 from logging_config import setup_logging
 setup_logging(app)
 
@@ -914,74 +911,40 @@ def logs_viewer():
 
 @app.route('/api/logs/tail')
 def api_logs_tail():
-    """Retorna novas linhas do arquivo de log a partir de um offset.
-    Auto-trunca o arquivo quando atinge MAX_LINHAS.
-    """
+    """Retorna novas entradas do buffer de log em memória."""
     if not verificar_permissao_tipo_usuario(['ADM']):
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
 
-    MAX_LINHAS = 300
-    log_file = LOG_FILE
     try:
-        offset = int(request.args.get('offset', 0))
+        desde_seq = int(request.args.get('offset', 0))
     except (ValueError, TypeError):
-        offset = 0
+        desde_seq = 0
 
     try:
-        if not os.path.isfile(log_file):
-            return jsonify({'success': True, 'lines': [], 'next_offset': 0,
-                            'total_lines': 0, 'truncated': False})
-
-        # Contar linhas totais para decidir se auto-trunca
-        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-            total_lines = sum(1 for linha in f if linha.strip())
-
-        # Auto-limpar ao atingir o limite
-        if total_lines >= MAX_LINHAS:
-            agora = datetime.datetime.now(BRASIL_TZ).strftime('%H:%M:%S')
-            msg = f'{agora} [INFO] === Log limpo automaticamente após {total_lines} linhas ==='
-            with open(log_file, 'w', encoding='utf-8') as f:
-                f.write(msg + '\n')
-            return jsonify({'success': True, 'lines': [msg],
-                            'next_offset': len(msg.encode('utf-8')) + 1,
-                            'total_lines': 1, 'truncated': True})
-
-        # Leitura incremental por offset de bytes (modo binário para seek relativo)
-        with open(log_file, 'rb') as f:
-            f.seek(0, 2)
-            file_size = f.tell()
-            if offset > file_size:
-                offset = 0
-            if offset == 0 and file_size > 50000:
-                f.seek(-50000, 2)
-                f.readline()  # descartar linha parcial
-            else:
-                f.seek(offset)
-            raw = f.read()
-            next_offset = f.tell()
-
-        text = raw.decode('utf-8', errors='replace')
-        lines = [ln for ln in text.splitlines() if ln.strip()]
-
-        return jsonify({'success': True, 'lines': lines, 'next_offset': next_offset,
-                        'total_lines': total_lines, 'truncated': False})
-
+        from logging_config import obter_logs_desde
+        entradas, total, ultimo_seq = obter_logs_desde(desde_seq)
+        lines = [msg for _, msg in entradas]
+        return jsonify({
+            'success': True,
+            'lines': lines,
+            'next_offset': ultimo_seq,
+            'total_lines': total,
+            'truncated': False
+        })
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Erro ao ler log: {type(e).__name__}: {e}'})
+        return jsonify({'success': False, 'message': f'Erro: {type(e).__name__}: {e}'})
 
 
 @app.route('/api/logs/limpar', methods=['POST'])
 def api_logs_limpar():
-    """Trunca o arquivo de log manualmente (somente ADM)."""
+    """Limpa o buffer de log em memória (somente ADM)."""
     if not verificar_permissao_tipo_usuario(['ADM']):
         return jsonify({'success': False, 'message': 'Não autorizado'}), 403
 
-    log_file = LOG_FILE
     try:
-        agora = datetime.datetime.now(BRASIL_TZ).strftime('%H:%M:%S')
-        msg = f'{agora} [INFO] === Log limpo pelo administrador ==='
-        with open(log_file, 'w', encoding='utf-8') as f:
-            f.write(msg + '\n')
+        from logging_config import limpar_log_buffer
+        limpar_log_buffer()
+        app.logger.info('Log limpo pelo administrador')
         return jsonify({'success': True, 'message': 'Log limpo com sucesso'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro ao limpar log: {e}'})
