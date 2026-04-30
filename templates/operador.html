@@ -1139,17 +1139,11 @@
                             })
                             .then(r => r.json())
                             .then(data => {
-                                if (!data.success) return null;
+                                if (!data.success) return;
                                 removerLinhaPorIdmov(_idmov);
                                 registrarMovimento(_placa, _momento, 'S');
-                                return fetch('/api/operador/abrir-porta', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ idcond: condId, direcao: 'S' })
-                                });
+                                mostrarAvisoPorta('saida', _placa);
                             })
-                            .then(r => r && r.json())
-                            .then(res => { if (res && res.success) mostrarAvisoPorta('saida', _placa); })
                             .catch(() => {});
                             return;
                         }
