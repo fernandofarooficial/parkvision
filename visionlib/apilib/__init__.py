@@ -11,7 +11,7 @@ def receber_dados():
 
         # Processar os dados e gravar no banco de dados
         dadosdic = gravar_movimento(dados)
-        logger.info(f"Fim do Ciclo de Gravação - Placa: {dadosdic.get('placa','NA')} - IdCamera: {dadosdic.get('camera_id','NA')}")
+        logger.info(f"Fim do Ciclo de Gravação - Placa: {dadosdic.get('placa','NA')}/{dadosdic.get('placalida','NA')} - IdCamera: {dadosdic.get('camera_id','NA')}")
 
         # Retornar confirmação
         return jsonify({'status': 'sucesso', 'mensagem': 'Dados recebidos'}), 200
