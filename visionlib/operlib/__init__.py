@@ -499,11 +499,14 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
         direcao_cam = rec.get('direcao') or 'E'
         statusmov, tem_cadastro = _calcular_statusmov(cursor, rec, acao, direcao_cam)
 
-        # Atualizar o movimento principal (pelo idmov — PK)
+        # Atualizar o movimento principal — AND idgente IS NULL garante que apenas
+        # o primeiro request vence quando múltiplas abas enviam a ação simultaneamente.
         cursor.execute(
-            "UPDATE movcar SET contav = %s, idgente = %s, statusmov = %s WHERE idmov = %s",
+            "UPDATE movcar SET contav = %s, idgente = %s, statusmov = %s WHERE idmov = %s AND idgente IS NULL",
             (novo_contav, idgente, statusmov, idmov)
         )
+        if cursor.rowcount == 0:
+            return {'success': True, 'message': 'Já processado'}
 
         if motivo and motivo.strip():
             cursor.execute(
