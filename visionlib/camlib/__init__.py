@@ -56,54 +56,50 @@ def _migrar_tabela() -> None:
 
 # ── Verificação de câmera ─────────────────────────────────────────────────────
 
-def _check_rtsp_alive(rtsp_url: str, tcp_timeout: int = 5, stream_timeout: int = 12) -> bool:
+def _check_rtsp_alive(rtsp_url: str, timeout: int = 5) -> bool:
     """
-    Verifica se câmera está realmente ativa em dois passos:
+    Verifica se câmera RTSP está ativa via protocolo RTSP OPTIONS.
 
-    1. TCP  — testa conectividade na porta RTSP (rápido; falha = offline certa).
-    2. Stream — tenta ler frames via OpenCV (confirma que a câmera envia vídeo).
-       Roda em thread com timeout para não bloquear o ciclo de verificação.
-       Se opencv-python não estiver instalado, usa apenas o resultado TCP.
+    Envia um request OPTIONS ao servidor RTSP e aguarda resposta.
+    É mais confiável que TCP puro (que dá falsos positivos quando a porta
+    está aberta mas o stream não responde) e que OpenCV (que dá falsos
+    negativos por variações de codec, transporte e timeout de frames).
+
+    Respostas aceitas como câmera ATIVA:
+      - RTSP/1.0 200 OK  → servidor ativo e acessível
+      - 401 Unauthorized → servidor ativo, credenciais necessárias
     """
-    # ── Passo 1: TCP ─────────────────────────────────────────────────────────
     try:
         parsed = urlparse(rtsp_url)
         host   = parsed.hostname
         port   = parsed.port or 554
         if not host:
             return False
-        with socket.create_connection((host, port), timeout=tcp_timeout):
-            pass   # porta acessível → continua para passo 2
+
+        # Reconstrói a URL sem credenciais para o cabeçalho OPTIONS
+        path      = parsed.path or '*'
+        query     = f'?{parsed.query}' if parsed.query else ''
+        url_req   = f'rtsp://{host}:{port}{path}{query}'
+
+        request = (
+            f'OPTIONS {url_req} RTSP/1.0\r\n'
+            f'CSeq: 1\r\n'
+            f'User-Agent: ParkVision\r\n'
+            f'\r\n'
+        )
+
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.sendall(request.encode())
+            sock.settimeout(timeout)
+            response = sock.recv(1024).decode('utf-8', errors='ignore')
+
+        # Aceita 200 (OK) e 401 (auth requerida) — ambos indicam servidor RTSP ativo
+        return ('RTSP/1.0 200' in response
+                or 'RTSP/1.1 200' in response
+                or '401' in response)
+
     except Exception:
-        return False  # porta inacessível → câmera definitivamente offline
-
-    # ── Passo 2: Stream via OpenCV ────────────────────────────────────────────
-    result = [False]
-    done   = threading.Event()
-
-    def _ler_frames():
-        try:
-            import cv2
-            cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-            if cap.isOpened():
-                for _ in range(3):
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        result[0] = True
-                        break
-            cap.release()
-        except ImportError:
-            # opencv-python não instalado: confia apenas no teste TCP
-            result[0] = True
-        except Exception:
-            pass
-        finally:
-            done.set()
-
-    t = threading.Thread(target=_ler_frames, daemon=True)
-    t.start()
-    done.wait(timeout=stream_timeout)
-    return result[0]
+        return False
 
 
 # ── Consultas ao banco ────────────────────────────────────────────────────────
