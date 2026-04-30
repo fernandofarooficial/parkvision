@@ -140,12 +140,13 @@ def api_operador_acao():
     idmov  = data.get('idmov')
     acao   = data.get('acao')
     motivo = data.get('motivo')
+    origem = data.get('origem', 'MANUAL')
 
     if not idmov or not acao:
         return jsonify({'success': False, 'message': 'Parâmetros obrigatórios ausentes'}), 400
 
     idgente = usuario.get('idgente')
-    resultado = executar_acao_operador(int(idmov), acao, idgente, motivo)
+    resultado = executar_acao_operador(int(idmov), acao, idgente, motivo, origem)
     status_http = 200 if resultado['success'] else 500
     return jsonify(resultado), status_http
 

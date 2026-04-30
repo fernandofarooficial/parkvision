@@ -107,7 +107,7 @@ def obter_eventos_recentes(idcond, desde_ts=None, limit=100):
     return eventos[:limit]
 
 
-def registrar_acao_store(idcond, idmov, acao, placa, momento, direcao):
+def registrar_acao_store(idcond, idmov, acao, placa, momento, direcao, origem='MANUAL'):
     """Registra ação do operador no store em memória para broadcast a outros browsers."""
     entrada = {
         'idmov':   idmov,
@@ -115,6 +115,7 @@ def registrar_acao_store(idcond, idmov, acao, placa, momento, direcao):
         'placa':   placa,
         'momento': momento,
         'direcao': direcao,
+        'origem':  origem,
         'ts':      time.time(),
     }
     with _acoes_lock:
@@ -464,7 +465,7 @@ def _notificar_acao_telegram(cursor, rec, statusmov, motivo):
     })
 
 
-def executar_acao_operador(idmov, acao, idgente, motivo=None):
+def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL'):
     """
     Executa a ação do operador sobre um registro de movimento (movcar).
 
@@ -473,6 +474,7 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
         acao (str):     'confirmar' | 'rejeitar' | 'ignorar'
         idgente (int):  ID do usuário que realizou a ação (movcar.idgente)
         motivo (str):   Texto opcional para registrar em movcar.motivo
+        origem (str):   'AUTO' (sistema) ou 'MANUAL' (operador)
 
     Retorna:
         dict: {'success': bool, 'message': str}
@@ -542,7 +544,11 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None):
 
         # Broadcast da ação para outros browsers via acoes_store
         momento_str = time.strftime('%d/%m/%Y %H:%M:%S')
-        registrar_acao_store(rec['idcond'], idmov, acao, rec['placa'], momento_str, rec.get('direcao', 'E'))
+        logger.info(
+            f"Ação '{acao}' placa={rec['placa']} idmov={idmov} "
+            f"origem={origem} statusmov={statusmov}"
+        )
+        registrar_acao_store(rec['idcond'], idmov, acao, rec['placa'], momento_str, rec.get('direcao', 'E'), origem)
 
         # Remover evento do _event_store para novos browsers não verem evento já tratado
         with _event_lock:

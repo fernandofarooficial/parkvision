@@ -1138,13 +1138,13 @@
                             fetch('/api/operador/acao', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null })
+                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null, origem: 'AUTO' })
                             })
                             .then(r => r.json())
                             .then(data => {
                                 if (!data.success) return;
                                 removerLinhaPorIdmov(_idmov);
-                                registrarMovimento(_placa, _momento, 'S');
+                                registrarMovimento(_placa, _momento, 'S', 'AUTO');
                                 mostrarAvisoPorta('saida', _placa);
                             })
                             .catch(() => {});
@@ -1162,13 +1162,13 @@
                             fetch('/api/operador/acao', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null })
+                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null, origem: 'AUTO' })
                             })
                             .then(r => r.json())
                             .then(data => {
                                 if (!data.success) return;
                                 removerLinhaPorIdmov(_idmov);
-                                registrarMovimento(_placa, _momento, 'E');
+                                registrarMovimento(_placa, _momento, 'E', 'AUTO');
                                 mostrarAvisoPorta('entrada', _placa);
                             })
                             .catch(() => {});
@@ -1222,7 +1222,7 @@
                     if (_acoesProprias.has(ac.idmov)) return; // já tratei localmente
                     removerLinhaPorIdmov(ac.idmov);
                     if (ac.acao === 'confirmar') {
-                        registrarMovimento(ac.placa, ac.momento, ac.direcao);
+                        registrarMovimento(ac.placa, ac.momento, ac.direcao, ac.origem || 'MANUAL');
                     }
                     atualizarResumoVagas();
                 });
@@ -1418,7 +1418,7 @@
         fetch('/api/operador/acao', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idmov, acao, motivo: motivo || null })
+            body: JSON.stringify({ idmov, acao, motivo: motivo || null, origem: 'MANUAL' })
         })
         .then(r => r.json())
         .then(data => {
@@ -1526,7 +1526,8 @@
             .catch(() => {});
     }
 
-    function registrarMovimento(placa, momento, direcao) {
+    function registrarMovimento(placa, momento, direcao, origem) {
+        origem = origem || 'MANUAL';
         const agora = new Date();
         let hora, data;
         if (momento) {
@@ -1542,7 +1543,7 @@
             ultimosMovimentos[0].placa === placa &&
             ultimosMovimentos[0].direcao === direcao &&
             ultimosMovimentos[0].hora === hora) return;
-        ultimosMovimentos.unshift({ placa, direcao, hora, data });
+        ultimosMovimentos.unshift({ placa, direcao, hora, data, origem });
         if (ultimosMovimentos.length > 10) ultimosMovimentos.length = 10;
         renderizarUltimosMovimentos();
     }
@@ -1561,10 +1562,14 @@
             const icon = isEntrada
                 ? '<i class="bi bi-arrow-down-circle-fill text-primary"></i>'
                 : '<i class="bi bi-arrow-up-circle-fill text-success"></i>';
+            const origemBadge = ev.origem === 'AUTO'
+                ? '<span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;background:#6c757d;color:#fff;margin-left:3px;">AUTO</span>'
+                : '<span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;background:#0d6efd;color:#fff;margin-left:3px;">MANUAL</span>';
             return `
             <div class="auto-item${i === 0 ? ' row-nova' : ''}">
                 ${icon}
                 <span class="auto-item-placa">${ev.placa}</span>
+                ${origemBadge}
                 <span class="auto-item-hora">${ev.data ? ev.data + ' ' : ''}${ev.hora}</span>
             </div>`;
         }).join('');
