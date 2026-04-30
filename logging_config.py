@@ -15,10 +15,7 @@ def setup_logging(app):
     try:
         import logging
         
-        # LIMPAR TUDO primeiro
-        root_logger = logging.getLogger()
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
+        # Limpar apenas handlers do app (evita duplicatas em reloads)
         for handler in app.logger.handlers[:]:
             app.logger.removeHandler(handler)
         
