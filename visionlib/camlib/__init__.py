@@ -56,23 +56,54 @@ def _migrar_tabela() -> None:
 
 # ── Verificação de câmera ─────────────────────────────────────────────────────
 
-def _check_rtsp_alive(rtsp_url: str, timeout: int = 4) -> bool:
+def _check_rtsp_alive(rtsp_url: str, tcp_timeout: int = 5, stream_timeout: int = 12) -> bool:
     """
-    Verifica se câmera responde via TCP na porta RTSP.
-    Apenas testa a abertura de conexão TCP — não exige resposta RTSP,
-    evitando falsos negativos em câmeras que aceitam a porta mas
-    ignoram ou demoram para responder ao handshake RTSP/OPTIONS.
+    Verifica se câmera está realmente ativa em dois passos:
+
+    1. TCP  — testa conectividade na porta RTSP (rápido; falha = offline certa).
+    2. Stream — tenta ler frames via OpenCV (confirma que a câmera envia vídeo).
+       Roda em thread com timeout para não bloquear o ciclo de verificação.
+       Se opencv-python não estiver instalado, usa apenas o resultado TCP.
     """
+    # ── Passo 1: TCP ─────────────────────────────────────────────────────────
     try:
         parsed = urlparse(rtsp_url)
         host   = parsed.hostname
         port   = parsed.port or 554
         if not host:
             return False
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
+        with socket.create_connection((host, port), timeout=tcp_timeout):
+            pass   # porta acessível → continua para passo 2
     except Exception:
-        return False
+        return False  # porta inacessível → câmera definitivamente offline
+
+    # ── Passo 2: Stream via OpenCV ────────────────────────────────────────────
+    result = [False]
+    done   = threading.Event()
+
+    def _ler_frames():
+        try:
+            import cv2
+            cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+            if cap.isOpened():
+                for _ in range(3):
+                    ret, frame = cap.read()
+                    if ret and frame is not None:
+                        result[0] = True
+                        break
+            cap.release()
+        except ImportError:
+            # opencv-python não instalado: confia apenas no teste TCP
+            result[0] = True
+        except Exception:
+            pass
+        finally:
+            done.set()
+
+    t = threading.Thread(target=_ler_frames, daemon=True)
+    t.start()
+    done.wait(timeout=stream_timeout)
+    return result[0]
 
 
 # ── Consultas ao banco ────────────────────────────────────────────────────────
@@ -178,6 +209,9 @@ def _executar_verificacao() -> None:
             novo_ativo_int = 1 if novo_ativo else 0
             if novo_ativo:
                 n_ativas += 1
+            logger.info(
+                f"camlib: [{nome}] → {'ATIVA' if novo_ativo else 'INATIVA'}"
+            )
 
             cursor.execute("""
                 UPDATE cadcamera
@@ -192,7 +226,6 @@ def _executar_verificacao() -> None:
                 except Exception as e:
                     logger.warning(f"camlib: erro ao notificar — {e}")
 
-            time.sleep(0.3)   # pausa mínima entre câmeras
 
         conn.commit()
 
