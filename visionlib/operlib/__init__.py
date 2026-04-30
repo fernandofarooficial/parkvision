@@ -218,7 +218,11 @@ def obter_historico_db(idcond, limit=50):
         conn.close()
 
 
-TEMPO_PULSO_MS = 500   # duração do pulso em milissegundos
+TEMPO_PULSO_MS = 500       # duração do pulso em milissegundos
+PULSE_DEDUP_SECONDS = 15   # janela de deduplicação: mesmo relé não repete dentro deste intervalo
+
+_pulse_dedup: dict = {}    # {(url, rele): last_pulse_time}
+_pulse_dedup_lock = threading.Lock()
 
 
 def _camera_tem_dispositivo(idcam):
@@ -287,6 +291,21 @@ def _enviar_pulso_dispositivo(idcam, idcond):
 
     url = f"http://{row['urldisp'].rstrip('/')}/set_output"
     rele = row['numrele'] or 1
+
+    # Deduplicação: bloqueia pulso repetido ao mesmo relé dentro de PULSE_DEDUP_SECONDS.
+    # Evita disparo duplo independentemente da origem (manual/auto/abrir-porta).
+    dedup_key = (url, rele)
+    now = time.time()
+    with _pulse_dedup_lock:
+        ultima = _pulse_dedup.get(dedup_key)
+        if ultima is not None and (now - ultima) < PULSE_DEDUP_SECONDS:
+            logger.warning(
+                f"_enviar_pulso_dispositivo: pulso IGNORADO (dedup {now - ultima:.1f}s < {PULSE_DEDUP_SECONDS}s) "
+                f"→ {url} relé={rele} idcam={idcam}"
+            )
+            return
+        _pulse_dedup[dedup_key] = now
+
     payload = {"address": rele, "state": 1, "time_1": TEMPO_PULSO_MS}
 
     try:
@@ -355,6 +374,10 @@ def enviar_pulso_por_direcao(idcond, direcao):
     if not cameras:
         return {'success': False, 'message': 'Nenhuma câmera com dispositivo para esta direção'}
 
+    logger.info(
+        f"enviar_pulso_por_direcao: idcond={idcond} direcao={direcao} "
+        f"câmeras={[c['idcam'] for c in cameras]}"
+    )
     for cam in cameras:
         _enviar_pulso_dispositivo(cam['idcam'], idcond)
 
