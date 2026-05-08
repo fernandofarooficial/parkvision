@@ -205,9 +205,6 @@ def _executar_verificacao() -> None:
             novo_ativo_int = 1 if novo_ativo else 0
             if novo_ativo:
                 n_ativas += 1
-            logger.info(
-                f"camlib: [{nome}] → {'ATIVA' if novo_ativo else 'INATIVA'}"
-            )
 
             cursor.execute("""
                 UPDATE cadcamera
