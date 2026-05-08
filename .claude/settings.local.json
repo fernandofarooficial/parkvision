@@ -13,7 +13,8 @@
       "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib\\dblib/**)",
       "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib\\vplib/**)",
       "Bash(tree:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(grep -E \"\\\\.\\(sql|py\\)$\")"
     ],
     "defaultMode": "acceptEdits"
   }

@@ -527,8 +527,8 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL'):
         # Atualizar o movimento principal — AND idgente IS NULL garante que apenas
         # o primeiro request vence quando múltiplas abas enviam a ação simultaneamente.
         cursor.execute(
-            "UPDATE movcar SET contav = %s, idgente = %s, statusmov = %s WHERE idmov = %s AND idgente IS NULL",
-            (novo_contav, idgente, statusmov, idmov)
+            "UPDATE movcar SET contav = %s, idgente = %s, statusmov = %s, origem = %s WHERE idmov = %s AND idgente IS NULL",
+            (novo_contav, idgente, statusmov, origem, idmov)
         )
         if cursor.rowcount == 0:
             return {'success': True, 'message': 'Já processado'}
@@ -847,7 +847,7 @@ def obter_ultimos_movimentos(idcond, limit=10):
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT placa, direcao, nowpost
+            SELECT placa, direcao, nowpost, COALESCE(origem, 'MANUAL') AS origem
             FROM movcar
             WHERE idcond   = %s
               AND contav   = 1
@@ -864,6 +864,7 @@ def obter_ultimos_movimentos(idcond, limit=10):
                 'direcao': row['direcao'],
                 'hora':    dt.strftime('%H:%M:%S') if dt else '—',
                 'data':    dt.strftime('%d/%m/%Y')  if dt else '—',
+                'origem':  row['origem'],
             })
         return result
     except Exception as e:

@@ -119,6 +119,10 @@ FROM solicitacoes_inscricao s
 WHERE s.status = 'PENDENTE'
 ORDER BY s.data_solicitacao ASC;
 
+-- 9. Coluna origem em movcar (MANUAL vs AUTO)
+ALTER TABLE movcar
+    ADD COLUMN IF NOT EXISTS origem ENUM('MANUAL','AUTO') NULL DEFAULT NULL;
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 -- 
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
