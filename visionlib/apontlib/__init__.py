@@ -7,6 +7,7 @@ from config.database import get_db_connection
 from flask import jsonify, request
 from datetime import datetime
 import pytz
+from visionlib.authlib import verificar_autenticacao_usuario
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,9 @@ def processar_apontamento():
         if not motivo:
             return jsonify({'success': False, 'message': 'O motivo do apontamento é obrigatório'})
 
+        autenticado, usuario_atual = verificar_autenticacao_usuario()
+        idgente = usuario_atual.get('idgente') if autenticado and usuario_atual else None
+
         conn = get_db_connection()
         if not conn:
             return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
@@ -124,12 +128,12 @@ def processar_apontamento():
             cursor.execute("""
                 INSERT INTO movcar (
                     idlog, idcond, placa, nowpost, instante, cor, ender,
-                    corconf, idcam, idaia, contav, nomecam, direcao, statusmov, motivo
+                    corconf, idcam, idaia, contav, nomecam, direcao, statusmov, motivo, idgente
                 ) VALUES (
                     0, %s, %s, %s, %s, 'N/A', 'N/A',
-                    0, 0, 0, 1, 'Apontamento', %s, 'M', %s
+                    0, 0, 0, 1, 'Apontamento', %s, 'M', %s, %s
                 )
-            """, (condominio_id, placa, nowpost, instante, direcao, motivo))
+            """, (condominio_id, placa, nowpost, instante, direcao, motivo, idgente))
 
             conn.commit()
 
