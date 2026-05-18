@@ -1387,11 +1387,14 @@ $(document).ready(function() {
     });
 
     // NOVO: Validação em tempo real de horários
-    $('#criar-hora-inicio, #criar-hora-fim').on('change', function() {
+    $('#criar-hora-inicio, #criar-hora-fim, #criar-data-inicio, #criar-data-fim').on('change', function() {
     const horaInicio = $('#criar-hora-inicio').val();
     const horaFim = $('#criar-hora-fim').val();
+    const dataInicio = $('#criar-data-inicio').val();
+    const dataFim = $('#criar-data-fim').val();
 
-    if (horaInicio && horaFim && horaFim <= horaInicio) {
+    const mesmoDia = dataInicio && dataFim && dataFim === dataInicio;
+    if (horaInicio && horaFim && mesmoDia && horaFim <= horaInicio) {
         $('#criar-permissao-error').removeClass('d-none').text('Horário de fim deve ser posterior ao horário de início.');
         } else {
             $('#criar-permissao-error').addClass('d-none');
@@ -1456,16 +1459,14 @@ function criarNovaPermissao() {
         return;
     }
 
-    // VALIDAÇÃO DE HORÁRIOS
-    if (horaFim <= horaInicio) {
-        $('#criar-permissao-error').removeClass('d-none').text('Horário de fim deve ser posterior ao horário de início.');
-        return;
-    }
-
-    // Validação de datas
-    if (dataFim && dataFim <= dataInicio) {
-        $('#criar-permissao-error').removeClass('d-none').text('Data de fim deve ser posterior à data de início.');
-        return;
+    // Validação de data/hora combinada
+    if (dataFim) {
+        const dtInicio = new Date(`${dataInicio}T${horaInicio}`);
+        const dtFim = new Date(`${dataFim}T${horaFim}`);
+        if (dtFim <= dtInicio) {
+            $('#criar-permissao-error').removeClass('d-none').text('Data/hora de fim deve ser posterior à data/hora de início.');
+            return;
+        }
     }
 
     // Enviar para o servidor COM HORÁRIOS
@@ -1573,16 +1574,16 @@ function salvarModificacaoPermissao() {
     $('#modificar-permissao-error').addClass('d-none');
     $('#modificar-permissao-success').addClass('d-none');
 
-    // VALIDAÇÃO DE HORÁRIOS (se ambos fornecidos)
-    if (horaInicio && horaFim && horaFim <= horaInicio) {
-        $('#modificar-permissao-error').removeClass('d-none').text('Horário de fim deve ser posterior ao horário de início.');
-        return;
-    }
-
-    // Validação de datas
-    if (dataFim && dataFim <= dataInicio) {
-        $('#modificar-permissao-error').removeClass('d-none').text('Data de fim deve ser posterior à data de início.');
-        return;
+    // Validação de data/hora combinada
+    if (dataFim) {
+        const horaInicioVal = horaInicio || '00:00';
+        const horaFimVal = horaFim || '23:59';
+        const dtInicio = new Date(`${dataInicio}T${horaInicioVal}`);
+        const dtFim = new Date(`${dataFim}T${horaFimVal}`);
+        if (dtFim <= dtInicio) {
+            $('#modificar-permissao-error').removeClass('d-none').text('Data/hora de fim deve ser posterior à data/hora de início.');
+            return;
+        }
     }
 
     // Preparar dados para envio
