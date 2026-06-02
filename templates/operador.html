@@ -1087,9 +1087,9 @@
             });
     }
 
-    /* ── Remove linhas mais antigas que 10 minutos ── */
+    /* ── Remove linhas mais antigas que 3 minutos ── */
     function removerLinhasAntigas() {
-        const corte = (Date.now() / 1000) - (10 * 60);
+        const corte = (Date.now() / 1000) - (3 * 60);
         const linhas = tbody.querySelectorAll('tr[data-ts]');
         linhas.forEach(tr => {
             if (parseFloat(tr.dataset.ts) < corte) tr.remove();
@@ -1098,7 +1098,7 @@
         if (tbody.querySelectorAll('tr[data-ts]').length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="op-empty">
                 <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
-                Nenhum evento nos últimos 10 minutos.
+                Nenhum evento nos últimos 3 minutos.
             </td></tr>`;
             totalEventos = 0;
             txtTotal.textContent = '0';
@@ -1405,7 +1405,7 @@
         if (tbody.querySelectorAll('tr[data-ts]').length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="op-empty">
                 <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
-                Nenhum evento nos últimos 10 minutos.
+                Nenhum evento nos últimos 3 minutos.
             </td></tr>`;
             totalEventos = 0;
             txtTotal.textContent = '0';
