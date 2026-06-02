@@ -9,9 +9,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
-ArquivosApoio
-Testes_Uteis
-doc_suporte
+ArquivosApoio/
+Testes_Uteis/
+doc_suporte/
 build/
 develop-eggs/
 dist/
