@@ -60,19 +60,25 @@ def criar_permissao():
             return jsonify(
                 {'success': False, 'message': 'Veículo não encontrado no sistema. Cadastre o veículo primeiro.'})
 
-        # Verificar se já existe uma permissão vigente ou aberta para o veículo
+        # Verificar se já existe permissão INDEFINIDA ou VIGENTE para este veículo/condomínio.
+        # Condição: data_fim IS NULL (indefinida) OU data_fim >= NOW() (vigente ou futura).
+        # Não filtramos por data_inicio para capturar também permissões com início no futuro.
         cursor.execute("""
             SELECT unidade, data_inicio, data_fim FROM cadperm
             WHERE placa = %s AND idcond = %s
-            AND (data_fim IS NULL OR (data_inicio <= CURDATE() AND data_fim >= CURDATE()))
+              AND (data_fim IS NULL OR data_fim >= NOW())
         """, (placa, condominio_id))
 
         perm_existente = cursor.fetchone()
 
         if perm_existente:
+            unidade_existente = perm_existente[0]
             return jsonify({
                 'success': False,
-                'message': 'Já existe uma permissão vigente ou aberta para este veículo. Finalize a permissão atual antes de criar uma nova.'
+                'message': (
+                    f'Já existe uma permissão ativa para este veículo na unidade "{unidade_existente}". '
+                    f'Finalize a permissão atual antes de criar uma nova.'
+                )
             })
 
         # Validação de datas
