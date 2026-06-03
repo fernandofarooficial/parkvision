@@ -467,7 +467,7 @@ def placaautorizada(inforec):
         SELECT placa, idcond, status_permissao, unidade
         FROM vw_autorizacoes
         WHERE idcond = %s AND placa = %s
-        ORDER BY rank_permissao, seqcond ASC
+        ORDER BY rank_permissao
         LIMIT 1
     """
     values = (inforec['idcond'],inforec['placa'])
