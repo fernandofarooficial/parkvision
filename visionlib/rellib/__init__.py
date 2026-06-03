@@ -125,9 +125,9 @@ def obter_relatorio_movimento_veiculos(condominio_id, data_inicio=None, data_fim
         
         where_clause = " AND ".join(where_conditions)
 
-        # Query para contar total de registros
+        # COUNT(DISTINCT idmov) evita contagem dupla para veículos com 2 permissões ativas
         count_query = """
-                SELECT COUNT(*) as total
+                SELECT COUNT(DISTINCT idmov) as total
                 FROM vw_movimentos
                 WHERE {}
                 """.format(where_clause)
@@ -162,7 +162,14 @@ def obter_relatorio_movimento_veiculos(condominio_id, data_inicio=None, data_fim
         query_params.extend([limite, offset])
         cursor.execute(query, query_params)
         resultados = cursor.fetchall()
-        
+
+        # Deduplica por idmov: veículo com 2 cadperm ativas aparece 2x em vw_movimentos
+        seen: dict = {}
+        for row in resultados:
+            if row['idmov'] not in seen:
+                seen[row['idmov']] = row
+        resultados = list(seen.values())
+
         # Formatear dados para o relatório
         dados_relatorio = []
         for row in resultados:

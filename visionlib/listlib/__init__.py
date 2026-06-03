@@ -48,6 +48,14 @@ def obter_lista_veiculos(condominio_id):
         cursor.execute(sql_cadastrados, params_cadastrados)
         veiculos_cadastrados = cursor.fetchall()
 
+        # vw_movimentos retorna uma linha por permissão ativa; veículo com 2 cadperm
+        # (ex.: unidade normal + Prestador) apareceria duplicado. Mantém 1 por idmov.
+        seen_idmov: dict = {}
+        for row in veiculos_cadastrados:
+            if row['idmov'] not in seen_idmov:
+                seen_idmov[row['idmov']] = row
+        veiculos_cadastrados = list(seen_idmov.values())
+
         todos_veiculos = list(veiculos_cadastrados)
 
         # Localizar as datas lidas - CORREÇÃO: Tratar valores NULL
@@ -145,7 +153,7 @@ def veiculo_detalhes(condominio_id, placa):
             LEFT JOIN cadmodelo mo ON vva.idmodelo = mo.idmodelo
             LEFT JOIN cadmarca ma ON mo.idmarca = ma.idmarca
             WHERE vva.idcond = %s AND vva.placa = %s
-            ORDER BY rank_permissao
+            ORDER BY rank_permissao, seqcond ASC
             LIMIT 1
         """, (condominio_id, placa))
 

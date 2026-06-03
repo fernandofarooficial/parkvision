@@ -175,7 +175,7 @@ def obter_historico_db(idcond, limit=50):
                             END
                          FROM vw_autorizacoes a
                          WHERE a.idcond = m.idcond AND a.placa = m.placa
-                         ORDER BY a.rank_permissao
+                         ORDER BY a.rank_permissao, a.seqcond ASC
                          LIMIT 1),
                         'SEM PERMISSÃO'
                     )
@@ -183,7 +183,7 @@ def obter_historico_db(idcond, limit=50):
                 COALESCE(
                     (SELECT a.unidade FROM vw_autorizacoes a
                      WHERE a.idcond = m.idcond AND a.placa = m.placa
-                     ORDER BY a.rank_permissao
+                     ORDER BY a.rank_permissao, a.seqcond ASC
                      LIMIT 1),
                     ''
                 ) AS unidade,
@@ -469,7 +469,7 @@ def _notificar_acao_telegram(cursor, rec, statusmov, motivo):
     cursor.execute("""
         SELECT unidade FROM vw_autorizacoes
         WHERE idcond = %s AND placa = %s
-        ORDER BY rank_permissao
+        ORDER BY rank_permissao, seqcond ASC
         LIMIT 1
     """, (idcond, placa))
     row_uni = cursor.fetchone()
