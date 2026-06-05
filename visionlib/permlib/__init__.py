@@ -127,14 +127,15 @@ def modificar_permissao():
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado para este condomínio'})
     placa = data.get('placa', '').strip().upper()
+    hora_inicio_str = data.get('horaInicio')
+
     if data.get('dataFim') is None:
         nova_data_fim = None
     else:
-        data_str = f"{data.get('dataFim')} {data.get('horaFim')}"
+        hora_fim_str = data.get('horaFim', '23:59')
+        data_str = f"{data.get('dataFim')} {hora_fim_str}"
         formato = "%Y-%m-%d %H:%M"
         nova_data_fim = datetime.strptime(data_str, formato)
-        hora_nova = int(data.get('horaInicio')[:2])
-        minuto_novo = int(data.get('horaInicio')[-2:])
 
     # Validações básicas
     if not placa:
@@ -149,41 +150,43 @@ def modificar_permissao():
     try:
         # Verificar se existe uma permissão válida para o veículo
         cursor.execute("""
-            SELECT idperm, unidade, data_inicio, data_fim FROM vw_veiculos_autorizados 
-            WHERE placa = %s AND idcond = %s 
+            SELECT idperm, unidade, data_inicio, data_fim FROM vw_veiculos_autorizados
+            WHERE placa = %s AND idcond = %s
             AND status_permissao <> 'VENCIDA'
             ORDER BY data_inicio DESC
             LIMIT 1
         """, (placa, condominio_id))
 
-        # Obter id da permissão
         perm = cursor.fetchone()
-        idperm = perm['idperm']
-
-        # Nova hora de inicio
-        nova_data_inicio = perm['data_inicio'].replace(hour=hora_nova, minute=minuto_novo, second=0)
 
         if not perm:
             return jsonify({'success': False,
                             'message': 'Permissão não encontrada ou está vencida. Apenas permissões vigentes ou indefinidas podem ser modificadas.'})
 
+        idperm = perm['idperm']
+
+        # Atualizar hora de início se fornecida
+        if hora_inicio_str:
+            hora_nova = int(hora_inicio_str[:2])
+            minuto_novo = int(hora_inicio_str[-2:])
+            nova_data_inicio = perm['data_inicio'].replace(hour=hora_nova, minute=minuto_novo, second=0)
+        else:
+            nova_data_inicio = perm['data_inicio']
+
         # Validação de data
         if nova_data_fim:
             try:
-                dt_inicio = perm['data_inicio']
-                dt_fim = nova_data_fim
-                if dt_fim <= dt_inicio:
+                if nova_data_fim <= nova_data_inicio:
                     return jsonify({'success': False, 'message': 'Data de fim deve ser posterior à data de início'})
             except ValueError:
                 return jsonify({'success': False, 'message': 'Formato de data inválido'})
 
-
-        # Modificar a data_fim da permissão
+        # Modificar a permissão
         cursor.execute("""
-            UPDATE cadperm 
-            SET data_fim = %s
+            UPDATE cadperm
+            SET data_fim = %s, data_inicio = %s
             WHERE idperm = %s
-        """, (nova_data_fim, idperm))
+        """, (nova_data_fim, nova_data_inicio, idperm))
 
         if cursor.rowcount == 0:
             return jsonify({'success': False, 'message': 'Nenhuma permissão foi modificada'})
