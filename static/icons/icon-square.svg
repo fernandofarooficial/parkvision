@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fundo quadrado arredondado -->
+  <rect x="0" y="0" width="300" height="300" rx="48" style="fill:rgb(26, 58, 92);"/>
+
+  <!-- Arcos de radar -->
+  <path d="M 95 155 A 65 65 0 0 1 205 155" style="fill:none;stroke:rgb(0, 194, 224);stroke-width:16px;stroke-linecap:round;opacity:1;"/>
+  <path d="M 105 155 A 50 50 0 0 1 195 155" style="fill:none;stroke:rgb(0, 194, 224);stroke-width:9px;stroke-linecap:round;opacity:0.55;"/>
+  <path d="M 117 155 A 33 33 0 0 1 183 155" style="fill:none;stroke:rgb(0, 194, 224);stroke-width:5px;stroke-linecap:round;opacity:0.3;"/>
+
+  <!-- Corpo do carro -->
+  <rect x="88" y="132" width="124" height="46" rx="9" style="fill:rgb(255, 255, 255);"/>
+  <rect x="106" y="107" width="76" height="30" rx="9" style="fill:rgb(204, 233, 245);"/>
+  <rect x="113" y="112" width="26" height="21" rx="4" style="fill:rgb(26, 58, 92);opacity:0.7;"/>
+  <rect x="144" y="112" width="26" height="21" rx="4" style="fill:rgb(26, 58, 92);opacity:0.7;"/>
+
+  <!-- Rodas -->
+  <circle cx="114" cy="178" r="14" style="fill:rgb(26, 58, 92);stroke:rgb(255, 255, 255);stroke-width:2.5px;"/>
+  <circle cx="114" cy="178" r="5" style="fill:rgb(255, 255, 255);"/>
+  <circle cx="186" cy="178" r="14" style="fill:rgb(26, 58, 92);stroke:rgb(255, 255, 255);stroke-width:2.5px;"/>
+  <circle cx="186" cy="178" r="5" style="fill:rgb(255, 255, 255);"/>
+
+  <!-- Sensor -->
+  <circle cx="150" cy="155" r="6" style="fill:rgb(0, 194, 224);"/>
+  <circle cx="150" cy="155" r="3" style="fill:rgb(255, 255, 255);"/>
+
+  <!-- Linha separadora -->
+  <rect x="20" y="205" width="260" height="2.5" rx="1.5" style="fill:rgb(0, 194, 224);opacity:0.35;"/>
+
+  <!-- Nome -->
+  <text x="150" y="252" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" font-weight="700">
+    <tspan fill="rgb(255, 255, 255)">Park</tspan><tspan fill="rgb(0, 194, 224)">Vision</tspan>
+  </text>
+</svg>

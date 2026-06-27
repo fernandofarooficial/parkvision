@@ -41,6 +41,7 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_info_veiculo_operador, obter_ultimos_movimentos,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
 from visionlib.camlib import iniciar_monitor_cameras, obter_status_cameras
+from visionlib.mobilelib import obter_ultimos_movimentos_mobile
 
 app = Flask(__name__)
 
@@ -984,6 +985,118 @@ def api_logs_limpar():
         return jsonify({'success': True, 'message': 'Log limpo com sucesso'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro ao limpar log: {e}'})
+
+# ── PWA Mobile ────────────────────────────────────────────────────────────────
+
+@app.route('/app/')
+@app.route('/app')
+def mobile_index():
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return redirect(url_for('mobile_login'))
+    if 'mobile_idcond' in session:
+        return redirect(url_for('mobile_monitoramento'))
+    return redirect(url_for('mobile_condominio'))
+
+
+@app.route('/app/login', methods=['GET', 'POST'])
+def mobile_login():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if autenticado:
+        return redirect(url_for('mobile_index'))
+
+    if request.method == 'GET':
+        return render_template('mobile/login.html')
+
+    data = request.get_json(silent=True) or {}
+    email = data.get('email', '').strip()
+    senha = data.get('senha', '')
+
+    from visionlib.authlib import login_usuario
+    usuario = login_usuario(email, senha)
+    if not usuario:
+        return jsonify({'success': False, 'message': 'Email ou senha inválidos.'})
+
+    session.permanent = True
+    session['autenticado'] = True
+    session['usuario'] = usuario
+    session.pop('mobile_idcond', None)
+    return jsonify({'success': True})
+
+
+@app.route('/app/condominio')
+def mobile_condominio():
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return redirect(url_for('mobile_login'))
+
+    session.pop('mobile_idcond', None)
+
+    if usuario['tipo_usuario'] == 'ADM':
+        from visionlib.condlib import lista_condominios
+        condominios = lista_condominios()
+    else:
+        condominios = usuario.get('condominios', [])
+
+    return render_template('mobile/condominio.html', usuario=usuario, condominios=condominios)
+
+
+@app.route('/app/selecionar/<int:idcond>')
+def mobile_selecionar_condominio(idcond):
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return redirect(url_for('mobile_login'))
+
+    from visionlib.authlib import verificar_permissao_condominio
+    if not verificar_permissao_condominio(idcond):
+        return redirect(url_for('mobile_condominio'))
+
+    session['mobile_idcond'] = idcond
+    return redirect(url_for('mobile_monitoramento'))
+
+
+@app.route('/app/monitoramento')
+def mobile_monitoramento():
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return redirect(url_for('mobile_login'))
+
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return redirect(url_for('mobile_condominio'))
+
+    from visionlib.condlib import obter_dados_condminios
+    dados_cond = obter_dados_condminios(idcond)
+    nmcond = dados_cond.get('nmcond', '') if dados_cond else ''
+
+    movimentos = obter_ultimos_movimentos_mobile(idcond, limit=20)
+    return render_template('mobile/monitoramento.html',
+                           usuario=usuario,
+                           idcond=idcond,
+                           nmcond=nmcond,
+                           movimentos=movimentos)
+
+
+@app.route('/app/logout')
+def mobile_logout():
+    session.pop('mobile_idcond', None)
+    session.clear()
+    return redirect(url_for('mobile_login'))
+
+
+@app.route('/api/m/movimentos')
+def api_mobile_movimentos():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+
+    movimentos = obter_ultimos_movimentos_mobile(idcond, limit=20)
+    return jsonify({'success': True, 'movimentos': movimentos})
+
 
 # ── Monitor de câmeras em background ──────────────────────────────────────────
 # WERKZEUG_RUN_MAIN='true' indica o processo filho do reloader (desenvolvimento).

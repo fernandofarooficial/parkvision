@@ -14,7 +14,8 @@
       "Read(/C:\\Users\\Fernando\\PycharmProjects\\PromptVisionPoject\\visionlib\\vplib/**)",
       "Bash(tree:*)",
       "Bash(dir:*)",
-      "Bash(grep -E \"\\\\.\\(sql|py\\)$\")"
+      "Bash(grep -E \"\\\\.\\(sql|py\\)$\")",
+      "PowerShell(cd \"C:\\\\Users\\\\Fernando\\\\PycharmProjects\\\\PromptVisionPoject\"; $env:PYTHONIOENCODING=\"utf-8\"; python ArquivosApoio\\\\gerar_icones_pwa.py)"
     ],
     "defaultMode": "acceptEdits"
   }
