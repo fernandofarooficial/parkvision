@@ -2,7 +2,7 @@
 # MAIN
 # ------------------
 
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for, Response
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, Response, send_from_directory
 import os
 import pytz
 import secrets
@@ -985,6 +985,19 @@ def api_logs_limpar():
         return jsonify({'success': True, 'message': 'Log limpo com sucesso'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro ao limpar log: {e}'})
+
+# ── PWA — arquivos na raiz (iOS Safari exige) ─────────────────────────────────
+
+@app.route('/apple-touch-icon.png')
+@app.route('/apple-touch-icon-precomposed.png')
+def apple_touch_icon():
+    return send_from_directory('static/icons', 'apple-touch-icon.png')
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory('static/icons', 'favicon-32.png', mimetype='image/png')
+
 
 # ── PWA Mobile ────────────────────────────────────────────────────────────────
 
