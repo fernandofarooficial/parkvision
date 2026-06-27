@@ -1047,7 +1047,7 @@ def mobile_condominio():
 
     if usuario['tipo_usuario'] == 'ADM':
         from visionlib.condlib import lista_condominios
-        condominios = lista_condominios()
+        condominios = lista_condominios().get_json().get('data', [])
     else:
         condominios = usuario.get('condominios', [])
 
@@ -1079,7 +1079,7 @@ def mobile_monitoramento():
         return redirect(url_for('mobile_condominio'))
 
     from visionlib.condlib import obter_dados_condminios
-    dados_cond = obter_dados_condminios(idcond)
+    dados_cond = obter_dados_condminios(idcond).get_json().get('data', {})
     nmcond = dados_cond.get('nmcond', '') if dados_cond else ''
 
     movimentos = obter_ultimos_movimentos_mobile(idcond, limit=20)
