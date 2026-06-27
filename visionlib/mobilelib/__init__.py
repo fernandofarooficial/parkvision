@@ -19,8 +19,15 @@ def obter_ultimos_movimentos_mobile(idcond, limit=20):
                 m.nowpost,
                 (SELECT p.unidade FROM cadperm p
                  WHERE p.placa = m.placa AND p.idcond = m.idcond
-                 ORDER BY p.idperm DESC LIMIT 1) AS unidade
+                 ORDER BY p.idperm DESC LIMIT 1) AS unidade,
+                ma.nmmarca  AS marca,
+                mo.nmmodelo AS modelo,
+                co.nmcor    AS cor
             FROM movcar m
+            LEFT JOIN cadveiculo  cv ON m.placa     = cv.placa
+            LEFT JOIN cadmodelo   mo ON cv.idmodelo = mo.idmodelo
+            LEFT JOIN cadmarca    ma ON mo.idmarca  = ma.idmarca
+            LEFT JOIN cadcores    co ON cv.idcor    = co.idcor
             WHERE m.idcond = %s
               AND m.contav = 1
               AND m.placa != '*ERROR*'
@@ -36,6 +43,9 @@ def obter_ultimos_movimentos_mobile(idcond, limit=20):
                 'placa':   row['placa'],
                 'direcao': row['direcao'],
                 'unidade': row['unidade'] or '—',
+                'marca':   row['marca']   or '—',
+                'modelo':  row['modelo']  or '—',
+                'cor':     row['cor']     or '—',
                 'hora':    dt.strftime('%H:%M') if dt else '—',
                 'data':    dt.strftime('%d/%m/%Y') if dt else '—',
             })

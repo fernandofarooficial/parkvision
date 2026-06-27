@@ -136,10 +136,19 @@
             letter-spacing: 1px;
             font-feature-settings: 'tnum';
         }
-        .mov-unidade {
-            font-size: 13px;
-            color: #6c757d;
+        .mov-veiculo {
+            font-size: 12px;
+            color: #1a3a5c;
+            font-weight: 600;
             margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mov-unidade {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 1px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -221,6 +230,7 @@
                     {% endif %}
                     <div class="mov-info">
                         <div class="mov-placa">{{ m.placa }}</div>
+                        <div class="mov-veiculo">{{ m.marca }} {{ m.modelo }} · {{ m.cor }}</div>
                         <div class="mov-unidade">{{ m.unidade }}</div>
                         <div class="mov-dir-label {% if m.direcao == 'E' %}entrada{% elif m.direcao == 'S' %}saida{% else %}indet{% endif %}">
                             {% if m.direcao == 'E' %}Entrada{% elif m.direcao == 'S' %}Saída{% else %}Indeterm.{% endif %}
@@ -281,6 +291,7 @@
                         ${badgeDir(m.direcao)}
                         <div class="mov-info">
                             <div class="mov-placa">${m.placa}</div>
+                            <div class="mov-veiculo">${m.marca} ${m.modelo} · ${m.cor}</div>
                             <div class="mov-unidade">${m.unidade}</div>
                             ${labelDir(m.direcao)}
                         </div>
