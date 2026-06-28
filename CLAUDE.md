@@ -64,7 +64,7 @@ visionlib/
   unidlib/            # Gestão de unidades habitacionais
   teleglib/           # Notificações Telegram
   apilib/             # Receptor webhook Heimdall (wrapper sobre gravar_movimento)
-  mobilelib/          # Queries para a versão mobile (obter_ultimos_movimentos_mobile)
+  mobilelib/          # Queries para a versão mobile (movimentos, estacionados, mapa, permissões, novo veículo)
 
 templates/
   mobile/             # Templates da versão mobile PWA (login, condominio, monitoramento)
@@ -144,7 +144,7 @@ Nomenclatura legacy compacta (não mudar):
 | `logbruto` | JSON bruto do Heimdall |
 | `usuarios` | Usuários (`idgente`, `tipo_usuario`, `ativo`) |
 
-**Views principais:** `vw_autorizacoes`, `vw_estacionados`, `vw_movimentos`, `vw_last_mov`, `vw_veiculos_cond`
+**Views principais:** `vw_autorizacoes`, `vw_estacionados`, `vw_movimentos`, `vw_last_mov`, `vw_veiculos_cond`, `vw_veiculos_autorizados`
 
 **Semântica de `contav` em `movcar`:**
 - `contav=0` + `idgente IS NULL` → evento pendente (aguardando operador)
@@ -259,7 +259,7 @@ Antes de escrever qualquer query nova, verificar nesta ordem:
    - `condlib` → dados de condomínios
    - `carlib` → CRUD de veículos, não-cadastrados, apelidos
    - `permlib` → permissões (`cadperm`)
-   - `mobilelib` → movimentos para a tela mobile
+   - `mobilelib` → todas as queries da versão mobile (movimentos, estacionados, veículos por unidade, busca de permissão, criação de veículo+permissão)
 
 3. **Só então** escrever SQL novo — e colocá-lo na lib do domínio correto, nunca direto em `main.py`.
 
