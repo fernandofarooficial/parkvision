@@ -64,9 +64,14 @@ visionlib/
   unidlib/            # Gestão de unidades habitacionais
   teleglib/           # Notificações Telegram
   apilib/             # Receptor webhook Heimdall (wrapper sobre gravar_movimento)
+  mobilelib/          # Queries para a versão mobile (obter_ultimos_movimentos_mobile)
 
-templates/            # HTML Jinja2
+templates/
+  mobile/             # Templates da versão mobile PWA (login, condominio, monitoramento)
 static/               # CSS, imagens
+  icons/              # Ícones PWA (apple-touch-icon, favicon, icon-192, icon-512)
+  manifest.json       # Web App Manifest (PWA)
+  sw.js               # Service Worker (PWA — cache offline básico)
 ArquivosApoio/        # Scripts utilitários (não entram em produção)
 doc_suporte/BaseDeDados/
   base_parkvision.txt # Schema MySQL completo
@@ -134,7 +139,7 @@ Nomenclatura legacy compacta (não mudar):
 | `cadcamera` | Câmeras (`idcam`, `idcond`, `direcao` E/S/I) |
 | `cadveiculo` | Veículos (`placa` PK, sem unidade/condomínio) |
 | `cadperm` | Permissões (`idperm`, `placa`, `idcond`, `unidade`, `data_inicio`, `data_fim` NULL=indefinida) |
-| `movcar` | Movimentos (`idmov`, `idcond`, `placa`, `contav`, `idgente`, `direcao`, `nowpost`) |
+| `movcar` | Movimentos (`idmov`, `idcond`, `placa`, `contav`, `idgente`, `direcao`, `nowpost`, `origem`) |
 | `vagasunidades` | Vagas por unidade (`idcond`, `unidade`, `vperm`, `seqcond`) |
 | `logbruto` | JSON bruto do Heimdall |
 | `usuarios` | Usuários (`idgente`, `tipo_usuario`, `ativo`) |
@@ -147,6 +152,26 @@ Nomenclatura legacy compacta (não mudar):
 - `contav=1` → confirmado, conta vaga
 
 **Unidades especiais:** 'Prestador', 'Avulso', 'Visitante' → recebem 10 vagas fixas (não consultam `vagasunidades`)
+
+**Campo `origem` em `movcar`:** identifica a fonte do movimento — `'LPR'` (câmera Heimdall), `'MANUAL'` (apontamento manual), `NULL` → tratado como `'MANUAL'` via `COALESCE`.
+
+## Versão Mobile (PWA)
+
+Rotas sob o prefixo `/app/` servem a interface mobile — uma PWA instalável via `static/manifest.json` + `static/sw.js`.
+
+| Rota | Descrição |
+|------|-----------|
+| `/app/` | Redirect para login ou monitoramento |
+| `/app/login` | Login mobile (sessão separada por cookie `mobile_session`) |
+| `/app/condominio` | Seleção de condomínio |
+| `/app/selecionar/<idcond>` | Salva condomínio na sessão mobile |
+| `/app/monitoramento` | Tela principal: últimos movimentos em tempo real |
+| `/app/logout` | Logout mobile |
+| `/api/m/movimentos` | API JSON polling — retorna últimos movimentos do condomínio |
+
+- **Sessão mobile** usa chave `mobile_session` (dict com `idgente`, `nome`, `idcond`) — independente da sessão web principal.
+- **`mobilelib.obter_ultimos_movimentos_mobile(idcond)`** faz JOIN com `cadmarca`, `cadmodelo`, `cadcores` para retornar marca/modelo/cor.
+- Ícones PWA ficam em `static/icons/`; Apple exige `apple-touch-icon.png` servido na raiz do domínio (rota dedicada em `main.py`).
 
 ## Bug Conhecido — Veículo com 2 Permissões Ativas
 
@@ -175,6 +200,30 @@ POST /api/receber-dados → apilib → dblib.gravar_movimento()
 
 `SECRET_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `CAMERAS_ENABLED`, `CAM_MONITOR_INTERVAL_MIN`, `SESSION_COOKIE_SECURE`
 
+## Reuso de Queries — Verificar Antes de Escrever SQL
+
+Antes de escrever qualquer query nova, verificar nesta ordem:
+
+1. **Views SQL** — as views já encapsulam os JOINs mais comuns. Preferir sempre uma view a reescrever os mesmos JOINs à mão:
+   - `vw_movimentos` → movimentos confirmados com unidade, marca, modelo, cor, status de vaga
+   - `vw_autorizacoes` → permissões com dados do veículo e status (VIGENTE/VENCIDA/INDEFINIDA)
+   - `vw_estacionados` → contagem de veículos estacionados por unidade
+   - `vw_last_mov` → último movimento confirmado por veículo
+   - `vw_veiculos_cond` → permissão ativa de cada veículo por condomínio
+   - `vw_veiculos_autorizados` → veículos com permissão vigente no momento
+
+2. **Funções das libs** — verificar se a lib responsável pelo domínio já expõe a query necessária:
+   - `listlib` → listagens de movimentos e detalhes de veículo/unidade
+   - `dashlib` → mapa de vagas
+   - `condlib` → dados de condomínios
+   - `carlib` → CRUD de veículos, não-cadastrados, apelidos
+   - `permlib` → permissões (`cadperm`)
+   - `mobilelib` → movimentos para a tela mobile
+
+3. **Só então** escrever SQL novo — e colocá-lo na lib do domínio correto, nunca direto em `main.py`.
+
+> Exemplo do que não fazer: reescrever os JOINs `cadveiculo → cadmodelo → cadmarca → cadcores` manualmente quando `vw_movimentos` ou `vw_autorizacoes` já os entregam prontos.
+
 ## O que Não Fazer
 
 - Não usar ORM (SQLAlchemy, etc.)
@@ -184,3 +233,4 @@ POST /api/receber-dados → apilib → dblib.gravar_movimento()
 - Não retornar JSON sem o campo `success`
 - Não usar `print()` para debug — usar `logger`
 - Não modificar views SQL sem atualizar `doc_suporte/BaseDeDados/views.txt`
+- Não reescrever JOINs que já existem em views — consultar a seção "Reuso de Queries" acima
