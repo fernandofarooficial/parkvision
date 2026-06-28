@@ -159,19 +159,60 @@ Nomenclatura legacy compacta (não mudar):
 
 Rotas sob o prefixo `/app/` servem a interface mobile — uma PWA instalável via `static/manifest.json` + `static/sw.js`.
 
+### Rotas de página
+
 | Rota | Descrição |
 |------|-----------|
 | `/app/` | Redirect para login ou monitoramento |
-| `/app/login` | Login mobile (sessão separada por cookie `mobile_session`) |
+| `/app/login` | Login mobile |
 | `/app/condominio` | Seleção de condomínio |
-| `/app/selecionar/<idcond>` | Salva condomínio na sessão mobile |
-| `/app/monitoramento` | Tela principal: últimos movimentos em tempo real |
-| `/app/logout` | Logout mobile |
-| `/api/m/movimentos` | API JSON polling — retorna últimos movimentos do condomínio |
+| `/app/selecionar/<idcond>` | Salva condomínio em `session['mobile_idcond']` |
+| `/app/monitoramento` | SPA principal com menu inferior |
+| `/app/logout` | Logout |
 
-- **Sessão mobile** usa chave `mobile_session` (dict com `idgente`, `nome`, `idcond`) — independente da sessão web principal.
-- **`mobilelib.obter_ultimos_movimentos_mobile(idcond)`** faz JOIN com `cadmarca`, `cadmodelo`, `cadcores` para retornar marca/modelo/cor.
-- Ícones PWA ficam em `static/icons/`; Apple exige `apple-touch-icon.png` servido na raiz do domínio (rota dedicada em `main.py`).
+### APIs mobile (`/api/m/`)
+
+Todas exigem autenticação via `verificar_autenticacao_usuario()` e leem `idcond` de `session['mobile_idcond']`.
+
+| Rota | Método | Lib usada | Descrição |
+|------|--------|-----------|-----------|
+| `/api/m/movimentos` | GET | `mobilelib` | Últimos 20 movimentos (polling 30s) |
+| `/api/m/mapa-vagas` | GET | `dashlib` | Mapa de vagas (unidades + ocupação) |
+| `/api/m/estacionados` | GET | `mobilelib` | Veículos atualmente estacionados |
+| `/api/m/unidade-veiculos/<unidade>` | GET | `mobilelib` | Veículos em uma unidade (detalhe do mapa) |
+| `/api/m/unidades` | GET | `permlib` | Lista de unidades do condomínio |
+| `/api/m/buscar-veiculo/<placa>` | GET | `carlib` | Busca veículo em `cadveiculo` |
+| `/api/m/buscar-permissao/<placa>` | GET | `mobilelib` | Busca permissão vigente/indefinida |
+| `/api/m/criar-permissao` | POST | `permlib` | Cria nova permissão (veículo já cadastrado) |
+| `/api/m/modificar-permissao` | PUT | `permlib` | Altera prazo de permissão vigente |
+| `/api/m/novo-veiculo` | POST | `mobilelib` | Cria veículo + permissão em uma operação |
+
+> Para marcas/modelos/cores, o frontend mobile usa as APIs públicas já existentes: `/api/marcas`, `/api/modelos/<marca>`, `/api/cores`.
+
+### Funcionalidades da SPA (`/app/monitoramento`)
+
+Menu inferior com 4 abas:
+- **Início** — monitoramento em tempo real (polling 30 s)
+- **Mapa** — grid de unidades com código de cores (Excesso=vermelho, Completo=azul, Parcial=amarelo, Livre=branco); toque na unidade abre veículos estacionados
+- **Estacionados** — lista de veículos com placa, unidade, veículo, hora de entrada
+- **Mais (⋮)** — abre 4 formulários deslizantes: Novo Veículo, Criar Permissão, Alterar Permissão, Consulta
+
+### Funções do `mobilelib`
+
+| Função | Descrição |
+|--------|-----------|
+| `obter_ultimos_movimentos_mobile(idcond, limit)` | Usa `vw_movimentos` |
+| `obter_estacionados_mobile(idcond)` | Usa `vw_autorizacoes` + `vw_last_mov` |
+| `obter_veiculos_unidade_mobile(idcond, unidade)` | Igual ao anterior, filtrado por unidade |
+| `buscar_permissao_mobile(idcond, placa)` | Usa `vw_veiculos_autorizados` |
+| `novo_veiculo_mobile(idcond, placa, ...)` | Cria em `cadveiculo` + `cadperm` atomicamente |
+
+### Sessão e autenticação mobile
+
+- Usa a **mesma sessão web** (`session['usuario']`, `session['autenticado']`)
+- `session['mobile_idcond']` armazena o condomínio selecionado na versão mobile
+- O `verificar_acesso_condominio()` do `globals.py` funciona normalmente (lê `session['usuario']`)
+- Ícones PWA ficam em `static/icons/`; Apple exige `apple-touch-icon.png` na raiz (rota dedicada em `main.py`)
 
 ## Bug Conhecido — Veículo com 2 Permissões Ativas
 

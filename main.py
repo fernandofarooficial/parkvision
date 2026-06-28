@@ -41,7 +41,9 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_info_veiculo_operador, obter_ultimos_movimentos,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
 from visionlib.camlib import iniciar_monitor_cameras, obter_status_cameras
-from visionlib.mobilelib import obter_ultimos_movimentos_mobile
+from visionlib.mobilelib import (obter_ultimos_movimentos_mobile, obter_estacionados_mobile,
+                                  obter_veiculos_unidade_mobile, novo_veiculo_mobile,
+                                  buscar_permissao_mobile)
 
 app = Flask(__name__)
 
@@ -1109,6 +1111,123 @@ def api_mobile_movimentos():
 
     movimentos = obter_ultimos_movimentos_mobile(idcond, limit=20)
     return jsonify({'success': True, 'movimentos': movimentos})
+
+
+@app.route('/api/m/mapa-vagas')
+def api_m_mapa_vagas():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+    return obter_mapa_vagas(idcond)
+
+
+@app.route('/api/m/estacionados')
+def api_m_estacionados():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+    veiculos = obter_estacionados_mobile(idcond)
+    return jsonify({'success': True, 'data': veiculos})
+
+
+@app.route('/api/m/unidade-veiculos/<unidade>')
+def api_m_unidade_veiculos(unidade):
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+    veiculos = obter_veiculos_unidade_mobile(idcond, unidade)
+    return jsonify({'success': True, 'data': veiculos})
+
+
+@app.route('/api/m/unidades')
+def api_m_unidades():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+    return obter_unidades_condominio(idcond)
+
+
+@app.route('/api/m/buscar-veiculo/<placa>')
+def api_m_buscar_veiculo(placa):
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    return buscar_veiculo_cadveiculo(placa)
+
+
+@app.route('/api/m/buscar-permissao/<placa>')
+def api_m_buscar_permissao(placa):
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+    placa = placa.strip().upper()
+    ok, msg, data = buscar_permissao_mobile(idcond, placa)
+    if not ok:
+        return jsonify({'success': False, 'message': msg})
+    return jsonify({'success': True, 'data': data})
+
+
+@app.route('/api/m/criar-permissao', methods=['POST'])
+def api_m_criar_permissao():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    return criar_permissao()
+
+
+@app.route('/api/m/modificar-permissao', methods=['PUT'])
+def api_m_modificar_permissao():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    return modificar_permissao()
+
+
+@app.route('/api/m/novo-veiculo', methods=['POST'])
+def api_m_novo_veiculo():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+
+    data = request.get_json(silent=True) or {}
+    placa    = data.get('placa', '').strip().upper()
+    marca    = data.get('marca', '').strip()
+    modelo   = data.get('modelo', '').strip()
+    idcor    = data.get('idcor')
+    unidade  = data.get('unidade', '').strip()
+    di_str   = data.get('data_inicio', '')
+    df_str   = data.get('data_fim')
+
+    if not placa or not unidade or not di_str:
+        return jsonify({'success': False, 'message': 'Placa, unidade e data de início são obrigatórios'})
+
+    from datetime import datetime as dt
+    try:
+        data_inicio = dt.strptime(di_str, '%Y-%m-%dT%H:%M')
+        data_fim = dt.strptime(df_str, '%Y-%m-%dT%H:%M') if df_str else None
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Formato de data inválido'})
+
+    ok, msg = novo_veiculo_mobile(idcond, placa, marca, modelo, idcor, unidade, data_inicio, data_fim)
+    return jsonify({'success': ok, 'message': msg})
 
 
 # ── Monitor de câmeras em background ──────────────────────────────────────────
