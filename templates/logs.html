@@ -57,19 +57,6 @@
         50%       { opacity: .4; }
     }
 
-    /* ── Barra de progresso ───────────────────────── */
-    .log-progress-wrap {
-        margin-bottom: .75rem;
-    }
-
-    .log-progress-label {
-        display: flex;
-        justify-content: space-between;
-        font-size: .8rem;
-        color: #6c757d;
-        margin-bottom: .2rem;
-    }
-
     /* ── Área de logs ─────────────────────────────── */
     .log-area-wrapper {
         border: 1px solid #dee2e6;
@@ -182,7 +169,7 @@
 <div class="log-header">
     <div>
         <h1 class="log-titulo"><i class="bi bi-journal-text me-2"></i>Logs do Sistema</h1>
-        <p class="text-muted mb-0" style="font-size:.9rem">Somente administradores — auto-limpa ao atingir 300 linhas</p>
+        <p class="text-muted mb-0" style="font-size:.9rem">Somente administradores — logs retidos por 3 dias</p>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <!-- Filtro de nível -->
@@ -224,23 +211,7 @@
     </div>
     <div class="log-status-item ms-auto">
         <i class="bi bi-list-ol text-secondary"></i>
-        <span><strong id="txt-total">0</strong> / 300 linhas no arquivo</span>
-    </div>
-</div>
-
-<!-- Barra de progresso (linhas do arquivo vs limite) -->
-<div class="log-progress-wrap">
-    <div class="log-progress-label">
-        <span>Uso do log</span>
-        <span id="txt-pct">0%</span>
-    </div>
-    <div class="progress" style="height:6px">
-        <div id="barra-progresso"
-             class="progress-bar bg-success"
-             role="progressbar"
-             style="width:0%"
-             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-        </div>
+        <span><strong id="txt-total">0</strong> registros (últimos 3 dias)</span>
     </div>
 </div>
 
@@ -297,8 +268,6 @@
     const txtConn    = document.getElementById('txt-conn');
     const txtUltima  = document.getElementById('txt-ultima');
     const txtTotal   = document.getElementById('txt-total');
-    const txtPct     = document.getElementById('txt-pct');
-    const barra      = document.getElementById('barra-progresso');
 
     /* ── Parser de linha ─────────────────────────── */
     const RE_LOG = /^(\d{2}:\d{2}:\d{2})\s+\[(\w+)\]\s+(.*)$/;
@@ -381,22 +350,10 @@
         });
     }
 
-    /* ── Atualizar barra de progresso ────────────── */
-    function atualizarProgresso(total) {
+    /* ── Atualizar contador de registros ─────────── */
+    function atualizarTotal(total) {
         totalLinhas = total;
         txtTotal.textContent = total;
-        const pct = Math.min(100, Math.round((total / 300) * 100));
-        txtPct.textContent = pct + '%';
-        barra.style.width  = pct + '%';
-        barra.setAttribute('aria-valuenow', pct);
-
-        if (pct >= 90) {
-            barra.className = 'progress-bar bg-danger';
-        } else if (pct >= 70) {
-            barra.className = 'progress-bar bg-warning';
-        } else {
-            barra.className = 'progress-bar bg-success';
-        }
     }
 
     /* ── Limpar estado do viewer ─────────────────── */
@@ -407,7 +364,7 @@
             <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
             Log limpo — aguardando novas entradas...
         </td></tr>`;
-        atualizarProgresso(0);
+        atualizarTotal(0);
     }
 
     /* ── Polling principal ───────────────────────── */
@@ -422,22 +379,7 @@
                 setConectado(true);
                 txtUltima.textContent = new Date().toLocaleTimeString('pt-BR');
 
-                atualizarProgresso(data.total_lines ?? totalLinhas);
-
-                // Auto-truncagem detectada no backend
-                if (data.truncated) {
-                    limparViewer();
-                    lastOffset = data.next_offset ?? 0;
-                    mostrarToast('Log limpo automaticamente (300 linhas atingidas)', 'warning');
-                    // Inserir a linha de aviso retornada
-                    if (Array.isArray(data.lines) && data.lines.length > 0) {
-                        const entries = data.lines.map(parseLinha);
-                        buffer.push(...entries);
-                        acrescentarLinhas(entries);
-                    }
-                    scrollFundo();
-                    return;
-                }
+                atualizarTotal(data.total_lines ?? totalLinhas);
 
                 lastOffset = data.next_offset ?? lastOffset;
 
@@ -537,7 +479,7 @@
 
     /* ── Botão: Limpar ───────────────────────────── */
     document.getElementById('btn-limpar').addEventListener('click', function () {
-        if (!confirm('Limpar o arquivo de log agora? Esta ação não pode ser desfeita.')) return;
+        if (!confirm('Limpar todos os logs salvos agora? Esta ação não pode ser desfeita.')) return;
 
         const spinner = document.getElementById('limpar-spinner');
         spinner.classList.remove('d-none');

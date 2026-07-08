@@ -37,12 +37,18 @@ def setup_logging(app):
         file_handler.setFormatter(formatter)
         file_handler.setLevel(logging.INFO)
 
+        from visionlib.loglib import DBLogHandler
+        db_handler = DBLogHandler()
+        db_handler.setFormatter(formatter)
+        db_handler.setLevel(logging.INFO)
+
         # Limpar handlers anteriores (evita duplicatas em reloads)
         for h in app.logger.handlers[:]:
             app.logger.removeHandler(h)
 
         app.logger.setLevel(logging.INFO)
         app.logger.addHandler(file_handler)
+        app.logger.addHandler(db_handler)
         app.logger.propagate = False
 
         # Logger raiz de visionlib (camlib, dblib, operlib, etc.)
@@ -51,6 +57,7 @@ def setup_logging(app):
             vl.removeHandler(h)
         vl.setLevel(logging.INFO)
         vl.addHandler(file_handler)
+        vl.addHandler(db_handler)
         vl.propagate = False
 
         app.logger.info('ParkVision iniciado — sistema de logs ativo')
