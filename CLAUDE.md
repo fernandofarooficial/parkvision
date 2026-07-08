@@ -59,6 +59,7 @@ visionlib/
   dashlib/            # Mapa de vagas (usa vw_estacionados)
   rellib/             # Relatórios
   camlib/             # Daemon RTSP health-check de câmeras
+  loglib/             # Persistência assíncrona de logs (tabela logsistema) + limpeza automática (retenção 3 dias)
   condlib/            # Dados de condomínios
   apontlib/           # Apontamento manual (bypass câmera)
   unidlib/            # Gestão de unidades habitacionais
@@ -129,6 +130,10 @@ logger.info("mensagem")
 logger.error(f"erro: {err}")
 ```
 
+Logs de `app.logger` e do logger raiz `visionlib` são gravados tanto no arquivo (`parkvision.log`, rotativo) quanto na tabela `logsistema` (retenção de 3 dias, via `loglib`). A gravação no banco é assíncrona (fila em memória + thread), então `logger.info()`/`logger.error()` nunca bloqueiam esperando o MySQL.
+
+> Exceção à regra "não usar `print()`": dentro de `visionlib/loglib/` os erros do próprio pipeline de log usam `print()` propositalmente, para evitar recursão infinita (um `logger.error()` ali reentraria no handler que está falhando).
+
 ## Banco de Dados — Tabelas e Convenções
 
 Nomenclatura legacy compacta (não mudar):
@@ -142,6 +147,7 @@ Nomenclatura legacy compacta (não mudar):
 | `movcar` | Movimentos (`idmov`, `idcond`, `placa`, `contav`, `idgente`, `direcao`, `nowpost`, `origem`) |
 | `vagasunidades` | Vagas por unidade (`idcond`, `unidade`, `vperm`, `seqcond`) |
 | `logbruto` | JSON bruto do Heimdall |
+| `logsistema` | Logs do sistema (`idlog`, `nivel`, `mensagem`, `criado_em`) — gravação assíncrona via `loglib`, retenção de 3 dias (limpeza automática a cada hora) |
 | `usuarios` | Usuários (`idgente`, `tipo_usuario`, `ativo`) |
 
 **Views principais:** `vw_autorizacoes`, `vw_estacionados`, `vw_movimentos`, `vw_last_mov`, `vw_veiculos_cond`, `vw_veiculos_autorizados`
