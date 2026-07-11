@@ -15,7 +15,15 @@
       "Bash(tree:*)",
       "Bash(dir:*)",
       "Bash(grep -E \"\\\\.\\(sql|py\\)$\")",
-      "PowerShell(cd \"C:\\\\Users\\\\Fernando\\\\PycharmProjects\\\\PromptVisionPoject\"; $env:PYTHONIOENCODING=\"utf-8\"; python ArquivosApoio\\\\gerar_icones_pwa.py)"
+      "PowerShell(cd \"C:\\\\Users\\\\Fernando\\\\PycharmProjects\\\\PromptVisionPoject\"; $env:PYTHONIOENCODING=\"utf-8\"; python ArquivosApoio\\\\gerar_icones_pwa.py)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(./env/Scripts/python.exe -c \"import main\")",
+      "Bash(./.venv/Scripts/python.exe -c \"import main\")",
+      "Bash(git add *)",
+      "Bash(ssh *)",
+      "Read(//c/Users/Fernando/.ssh/**)"
     ],
     "defaultMode": "acceptEdits"
   }

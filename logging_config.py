@@ -25,7 +25,7 @@ def setup_logging(app):
     try:
         formatter = BrasilFormatter(
             '%(asctime)s [%(levelname)s] %(message)s',
-            datefmt='%H:%M:%S'
+            datefmt='%d/%m %H:%M:%S'
         )
 
         file_handler = RotatingFileHandler(
