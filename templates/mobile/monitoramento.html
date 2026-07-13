@@ -156,6 +156,7 @@
         .mapa-unidade.livre    { background: #fff; border-color: #dee2e6; }
         .mapa-unidade .un-nome { font-size: 11px; font-weight: 700; color: #1a3a5c; text-align: center; line-height: 1.2; }
         .mapa-unidade .un-ocup { font-size: 10px; color: #6c757d; margin-top: 2px; }
+        .mapa-unidade .un-disp { font-size: 9px; color: #198754; font-weight: 700; margin-top: 1px; }
         .mapa-unidade.excesso  .un-nome { color: #dc3545; }
         .mapa-unidade.completo .un-nome { color: #1a3a5c; }
 
@@ -365,6 +366,7 @@
     <div id="view-mapa" class="view">
         <div class="mapa-stats" id="mapa-stats">
             <div class="mapa-stat"><div class="val" id="stat-total">—</div><div class="lbl">Unidades</div></div>
+            <div class="mapa-stat"><div class="val" id="stat-permitidas">—</div><div class="lbl">Permitidas</div></div>
             <div class="mapa-stat"><div class="val" id="stat-ocup">—</div><div class="lbl">Ocupadas</div></div>
             <div class="mapa-stat"><div class="val" id="stat-livre">—</div><div class="lbl">Livres</div></div>
         </div>
@@ -781,15 +783,18 @@
                 if (!data.success) { document.getElementById('mapa-grid').innerHTML = '<div class="vazio">Sem dados de mapa.</div>'; return; }
                 const d = data.data;
 
-                document.getElementById('stat-total').textContent = d.total_unidades;
-                document.getElementById('stat-ocup').textContent  = d.total_ocupadas;
-                document.getElementById('stat-livre').textContent = Math.max(0, d.total_vagas_permitidas - d.total_ocupadas);
+                document.getElementById('stat-total').textContent      = d.total_unidades;
+                document.getElementById('stat-permitidas').textContent = d.total_vagas_permitidas;
+                document.getElementById('stat-ocup').textContent       = d.total_ocupadas;
+                document.getElementById('stat-livre').textContent      = Math.max(0, d.total_vagas_permitidas - d.total_ocupadas);
 
                 document.getElementById('mapa-grid').innerHTML = d.vagas.map(v => {
                     const st = statusMapa(v.vocup, v.vperm);
+                    const disponivel = Math.max(0, v.vperm - v.vocup);
                     return `<div class="mapa-unidade ${st}" onclick="abrirUnidade('${v.unidade}')">
                         <div class="un-nome">${v.unidade}</div>
                         <div class="un-ocup">${v.vocup}/${v.vperm}</div>
+                        <div class="un-disp">${disponivel} livre${disponivel === 1 ? '' : 's'}</div>
                     </div>`;
                 }).join('');
 
