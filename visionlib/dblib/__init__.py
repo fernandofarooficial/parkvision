@@ -8,7 +8,7 @@ from flask import jsonify
 from datetime import datetime
 from config.database import get_db_connection
 from visionlib.vplib import process_heimdall_plate
-from visionlib.operlib import adicionar_evento
+from visionlib.operlib import adicionar_evento, executar_acao_operador
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,8 @@ def gravar_movimento(movdic):
     inforec['contav'] = checar_anteriores(inforec)
     # Registrar se o evento é válido (não duplicata) antes de zerar o contav
     valido = (inforec['contav'] == 1)
+    # Liberação automática (sem intervenção do operador) — decidida por direção da câmera
+    auto_confirmar = False
     # Só processo se for válido; se for duplicata apenas grava o log
     if valido:
         # obter nome do condomínio
@@ -57,7 +59,11 @@ def gravar_movimento(movdic):
             # placa cadastrada - verifica se está na validade
             inforec['status_permissao'], inforec['unidade'] = placaautorizada(inforec)
             logger.info(f"[{placa}]: Status da permissão: {inforec['status_permissao']}")
-            if inforec['status_permissao'] in ('INDEFINIDA', 'VIGENTE'):
+            if inforec['direcao'] == 'S':
+                # Saída: veículo cadastrado sai livremente, independente do status da permissão
+                logger.info(f"[{placa}]: Saída de veículo cadastrado - liberação automática")
+                auto_confirmar = True
+            elif inforec['direcao'] == 'E' and inforec['status_permissao'] in ('INDEFINIDA', 'VIGENTE'):
                 logger.info(f"[{placa}]: Placa com permissão válida")
                 # placa autorizada - obter veículos estacionados
                 inforec['qtde_estacionada'], inforec['placas_estacionadas'] = contar_vagas_ocupadas(inforec)
@@ -68,19 +74,34 @@ def gravar_movimento(movdic):
                     logger.info(f"[{placa}]: Todas as vagas ocupadas")
                 else:
                     logger.info(f"[{placa}]: Todos critérios atendidos")
-            else:
+                    auto_confirmar = True
+            elif inforec['direcao'] == 'E':
                 logger.info(f"[{placa}]: Placa sem permissão válida")
+            else:
+                # câmera interna (I): sempre depende de decisão manual do operador
+                logger.info(f"[{placa}]: Câmera de direção '{inforec['direcao']}' - aguardando decisão do operador")
         else:
             logger.info(f"[{placa}]: Placa sem cadastro")
             # placa não cadastrada - não abre portão (avisa para cadastrar ou barrar)
             inforec['status_permissao'] = 'NÃO CADASTRADO'
-        # Zerar contav antes de gravar: o operador decide a ação (confirmar/rejeitar/ignorar)
+        # Zerar contav antes de gravar: contav final é definido por gravar_log/executar_acao_operador
         inforec['contav'] = 0
     # gravar o log
     gravar_log(inforec)
-    # Atualizar tela Operador em tempo real apenas para eventos válidos (não duplicatas)
+    # Eventos válidos: liberar automaticamente quando elegível, senão aguardar o operador
     if valido:
-        adicionar_evento(inforec)
+        if auto_confirmar:
+            resultado = executar_acao_operador(inforec['idmov'], 'confirmar', None, None, origem='AUTO')
+            if resultado.get('success'):
+                logger.info(f"[{placa}]: Liberação automática confirmada (idmov={inforec['idmov']})")
+            else:
+                logger.warning(
+                    f"[{placa}]: falha na liberação automática ({resultado.get('message')}) "
+                    f"- enviado para a tela Operador"
+                )
+                adicionar_evento(inforec)
+        else:
+            adicionar_evento(inforec)
     #
     return inforec
 

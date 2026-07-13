@@ -1126,55 +1126,11 @@
 
                     const linhasParaAdicionar = [];
 
+                    // Liberação automática (saída cadastrada / entrada com vaga) agora é decidida
+                    // no servidor (dblib.gravar_movimento) — eventos elegíveis nunca chegam a este
+                    // endpoint, então tudo que chega aqui é pendente e depende do operador.
                     novos.forEach(ev => {
                         if (ev.ts > ultimoTs) ultimoTs = ev.ts;
-
-                        // Saída com placa cadastrada → auto-confirmar sem intervenção do operador
-                        if (ev.direcao === 'S' && ev.status_permissao !== 'NÃO CADASTRADO' && ev.idmov) {
-                            const _placa   = ev.placa;
-                            const _momento = ev.momento;
-                            const _idmov   = ev.idmov;
-                            _acoesProprias.add(_idmov);
-                            fetch('/api/operador/acao', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null, origem: 'AUTO' })
-                            })
-                            .then(r => r.json())
-                            .then(data => {
-                                if (!data.success) return;
-                                removerLinhaPorIdmov(_idmov);
-                                registrarMovimento(_placa, _momento, 'S', 'AUTO');
-                                mostrarAvisoPorta('saida', _placa);
-                            })
-                            .catch(() => {});
-                            return;
-                        }
-
-                        // Entrada statusmov A: cadastrado + permissão válida + vagas → auto-confirmar e abrir portão
-                        if (ev.direcao === 'E' && ev.idmov &&
-                            (ev.status_permissao === 'VIGENTE' || ev.status_permissao === 'INDEFINIDA') &&
-                            ev.vagas_disponiveis !== null && parseInt(ev.vagas_disponiveis, 10) > 0) {
-                            const _placa   = ev.placa;
-                            const _momento = ev.momento;
-                            const _idmov   = ev.idmov;
-                            _acoesProprias.add(_idmov);
-                            fetch('/api/operador/acao', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ idmov: _idmov, acao: 'confirmar', motivo: null, origem: 'AUTO' })
-                            })
-                            .then(r => r.json())
-                            .then(data => {
-                                if (!data.success) return;
-                                removerLinhaPorIdmov(_idmov);
-                                registrarMovimento(_placa, _momento, 'E', 'AUTO');
-                                mostrarAvisoPorta('entrada', _placa);
-                            })
-                            .catch(() => {});
-                            return;
-                        }
-
                         linhasParaAdicionar.push(ev);
                     });
 
@@ -1223,6 +1179,9 @@
                     removerLinhaPorIdmov(ac.idmov);
                     if (ac.acao === 'confirmar') {
                         registrarMovimento(ac.placa, ac.momento, ac.direcao, ac.origem || 'MANUAL');
+                        if (ac.origem === 'AUTO') {
+                            mostrarAvisoPorta(ac.direcao === 'S' ? 'saida' : 'entrada', ac.placa);
+                        }
                     }
                     atualizarResumoVagas();
                 });

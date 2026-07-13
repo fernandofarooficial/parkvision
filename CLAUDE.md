@@ -220,6 +220,19 @@ Menu inferior com 4 abas:
 - O `verificar_acesso_condominio()` do `globals.py` funciona normalmente (lê `session['usuario']`)
 - Ícones PWA ficam em `static/icons/`; Apple exige `apple-touch-icon.png` na raiz (rota dedicada em `main.py`)
 
+## Visualizador de Logs (`/logs`)
+
+Página web (somente `ADM`) para acompanhar os logs do sistema em tempo real, lendo da tabela `logsistema` (via `loglib`).
+
+| Rota | Método | Descrição |
+|------|--------|-----------|
+| `/logs` | GET | Renderiza `templates/logs.html` — tabela com polling incremental |
+| `/api/logs/tail` | GET | `?offset=<idlog>` — retorna logs com `idlog > offset` (cursor incremental, até 300 por chamada) + `total_lines` |
+| `/api/logs/limpar` | POST | `TRUNCATE` na tabela `logsistema` (ação manual do admin) |
+
+- Formato de linha exibido: `DD/MM HH:MM:SS [NIVEL] mensagem` (parseado no front via regex `RE_LOG` em `logs.html`)
+- Todas as 3 rotas checam `verificar_permissao_tipo_usuario(['ADM'])` e retornam 403/redirect para não-admin
+
 ## Bug Conhecido — Veículo com 2 Permissões Ativas
 
 Se uma placa tem `cadperm` em duas unidades do mesmo condomínio, a `vw_movimentos` retorna o movimento duplicado (2 linhas por `idmov`). Causa raiz: `vw_veiculos_cond` retorna 2 linhas → JOIN multiplica. Ao implementar relatórios ou listagens, deduplique por `idmov` após fetchall.
@@ -231,8 +244,21 @@ POST /api/receber-dados → apilib → dblib.gravar_movimento()
   ├─ vplib.process_heimdall_plate()  # valida/corrige placa
   ├─ checar_anteriores()             # anti-duplicata (90s)
   ├─ gravar_log() → INSERT movcar (contav=0, sem operador)
-  └─ operlib.adicionar_evento()      # push para polling do front
+  └─ decisão de liberação automática (server-side, por direção da câmera):
+       ├─ Saída (S) + placa cadastrada → auto_confirmar = True (não depende do status da permissão)
+       ├─ Entrada (E) + permissão VIGENTE/INDEFINIDA + vaga disponível → auto_confirmar = True
+       ├─ Câmera interna (I), ou entrada/saída fora dos critérios acima → fica pendente
+       ├─ auto_confirmar=True  → operlib.executar_acao_operador(idmov,'confirmar',None,origem='AUTO')
+       │                          (envia pulso ao relé, sem intervenção humana)
+       └─ auto_confirmar=False → operlib.adicionar_evento()  # push para tela Operador decidir manualmente
 ```
+
+> A liberação automática é decidida inteiramente no backend (`dblib.gravar_movimento`, `visionlib/dblib/__init__.py`).
+> Não depende de nenhuma aba de navegador aberta na tela `/operador` — antes essa lógica vivia em JS em
+> `templates/operador.html` e só funcionava enquanto um operador tivesse a tela aberta e conectada; foi movida
+> para o servidor porque isso deixava a abertura automática do portão frágil (parava silenciosamente se a aba
+> fechasse, a sessão expirasse ou a rede caísse). A tela Operador ainda mostra o evento auto-liberado via
+> `pollAcoes`/`registrar_acao_store` (badge "AUTO"), mas não precisa estar aberta para o pulso ser enviado.
 
 ## Convenções de Nomenclatura
 
