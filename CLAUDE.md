@@ -31,6 +31,24 @@ systemctl reload nginx             # recarregar Nginx sem derrubar
 certbot renew --dry-run            # testar renovação do certificado
 ```
 
+**Deploy é manual, não automático.** `git commit`/`git push` não afetam a VPS nem o banco de produção — não há CI/CD nem webhook configurado. Só entra no ar quando alguém faz SSH na VPS e roda (ver `ArquivosApoio/deploy_parkvision_tech.txt`):
+```bash
+cd /home/workuser/parkvision
+git pull
+systemctl restart flaskapp
+```
+A VPS tem seu próprio `.env` (`/home/workuser/parkvision/.env`), independente do `.env` local — mudanças de configuração local (ex: apontar para banco de teste) não se propagam para lá.
+
+## Desenvolvimento Local
+
+**Nunca rodar a aplicação local nem testes apontando para o banco de produção.** O app local (`127.0.0.1:5000`) e a instância da VPS são processos independentes, mas se o `.env` local apontar para `DB_HOST=72.60.58.241`, qualquer escrita feita localmente grava direto em dados reais — e algumas ações (ex: `enviar_pulso_por_direcao` em `visionlib/operlib/__init__.py`) fazem uma chamada HTTP real para o relé físico do portão (`caddisp.urldisp`), ou seja, um teste de "abrir porta" local pode acionar o portão de verdade em um condomínio real.
+
+Use um MySQL local para desenvolvimento e testes:
+- Serviço MySQL local (Windows: `MySQL80`, porta `3306`)
+- Banco `parkvision_test`, schema idêntico ao de produção (importado de `doc_suporte/BaseDeDados/base_parkvision.txt` + `views.txt`)
+- A tabela `logsistema` não faz parte do dump — é criada automaticamente pelo `loglib` (`CREATE TABLE IF NOT EXISTS`) na primeira execução do app; isso é esperado, não é um gap de schema
+- `.env.example` já reflete essa configuração (`DB_HOST=localhost`, `DB_NAME=parkvision_test`) — copiar para `.env` e preencher a senha real do MySQL local
+
 ## Stack
 
 - **Backend:** Python 3.13 + Flask 2.x + MySQL (sem ORM — SQL direto)
