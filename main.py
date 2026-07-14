@@ -72,6 +72,46 @@ from logging_config import setup_logging
 setup_logging(app)
 
 
+# Rotas de escrita liberadas para SINDICO (autoatendimento de conta + webhook externo,
+# que não passa por sessão de usuário)
+_ROTAS_ESCRITA_LIVRES_SINDICO = {
+    '/api/auth/login',
+    '/api/auth/logout',
+    '/api/auth/alterar-senha',
+    '/api/auth/solicitar-recuperacao',
+    '/api/auth/recuperar-senha',
+    '/api/solicitar-inscricao',
+    '/api/heimdall/webservice/lpr',
+    '/app/login',
+}
+
+
+@app.before_request
+def bloquear_escrita_sindico():
+    """
+    SINDICO tem acesso somente leitura (visualização e relatórios).
+    Bloqueia globalmente qualquer requisição de escrita (POST/PUT/DELETE/PATCH)
+    fora da lista de autoatendimento de conta e do webhook do Heimdall — assim
+    novas rotas de escrita ficam bloqueadas por padrão sem precisar de checagem
+    individual em cada uma.
+    """
+    if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        return None
+    if request.path in _ROTAS_ESCRITA_LIVRES_SINDICO:
+        return None
+
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if autenticado and usuario.get('tipo_usuario') == 'SINDICO':
+        if request.is_json or request.path.startswith('/api/'):
+            return jsonify({
+                'success': False,
+                'message': 'Acesso somente leitura. Síndicos não podem realizar alterações.',
+                'error_code': 'FORBIDDEN'
+            }), 403
+        return redirect(url_for('condominios'))
+    return None
+
+
 # Rotas para páginas HTML
 @app.route('/')
 def index():

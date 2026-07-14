@@ -119,8 +119,10 @@ return jsonify({'success': False, 'message': 'Mensagem de erro'})
 ### Autenticação
 - Usar decorators de `visionlib/middleware.py` nas rotas novas
 - `session['usuario']` contém: `idgente`, `nome_curto`, `tipo_usuario`, `condominios`
-- Tipos: `ADM` (total), `MONITOR`, `SINDICO`
+- Tipos: `ADM` (total), `MONITOR` (leitura + edição), `SINDICO` (somente leitura — visualização e relatórios)
 - Em código legado: `globals.verificar_autenticacao()` / `globals.verificar_acesso_condominio(idcond)`
+
+**Enforcement de SINDICO somente leitura:** hook global `bloquear_escrita_sindico` (`@app.before_request` em `main.py`) bloqueia qualquer requisição `POST`/`PUT`/`DELETE`/`PATCH` de usuário `SINDICO`, exceto as rotas em `_ROTAS_ESCRITA_LIVRES_SINDICO` (login/logout/alterar-senha/recuperação de senha, solicitação de inscrição e o webhook do Heimdall). Novas rotas de escrita ficam bloqueadas para SINDICO por padrão — só adicionar à allowlist se for autoatendimento de conta ou endpoint público/webhook sem sessão de usuário.
 
 ### Logging
 ```python
