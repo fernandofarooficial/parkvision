@@ -181,6 +181,21 @@ Nomenclatura legacy compacta (não mudar):
 
 **Campo `origem` em `movcar`:** identifica a fonte do movimento — `'LPR'` (câmera Heimdall), `'MANUAL'` (apontamento manual), `NULL` → tratado como `'MANUAL'` via `COALESCE`.
 
+## Tela de Monitoramento de Veículos (Desktop)
+
+`templates/veiculos.html` (rota `/veiculos/<int:condominio_id>`) é a tela principal de gestão desktop. A barra de ações usa um único CSS grid de 6 colunas (classe `.acoes-grid`) em vez de flexbox — cada coluna se ajusta ao maior dos dois botões que contém, então o botão da linha superior tem sempre a mesma largura do botão correspondente na linha inferior:
+
+| Coluna | Linha superior | Linha inferior |
+|--------|-----------------|-----------------|
+| 1 | Mapa de Vagas | Consultar |
+| 2 | Operador | Veículo |
+| 3 | De<>Para *(placeholder, sem funcionalidade ainda)* | Veículo + Permissão |
+| 4 | Unidades | Permissão |
+| 5 | Relatórios | Apontamento |
+| 6 | Ocupadas *(placeholder, sem funcionalidade ainda)* | Veículo não cadastrado |
+
+Responsivo: 3 colunas em telas médias (`≤991px`), 2 colunas em telas pequenas (`≤575px`). Os IDs dos botões (`btn-mapa-vagas`, `btn-cadastrar-veiculo`, etc.) não mudaram — o JS de show/hide por perfil (ADM/MONITOR vs. leitura) e os handlers de clique continuam os mesmos.
+
 ## Versão Mobile (PWA)
 
 Rotas sob o prefixo `/app/` servem a interface mobile — uma PWA instalável via `static/manifest.json` + `static/sw.js`.
@@ -219,9 +234,12 @@ Todas exigem autenticação via `verificar_autenticacao_usuario()` e leem `idcon
 
 Menu inferior com 4 abas:
 - **Início** — monitoramento em tempo real (polling 30 s)
-- **Mapa** — grid de unidades com código de cores (Excesso=vermelho, Completo=azul, Parcial=amarelo, Livre=branco); toque na unidade abre veículos estacionados
+- **Mapa** — barra de estatísticas (Unidades, Permitidas, Ocupadas, Livres) + grid de unidades com código de cores (Excesso=vermelho, Completo=azul, Parcial=amarelo, Livre=branco); cada unidade exibe `vocup/vperm` e vagas disponíveis (`vperm - vocup`); toque na unidade abre veículos estacionados
+  - `total_vagas_permitidas` (card "Permitidas") vem de `cadcond.limite`, com fallback para soma de `vagasunidades.vperm` (`dashlib`)
+  - Classe CSS de status "Livre" é `livre` (não usar `vazio` — colide com a classe genérica de lista vazia e desconfigura o tamanho da célula/legenda)
 - **Estacionados** — lista de veículos com placa, unidade, veículo, hora de entrada
 - **Mais (⋮)** — abre 4 formulários deslizantes: Novo Veículo, Criar Permissão, Alterar Permissão, Consulta
+  - Perfil `SINDICO` (somente leitura) não vê os itens Novo Veículo, Criar Permissão e Alterar Permissão no menu — apenas Consulta (`templates/mobile/monitoramento.html`, condicional `{% if usuario.tipo_usuario != 'SINDICO' %}`). É reforço de UI: o bloqueio real já é feito no backend por `bloquear_escrita_sindico`.
 
 ### Funções do `mobilelib`
 
