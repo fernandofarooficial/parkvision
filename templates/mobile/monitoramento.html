@@ -430,6 +430,7 @@
             <button class="sheet-close" onclick="fecharSheets()">✕</button>
         </div>
         <div class="sheet-body" style="padding: 8px 8px 16px;">
+            {% if usuario.tipo_usuario != 'SINDICO' %}
             <div class="menu-item" onclick="abrirForm('novo-veiculo')">
                 <div class="menu-item-icon">🚘</div>
                 <div class="menu-item-text">
@@ -451,6 +452,7 @@
                     <div class="menu-item-desc">Alterar prazo de permissão vigente</div>
                 </div>
             </div>
+            {% endif %}
             <div class="menu-item" onclick="abrirForm('consulta')">
                 <div class="menu-item-icon">🔍</div>
                 <div class="menu-item-text">
