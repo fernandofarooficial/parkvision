@@ -53,7 +53,29 @@
         border-color: #1ba87e;
         color: white;
     }
-    
+    .acoes-grid {
+        display: grid;
+        grid-template-columns: repeat(6, auto);
+        gap: 8px 10px;
+        justify-content: end;
+        margin-bottom: 1rem;
+    }
+    .acoes-grid .btn {
+        width: 100%;
+        white-space: nowrap;
+    }
+    @media (max-width: 991px) {
+        .acoes-grid {
+            grid-template-columns: repeat(3, 1fr);
+            justify-content: stretch;
+        }
+    }
+    @media (max-width: 575px) {
+        .acoes-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
     /* Classes para status das vagas */
     .status-disponivel {
         color: #198754;
@@ -88,55 +110,45 @@
     </div>
 </div>
 
-<div class="row mb-2">
-    <div class="col-md-12 text-end">
-        <div class="d-flex justify-content-end align-items-center gap-2">
-            <a href="#" id="btn-mapa-vagas" class="btn btn-mapa-vagas me-auto">
-                <i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas
-            </a>
-            <a href="#" id="btn-operador" class="btn btn-dark">
-                <i class="bi bi-display me-1"></i>Operador
-            </a>
-            <button id="btn-de-para" class="btn btn-outline-dark" title="Em breve">
-                <i class="bi bi-arrow-left-right me-1"></i>De&lt;&gt;Para
-            </button>
-            <button id="btn-unidades" class="btn btn-secondary">
-                <i class="bi bi-building me-1"></i>Unidades
-            </button>
-            <button id="btn-relatorios" class="btn btn-info">
-                <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatórios
-            </button>
-            <button id="btn-ocupadas" class="btn btn-outline-primary" title="Em breve">
-                <i class="bi bi-p-square me-1"></i>Ocupadas
-            </button>
-        </div>
-    </div>
-</div>
+<div class="acoes-grid">
+    <a href="#" id="btn-mapa-vagas" class="btn btn-mapa-vagas">
+        <i class="bi bi-grid-3x3-gap me-2"></i>Mapa de Vagas
+    </a>
+    <a href="#" id="btn-operador" class="btn btn-dark">
+        <i class="bi bi-display me-1"></i>Operador
+    </a>
+    <button id="btn-de-para" class="btn btn-outline-dark" title="Em breve">
+        <i class="bi bi-arrow-left-right me-1"></i>De&lt;&gt;Para
+    </button>
+    <button id="btn-unidades" class="btn btn-secondary">
+        <i class="bi bi-building me-1"></i>Unidades
+    </button>
+    <button id="btn-relatorios" class="btn btn-info">
+        <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatórios
+    </button>
+    <button id="btn-ocupadas" class="btn btn-outline-primary" title="Em breve">
+        <i class="bi bi-p-square me-1"></i>Ocupadas
+    </button>
 
-<div class="row mb-3">
-    <div class="col-md-12 text-end">
-        <div class="d-flex justify-content-end align-items-center gap-2">
-            <button class="btn btn-info text-white" onclick="abrirEscolherPlacaConsulta()">
-                <i class="bi bi-search me-1"></i>Consultar
-            </button>
-            <button id="btn-modulo-veiculo" class="btn btn-warning">
-                <i class="bi bi-truck me-2"></i>Veículo
-            </button>
-            <button id="btn-cadastrar-veiculo" class="btn btn-cadastrar-veiculo">
-                <i class="bi bi-plus-circle me-2"></i>Veículo + Permissão
-            </button>
-            <button id="btn-criar-permissao" class="btn btn-success">
-                <i class="bi bi-plus-circle me-2"></i>Permissão
-            </button>
-            <button id="btn-apontamento" class="btn btn-outline-primary">
-                <i class="bi bi-pencil-square me-1"></i>Apontamento
-            </button>
-            <button id="btn-nao-cadastrados" class="btn btn-warning">
-                <i class="bi bi-exclamation-triangle me-1"></i>
-                Veículos não cadastrados: <span id="total-nao-cadastrados-header">0</span>
-            </button>
-        </div>
-    </div>
+    <button class="btn btn-info text-white" onclick="abrirEscolherPlacaConsulta()">
+        <i class="bi bi-search me-1"></i>Consultar
+    </button>
+    <button id="btn-modulo-veiculo" class="btn btn-warning">
+        <i class="bi bi-truck me-2"></i>Veículo
+    </button>
+    <button id="btn-cadastrar-veiculo" class="btn btn-cadastrar-veiculo">
+        <i class="bi bi-plus-circle me-2"></i>Veículo + Permissão
+    </button>
+    <button id="btn-criar-permissao" class="btn btn-success">
+        <i class="bi bi-plus-circle me-2"></i>Permissão
+    </button>
+    <button id="btn-apontamento" class="btn btn-outline-primary">
+        <i class="bi bi-pencil-square me-1"></i>Apontamento
+    </button>
+    <button id="btn-nao-cadastrados" class="btn btn-warning">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        Veículos não cadastrados: <span id="total-nao-cadastrados-header">0</span>
+    </button>
 </div>
 
 <div class="card shadow-sm">
