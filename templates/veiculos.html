@@ -126,8 +126,8 @@
     <button id="btn-relatorios" class="btn btn-info">
         <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatórios
     </button>
-    <button id="btn-ocupadas" class="btn btn-outline-primary" title="Em breve">
-        <i class="bi bi-p-square me-1"></i>Ocupadas
+    <button id="btn-ocupadas" class="btn btn-outline-primary" title="Vagas ocupadas / vagas permitidas">
+        <i class="bi bi-p-square me-1"></i>Ocupadas: <span id="total-ocupadas-header">0/0</span>
     </button>
 
     <button class="btn btn-info text-white" onclick="abrirEscolherPlacaConsulta()">
@@ -1994,12 +1994,17 @@ function atualizarTotalNaoCadastrados() {
         success: function(response) {
             if (response.success) {
                 $('#total-nao-cadastrados-header').text(response.data.total_nao_cadastrados || 0);
+                const ocupadas = response.data.total_ocupadas || 0;
+                const permitidas = response.data.total_vagas_permitidas || 0;
+                $('#total-ocupadas-header').text(`${ocupadas}/${permitidas}`);
             } else {
                 $('#total-nao-cadastrados-header').text('0');
+                $('#total-ocupadas-header').text('0/0');
             }
         },
         error: function() {
             $('#total-nao-cadastrados-header').text('0');
+            $('#total-ocupadas-header').text('0/0');
         }
     });
 }
