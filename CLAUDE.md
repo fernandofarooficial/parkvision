@@ -192,9 +192,11 @@ Nomenclatura legacy compacta (não mudar):
 | 3 | De<>Para *(placeholder, sem funcionalidade ainda)* | Veículo + Permissão |
 | 4 | Unidades | Permissão |
 | 5 | Relatórios | Apontamento |
-| 6 | Ocupadas *(placeholder, sem funcionalidade ainda)* | Veículo não cadastrado |
+| 6 | Ocupadas — exibe `ocupadas/permitidas` (ex: `21/80`) | Veículo não cadastrado |
 
 Responsivo: 3 colunas em telas médias (`≤991px`), 2 colunas em telas pequenas (`≤575px`). Os IDs dos botões (`btn-mapa-vagas`, `btn-cadastrar-veiculo`, etc.) não mudaram — o JS de show/hide por perfil (ADM/MONITOR vs. leitura) e os handlers de clique continuam os mesmos.
+
+**Botão Ocupadas:** rótulo `Ocupadas: <span id="total-ocupadas-header">` no formato `ocupadas/permitidas` (`total_ocupadas`/`total_vagas_permitidas` — mesmos campos usados no card "Permitidas" do mapa mobile). Preenchido em `atualizarTotalNaoCadastrados()`, que reaproveita a chamada já existente a `/api/mapa-vagas/<id>` (mesma requisição que alimenta o contador de "não cadastrados") — não criar uma chamada AJAX separada para isso. `De<>Para` continua sem funcionalidade definida.
 
 ## Versão Mobile (PWA)
 

@@ -2,6 +2,7 @@
 # DBLIB
 # --------------------
 
+import copy
 import json
 import logging
 from flask import jsonify
@@ -129,7 +130,9 @@ def gravar_log_bruto(inforec, movdic=None):
     cursor = connection.cursor()
     #
     if movdic is not None:
-        movdic_log = {k: ("Foto" if k == "imagebase64" else v) for k, v in movdic.items()}
+        movdic_log = copy.deepcopy(movdic)
+        if isinstance(movdic_log.get('data'), dict) and 'image_base64' in movdic_log['data']:
+            movdic_log['data']['image_base64'] = 'Foto'
         jsonbruto = json.dumps(movdic_log, ensure_ascii=False, default=str)
     else:
         jsonbruto = None
