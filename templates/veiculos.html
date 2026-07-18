@@ -117,7 +117,7 @@
     <a href="#" id="btn-operador" class="btn btn-dark">
         <i class="bi bi-display me-1"></i>Operador
     </a>
-    <button id="btn-de-para" class="btn btn-outline-dark" title="Em breve">
+    <button id="btn-de-para" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#modalDePara" title="Últimas fotos de veículos recebidas">
         <i class="bi bi-arrow-left-right me-1"></i>De&lt;&gt;Para
     </button>
     <button id="btn-unidades" class="btn btn-secondary">
@@ -466,6 +466,32 @@
                 <button type="button" class="btn btn-success" id="btn-cadastrar-nao-cadastrado" style="display: none;">
                     <i class="bi bi-plus-circle me-1"></i>Cadastrar Veículo
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal De<>Para: últimas fotos de veículos recebidas do Heimdall -->
+<div class="modal fade" id="modalDePara" tabindex="-1" aria-labelledby="modalDeParaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="modalDeParaLabel">
+                    <i class="bi bi-arrow-left-right me-2"></i>De&lt;&gt;Para — Últimas Fotos
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="de-para-carregando" class="text-center text-muted py-4">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>Carregando fotos...
+                </div>
+                <div id="de-para-vazio" class="text-center text-muted py-4" style="display:none;">
+                    Nenhuma foto disponível para este condomínio.
+                </div>
+                <div id="de-para-fotos" class="row g-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>
@@ -2008,6 +2034,55 @@ function atualizarTotalNaoCadastrados() {
         }
     });
 }
+
+// Modal De<>Para: últimas fotos de veículos (logbruto.jsonbruto)
+function carregarFotosDePara() {
+    $('#de-para-carregando').show();
+    $('#de-para-vazio').hide();
+    $('#de-para-fotos').empty();
+    $.ajax({
+        url: `/api/logbruto/ultimas-fotos/${condominioId}`,
+        type: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            $('#de-para-carregando').hide();
+            if (response.success && response.data && response.data.length > 0) {
+                response.data.forEach(function(item) {
+                    const dataHora = item.nowpost ? new Date(item.nowpost).toLocaleString('pt-BR') : 'N/I';
+                    const foto = item.foto || '';
+                    const fotoSrc = foto.startsWith('data:') ? foto : `data:image/jpeg;base64,${foto}`;
+                    const $card = $(
+                        '<div class="col-md-3 col-sm-6">' +
+                            '<div class="card h-100">' +
+                                '<img class="card-img-top" style="height:160px;object-fit:cover;">' +
+                                '<div class="card-body p-2">' +
+                                    '<p class="mb-1 fw-bold placa-lida"></p>' +
+                                    '<p class="mb-1 small text-muted cam-nome"></p>' +
+                                    '<p class="mb-0 small text-muted data-hora"></p>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>'
+                    );
+                    $card.find('img').attr('src', fotoSrc);
+                    $card.find('.placa-lida').text(item.placalida || 'N/I');
+                    $card.find('.cam-nome').text(item.nomecam || 'N/I');
+                    $card.find('.data-hora').text(dataHora);
+                    $('#de-para-fotos').append($card);
+                });
+            } else {
+                $('#de-para-vazio').text('Nenhuma foto disponível para este condomínio.').show();
+            }
+        },
+        error: function() {
+            $('#de-para-carregando').hide();
+            $('#de-para-vazio').text('Erro ao carregar fotos.').show();
+        }
+    });
+}
+
+$('#modalDePara').on('show.bs.modal', function() {
+    carregarFotosDePara();
+});
 
 $(document).ready(function() {
     // ...existing code...

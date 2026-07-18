@@ -2,7 +2,6 @@
 # DBLIB
 # --------------------
 
-import copy
 import json
 import logging
 from flask import jsonify
@@ -12,6 +11,11 @@ from visionlib.vplib import process_heimdall_plate
 from visionlib.operlib import adicionar_evento, executar_acao_operador
 
 logger = logging.getLogger(__name__)
+
+# Quantidade máxima de registros de logbruto mantidos por condomínio.
+# Ao inserir um novo, os mais antigos além desse limite são apagados —
+# evita crescimento indefinido do jsonbruto (que carrega a foto em base64).
+LOGBRUTO_RETENCAO_POR_COND = 20
 
 
 def gravar_movimento(movdic):
@@ -125,17 +129,14 @@ def carregar_leitura(movdic):
 
 
 def gravar_log_bruto(inforec, movdic=None):
-    # gravar o log bruto
+    # gravar o log bruto (jsonbruto guarda o payload completo do Heimdall,
+    # incluindo a foto em data.image_base64 — o volume é controlado pela
+    # retenção de LOGBRUTO_RETENCAO_POR_COND registros por condomínio,
+    # não por mascaramento de conteúdo)
     connection = get_db_connection()
     cursor = connection.cursor()
     #
-    if movdic is not None:
-        movdic_log = copy.deepcopy(movdic)
-        if isinstance(movdic_log.get('data'), dict) and 'image_base64' in movdic_log['data']:
-            movdic_log['data']['image_base64'] = 'Foto'
-        jsonbruto = json.dumps(movdic_log, ensure_ascii=False, default=str)
-    else:
-        jsonbruto = None
+    jsonbruto = json.dumps(movdic, ensure_ascii=False, default=str) if movdic is not None else None
     consulta = '''
         INSERT INTO logbruto (idlog,placalida,nowpost,nomecam,idcam,jsonbruto)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -144,8 +145,38 @@ def gravar_log_bruto(inforec, movdic=None):
     cursor.execute(consulta, valores)
     connection.commit()
     #
+    limitar_logbruto_por_condominio(cursor, connection, inforec['camera_id'])
+    #
     cursor.close()
     connection.close()
+    return
+
+
+def limitar_logbruto_por_condominio(cursor, connection, idcam):
+    # Mantém apenas os últimos LOGBRUTO_RETENCAO_POR_COND registros de logbruto
+    # por condomínio (via cadcamera.idcond), apagando os mais antigos
+    cursor.execute("SELECT idcond FROM cadcamera WHERE idcam = %s LIMIT 1", (idcam,))
+    resultado = cursor.fetchone()
+    if resultado is None:
+        # Câmera desconhecida - não é possível associar a um condomínio, nada a limitar
+        return
+    idcond = resultado[0]
+    consulta = f'''
+        DELETE FROM logbruto
+        WHERE idcam IN (SELECT idcam FROM cadcamera WHERE idcond = %s)
+          AND id NOT IN (
+              SELECT id FROM (
+                  SELECT lb.id
+                  FROM logbruto lb
+                  INNER JOIN cadcamera cc ON cc.idcam = lb.idcam
+                  WHERE cc.idcond = %s
+                  ORDER BY lb.id DESC
+                  LIMIT {LOGBRUTO_RETENCAO_POR_COND}
+              ) AS manter
+          )
+        '''
+    cursor.execute(consulta, (idcond, idcond))
+    connection.commit()
     return
 
 
@@ -272,6 +303,36 @@ def obter_nome_condominio(inforec):
     connection.close()
     #
     return retorno_query['nmcond']
+
+
+def obter_ultimas_fotos(idcond, limite=10):
+    # Lista as últimas fotos de veículos disponíveis em logbruto.jsonbruto
+    # (campo data.image_base64) para o condomínio informado
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = '''
+            SELECT lb.id, lb.idlog, lb.placalida, lb.nowpost, lb.nomecam,
+                   JSON_UNQUOTE(JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64')) AS foto
+            FROM logbruto lb
+            INNER JOIN cadcamera cc ON cc.idcam = lb.idcam
+            WHERE cc.idcond = %s
+              AND JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64') IS NOT NULL
+            ORDER BY lb.id DESC
+            LIMIT %s
+        '''
+        cursor.execute(query, (idcond, limite))
+        fotos = cursor.fetchall()
+        return jsonify({'success': True, 'data': fotos})
+    except Exception as err:
+        logger.error(f"obter_ultimas_fotos: erro ao consultar logbruto - {err}")
+        return jsonify({'success': False, 'message': str(err)})
+    finally:
+        cursor.close()
+        conn.close()
 
 
 
