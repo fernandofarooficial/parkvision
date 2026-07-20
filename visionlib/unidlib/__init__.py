@@ -18,24 +18,32 @@ def listar_unidades_vagas(condominio_id):
             return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
         
         cursor = connection.cursor(dictionary=True)
-        
+
+        # Limite total configurado em cadcond (mesma fonte usada em dashlib.obter_mapa_vagas
+        # e no botão "Ocupadas" de veiculos.html) - quando definido, prevalece sobre a soma
+        # de vagasunidades.vperm, que não inclui as vagas fixas de unidades especiais
+        # ('Avulso', 'Prestador', 'Visitante')
+        cursor.execute("SELECT limite FROM cadcond WHERE idcond = %s LIMIT 1", (condominio_id,))
+        resp_limite = cursor.fetchone()
+        _limite = (resp_limite.get('limite') or 0) if resp_limite else 0
+
         # Query para listar todas as unidades com suas configurações
         query = """
-        SELECT 
-            vu.unidade, 
-            vu.vperm, 
+        SELECT
+            vu.unidade,
+            vu.vperm,
             vu.seqcond,
-            COALESCE(ve.estacionados, 0) as veiculos_estacionados, 
+            COALESCE(ve.estacionados, 0) as veiculos_estacionados,
             placas as placas_estacionadas
         FROM vagasunidades vu
         LEFT JOIN vw_estacionados ve ON ve.idcond = vu.idcond AND ve.seqcond = vu.seqcond
         WHERE vu.idcond = %s
         ORDER BY vu.seqcond;
         """
-        
+
         cursor.execute(query, (condominio_id,))
         resultados = cursor.fetchall()
-        
+
         # Formatar dados para o frontend
         unidades = []
         for row in resultados:
@@ -44,15 +52,18 @@ def listar_unidades_vagas(condominio_id):
                 'vagas_permitidas': row['vperm'],
                 'vagas_ocupadas': row['veiculos_estacionados'],
                 'placas_estacionadas': row['placas_estacionadas'] or '',
-                'status': 'Disponível' if row['veiculos_estacionados'] < row['vperm'] 
+                'status': 'Disponível' if row['veiculos_estacionados'] < row['vperm']
                          else 'Completo' if row['veiculos_estacionados'] == row['vperm']
                          else 'Excesso'
             })
-        
+
+        total_vagas_permitidas = _limite if _limite > 0 else sum(u['vagas_permitidas'] for u in unidades)
+
         return jsonify({
             'success': True,
             'data': unidades,
             'total': len(unidades),
+            'total_vagas_permitidas': total_vagas_permitidas,
             'message': 'Unidades carregadas com sucesso'
         })
         

@@ -250,6 +250,7 @@
     let condominioNome = '';
     let unidadesData = [];
     let unidadeEditando = null;
+    let totalVagasPermitidasCond = 0;
 
     $(document).ready(function() {
         // Obter ID do condomínio da URL
@@ -351,7 +352,8 @@
             success: function(response) {
                 if (response.success) {
                     unidadesData = response.data;
-                    
+                    totalVagasPermitidasCond = response.total_vagas_permitidas || 0;
+
                     if (unidadesData.length > 0) {
                         renderizarTabela();
                         atualizarResumo();
@@ -432,7 +434,7 @@
 
     function atualizarResumo() {
         const totalUnidades = unidadesData.length;
-        const totalVagas = unidadesData.reduce((sum, u) => sum + u.vagas_permitidas, 0);
+        const totalVagas = totalVagasPermitidasCond;
         const vagasOcupadas = unidadesData.reduce((sum, u) => sum + u.vagas_ocupadas, 0);
         const vagasDisponiveis = totalVagas - vagasOcupadas;
         
