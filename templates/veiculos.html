@@ -2063,6 +2063,7 @@ function carregarFotosDePara() {
                                 '<img class="card-img-top" style="height:160px;object-fit:cover;">' +
                                 '<div class="card-body p-2">' +
                                     '<p class="mb-1 fw-bold placa-lida"></p>' +
+                                    '<span class="badge bg-info badge-deparaplacas" style="display:none;">Já mapeada em De&lt;&gt;Para</span>' +
                                     '<p class="mb-1 small text-muted cam-nome"></p>' +
                                     '<p class="mb-1 small text-muted data-hora"></p>' +
                                     '<hr class="my-1">' +
@@ -2074,6 +2075,9 @@ function carregarFotosDePara() {
                     );
                     $card.find('img').attr('src', fotoSrc);
                     $card.find('.placa-lida').text(item.placalida || 'N/I');
+                    if (item.existe_em_deparaplacas) {
+                        $card.find('.badge-deparaplacas').show();
+                    }
                     $card.find('.cam-nome').text(item.nomecam || 'N/I');
                     $card.find('.data-hora').text(dataHora);
                     $card.find('.mov-anterior').text(formatarMovimentoVizinho(item.movimento_anterior));

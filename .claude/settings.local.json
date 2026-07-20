@@ -45,7 +45,11 @@
       "Bash(curl -s -b /tmp/pv_cookies.txt http://127.0.0.1:5000/veiculos/1)",
       "Bash(curl -s -b /tmp/pv_cookies2.txt http://127.0.0.1:5000/api/unidades-vagas/1)",
       "Bash(curl -s -b /tmp/pv_cookies2.txt http://127.0.0.1:5000/unidades/1)",
-      "Bash(taskkill *)"
+      "Bash(taskkill *)",
+      "Bash(./.venv/Scripts/python.exe -c ' *)",
+      "Bash(sed -i '2a import sys; sys.path.insert\\(0, r\"C:\\\\\\\\Users\\\\\\\\Fernando\\\\\\\\PycharmProjects\\\\\\\\PromptVisionPoject\"\\)' /tmp/test_depara.py)",
+      "Bash(\"./.venv/Scripts/python.exe\" /tmp/test_depara.py)",
+      "Bash(\"./.venv/Scripts/python.exe\" \"C:\\\\Users\\\\Fernando\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Fernando-PycharmProjects-PromptVisionPoject\\\\07078b0d-388b-493b-a000-520907f08784\\\\scratchpad\\\\test_depara.py\")"
     ],
     "defaultMode": "acceptEdits"
   }

@@ -204,6 +204,8 @@ Filtro adicional (via JOIN com `movcar`): só entram fotos de eventos com `movca
 
 Cada foto também traz `movimento_anterior`/`movimento_posterior`: placa/marca/modelo/cor do movimento confirmado (`contav = 1`) imediatamente anterior e imediatamente posterior no mesmo condomínio (por `idmov`, via subqueries `MAX`/`MIN` em `movcar`), consultados em `vw_movimentos` (que já encapsula os JOINs `cadveiculo → cadmodelo → cadmarca → cadcores`). Serve para o operador comparar visualmente qual veículo confirmado entrou/saiu logo antes e logo depois da captura pendente, ajudando a identificar a placa correta.
 
+Cada foto também traz `existe_em_deparaplacas` (bool): indica se a placa lida (`placalida`) já está mapeada em `deparaplacas.placade` (`placade CHAR(7)` PK, `placapara` = placa correta correspondente). Reaproveita `vplib.consultar_tabela_deparaplacas()` — a mesma função usada no fluxo de correção automática de placa (`dblib.gravar_movimento` → `vplib.process_heimdall_plate`) — em vez de duplicar o acesso à tabela. No front, exibe o badge "Já mapeada em De<>Para" junto à placa lida quando `true`.
+
 ## Versão Mobile (PWA)
 
 Rotas sob o prefixo `/app/` servem a interface mobile — uma PWA instalável via `static/manifest.json` + `static/sw.js`.

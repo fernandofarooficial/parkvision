@@ -7,7 +7,7 @@ import logging
 from flask import jsonify
 from datetime import datetime
 from config.database import get_db_connection
-from visionlib.vplib import process_heimdall_plate
+from visionlib.vplib import process_heimdall_plate, consultar_tabela_deparaplacas
 from visionlib.operlib import adicionar_evento, executar_acao_operador
 
 logger = logging.getLogger(__name__)
@@ -358,6 +358,9 @@ def obter_ultimas_fotos(idcond, limite=10):
             f.pop('idmov', None)
             f['movimento_anterior'] = vizinhos_por_idmov.get(id_anterior)
             f['movimento_posterior'] = vizinhos_por_idmov.get(id_posterior)
+            # Indica se a placa lida na foto já está mapeada em deparaplacas.placade
+            # (mesma consulta usada por vplib no fluxo de correção automática de placa)
+            f['existe_em_deparaplacas'] = consultar_tabela_deparaplacas(f.get('placalida'))['found']
 
         return jsonify({'success': True, 'data': fotos})
     except Exception as err:
