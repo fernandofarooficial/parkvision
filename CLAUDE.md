@@ -160,7 +160,7 @@ Nomenclatura legacy compacta (não mudar):
 
 | Tabela | Descrição |
 |--------|-----------|
-| `cadcond` | Condomínios (`idcond`, `nmcond`) |
+| `cadcond` | Condomínios (`idcond`, `nmcond`, `limite` — total de vagas do condomínio, prevalece sobre a soma de `vagasunidades.vperm` quando > 0; qualquer tela que exiba "total de vagas" deve seguir esse fallback — `dashlib.obter_mapa_vagas` e `unidlib.listar_unidades_vagas` já fazem isso) |
 | `cadcamera` | Câmeras (`idcam`, `idcond`, `direcao` E/S/I) |
 | `cadveiculo` | Veículos (`placa` PK, sem unidade/condomínio) |
 | `cadperm` | Permissões (`idperm`, `placa`, `idcond`, `unidade`, `data_inicio`, `data_fim` NULL=indefinida) |
@@ -198,7 +198,9 @@ Responsivo: 3 colunas em telas médias (`≤991px`), 2 colunas em telas pequenas
 
 **Botão Ocupadas:** rótulo `Ocupadas: <span id="total-ocupadas-header">` no formato `ocupadas/permitidas` (`total_ocupadas`/`total_vagas_permitidas` — mesmos campos usados no card "Permitidas" do mapa mobile). Preenchido em `atualizarTotalNaoCadastrados()`, que reaproveita a chamada já existente a `/api/mapa-vagas/<id>` (mesma requisição que alimenta o contador de "não cadastrados") — não criar uma chamada AJAX separada para isso.
 
-**Botão De<>Para:** abre `#modalDePara` (`data-bs-toggle="modal"`), que ao exibir (`show.bs.modal`) chama `carregarFotosDePara()` → `GET /api/logbruto/ultimas-fotos/<condominio_id>` → `dblib.obter_ultimas_fotos(idcond, 10)`. Lista as últimas 10 fotos de veículos direto de `logbruto.jsonbruto.data.image_base64` (JOIN com `cadcamera` para filtrar por `idcond`), renderizadas como `<img>` com prefixo `data:image/jpeg;base64,`. Depende da retenção de 20 registros por condomínio em `logbruto` (ver seção Banco de Dados) para não crescer indefinidamente.
+**Botão De<>Para:** abre `#modalDePara` (`data-bs-toggle="modal"`), que ao exibir (`show.bs.modal`) chama `carregarFotosDePara()` → `GET /api/logbruto/ultimas-fotos/<condominio_id>` → `dblib.obter_ultimas_fotos(idcond, 10)`. Lista as últimas 10 fotos de veículos direto de `logbruto.jsonbruto.data.image_base64` (JOIN com `cadcamera` para filtrar por `idcond`, e JOIN com `movcar` pelo `idlog` compartilhado — mesmo valor gravado em ambas as tabelas no momento do evento), renderizadas como `<img>` com prefixo `data:image/jpeg;base64,`. Depende da retenção de 20 registros por condomínio em `logbruto` (ver seção Banco de Dados) para não crescer indefinidamente.
+
+Filtro adicional (via JOIN com `movcar`): só entram fotos de eventos com `movcar.contav = 0` (ainda pendentes, aguardando confirmação do operador — ver semântica de `contav` na seção Banco de Dados) e `movcar.placa != '*ERROR*'` (sentinel usado em `dblib`/`vplib`/`operlib` para placa não reconhecida pelo OCR). Ou seja, a tela De<>Para mostra apenas capturas com placa lida corretamente que ainda não foram processadas/confirmadas — não é mais só "as últimas 10 fotos do condomínio" em bruto.
 
 ## Versão Mobile (PWA)
 

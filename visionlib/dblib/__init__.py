@@ -307,7 +307,10 @@ def obter_nome_condominio(inforec):
 
 def obter_ultimas_fotos(idcond, limite=10):
     # Lista as últimas fotos de veículos disponíveis em logbruto.jsonbruto
-    # (campo data.image_base64) para o condomínio informado
+    # (campo data.image_base64) para o condomínio informado.
+    # Restrita aos eventos ainda pendentes de confirmação (movcar.contav = 0)
+    # e com placa reconhecida (diferente do sentinel '*ERROR*'), via join
+    # pelo idlog compartilhado entre logbruto e movcar (ver gravar_log/registrar_log_bruto).
     conn = get_db_connection()
     if not conn:
         return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
@@ -319,8 +322,11 @@ def obter_ultimas_fotos(idcond, limite=10):
                    JSON_UNQUOTE(JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64')) AS foto
             FROM logbruto lb
             INNER JOIN cadcamera cc ON cc.idcam = lb.idcam
+            INNER JOIN movcar mc ON mc.idlog = lb.idlog
             WHERE cc.idcond = %s
               AND JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64') IS NOT NULL
+              AND mc.contav = 0
+              AND mc.placa != '*ERROR*'
             ORDER BY lb.id DESC
             LIMIT %s
         '''
