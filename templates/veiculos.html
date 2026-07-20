@@ -2036,6 +2036,12 @@ function atualizarTotalNaoCadastrados() {
 }
 
 // Modal De<>Para: últimas fotos de veículos (logbruto.jsonbruto)
+function formatarMovimentoVizinho(mov) {
+    if (!mov) return 'N/I';
+    const partes = [mov.placa, mov.marca, mov.modelo, mov.cor].filter(Boolean);
+    return partes.length > 0 ? partes.join(' - ') : 'N/I';
+}
+
 function carregarFotosDePara() {
     $('#de-para-carregando').show();
     $('#de-para-vazio').hide();
@@ -2058,7 +2064,10 @@ function carregarFotosDePara() {
                                 '<div class="card-body p-2">' +
                                     '<p class="mb-1 fw-bold placa-lida"></p>' +
                                     '<p class="mb-1 small text-muted cam-nome"></p>' +
-                                    '<p class="mb-0 small text-muted data-hora"></p>' +
+                                    '<p class="mb-1 small text-muted data-hora"></p>' +
+                                    '<hr class="my-1">' +
+                                    '<p class="mb-0 small"><strong>Anterior:</strong> <span class="mov-anterior"></span></p>' +
+                                    '<p class="mb-0 small"><strong>Posterior:</strong> <span class="mov-posterior"></span></p>' +
                                 '</div>' +
                             '</div>' +
                         '</div>'
@@ -2067,6 +2076,8 @@ function carregarFotosDePara() {
                     $card.find('.placa-lida').text(item.placalida || 'N/I');
                     $card.find('.cam-nome').text(item.nomecam || 'N/I');
                     $card.find('.data-hora').text(dataHora);
+                    $card.find('.mov-anterior').text(formatarMovimentoVizinho(item.movimento_anterior));
+                    $card.find('.mov-posterior').text(formatarMovimentoVizinho(item.movimento_posterior));
                     $('#de-para-fotos').append($card);
                 });
             } else {

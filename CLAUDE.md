@@ -202,6 +202,8 @@ Responsivo: 3 colunas em telas médias (`≤991px`), 2 colunas em telas pequenas
 
 Filtro adicional (via JOIN com `movcar`): só entram fotos de eventos com `movcar.contav = 0` (ainda pendentes, aguardando confirmação do operador — ver semântica de `contav` na seção Banco de Dados) e `movcar.placa != '*ERROR*'` (sentinel usado em `dblib`/`vplib`/`operlib` para placa não reconhecida pelo OCR). Ou seja, a tela De<>Para mostra apenas capturas com placa lida corretamente que ainda não foram processadas/confirmadas — não é mais só "as últimas 10 fotos do condomínio" em bruto.
 
+Cada foto também traz `movimento_anterior`/`movimento_posterior`: placa/marca/modelo/cor do movimento confirmado (`contav = 1`) imediatamente anterior e imediatamente posterior no mesmo condomínio (por `idmov`, via subqueries `MAX`/`MIN` em `movcar`), consultados em `vw_movimentos` (que já encapsula os JOINs `cadveiculo → cadmodelo → cadmarca → cadcores`). Serve para o operador comparar visualmente qual veículo confirmado entrou/saiu logo antes e logo depois da captura pendente, ajudando a identificar a placa correta.
+
 ## Versão Mobile (PWA)
 
 Rotas sob o prefixo `/app/` servem a interface mobile — uma PWA instalável via `static/manifest.json` + `static/sw.js`.

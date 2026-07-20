@@ -318,8 +318,12 @@ def obter_ultimas_fotos(idcond, limite=10):
     cursor = conn.cursor(dictionary=True)
     try:
         query = '''
-            SELECT lb.id, lb.idlog, lb.placalida, lb.nowpost, lb.nomecam,
-                   JSON_UNQUOTE(JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64')) AS foto
+            SELECT lb.id, lb.idlog, lb.placalida, lb.nowpost, lb.nomecam, mc.idmov,
+                   JSON_UNQUOTE(JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64')) AS foto,
+                   (SELECT MAX(m2.idmov) FROM movcar m2
+                     WHERE m2.idcond = mc.idcond AND m2.contav = 1 AND m2.idmov < mc.idmov) AS idmov_anterior,
+                   (SELECT MIN(m3.idmov) FROM movcar m3
+                     WHERE m3.idcond = mc.idcond AND m3.contav = 1 AND m3.idmov > mc.idmov) AS idmov_posterior
             FROM logbruto lb
             INNER JOIN cadcamera cc ON cc.idcam = lb.idcam
             INNER JOIN movcar mc ON mc.idlog = lb.idlog
@@ -332,6 +336,29 @@ def obter_ultimas_fotos(idcond, limite=10):
         '''
         cursor.execute(query, (idcond, limite))
         fotos = cursor.fetchall()
+
+        # Para cada foto pendente, buscar placa/marca/modelo/cor do movimento confirmado
+        # (contav=1) imediatamente anterior e posterior no mesmo condomínio, reaproveitando
+        # vw_movimentos (já encapsula os JOINs cadveiculo->cadmodelo->cadmarca->cadcores)
+        idmovs_vizinhos = {f['idmov_anterior'] for f in fotos if f['idmov_anterior']} | \
+                          {f['idmov_posterior'] for f in fotos if f['idmov_posterior']}
+        vizinhos_por_idmov = {}
+        if idmovs_vizinhos:
+            placeholders = ','.join(['%s'] * len(idmovs_vizinhos))
+            cursor.execute(
+                f'''SELECT idmov, placa, marca, modelo, cor, ultima AS nowpost
+                    FROM vw_movimentos WHERE idmov IN ({placeholders})''',
+                tuple(idmovs_vizinhos)
+            )
+            vizinhos_por_idmov = {row['idmov']: row for row in cursor.fetchall()}
+
+        for f in fotos:
+            id_anterior = f.pop('idmov_anterior', None)
+            id_posterior = f.pop('idmov_posterior', None)
+            f.pop('idmov', None)
+            f['movimento_anterior'] = vizinhos_por_idmov.get(id_anterior)
+            f['movimento_posterior'] = vizinhos_por_idmov.get(id_posterior)
+
         return jsonify({'success': True, 'data': fotos})
     except Exception as err:
         logger.error(f"obter_ultimas_fotos: erro ao consultar logbruto - {err}")
