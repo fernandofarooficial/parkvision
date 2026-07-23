@@ -488,7 +488,7 @@ def _notificar_acao_telegram(cursor, rec, statusmov, motivo):
     })
 
 
-def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL'):
+def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL', statusmov_override=None):
     """
     Executa a ação do operador sobre um registro de movimento (movcar).
 
@@ -498,6 +498,9 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL'):
         idgente (int):  ID do usuário que realizou a ação (movcar.idgente)
         motivo (str):   Texto opcional para registrar em movcar.motivo
         origem (str):   'AUTO' (sistema) ou 'MANUAL' (operador)
+        statusmov_override (str): quando informado, usa esse valor em vez de calcular
+            via _calcular_statusmov — ex.: 'P' (entrada liberada automaticamente com
+            vaga cheia porque a própria placa já constava como estacionada)
 
     Retorna:
         dict: {'success': bool, 'message': str}
@@ -522,7 +525,10 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL'):
 
         novo_contav = contav_map[acao]
         direcao_cam = rec.get('direcao') or 'E'
-        statusmov, tem_cadastro = _calcular_statusmov(cursor, rec, acao, direcao_cam)
+        if statusmov_override:
+            statusmov, tem_cadastro = statusmov_override, True
+        else:
+            statusmov, tem_cadastro = _calcular_statusmov(cursor, rec, acao, direcao_cam)
 
         # Atualizar o movimento principal — AND idgente IS NULL garante que apenas
         # o primeiro request vence quando múltiplas abas enviam a ação simultaneamente.
@@ -579,14 +585,14 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL'):
             _event_store[rec['idcond']] = [e for e in ev_list if e.get('idmov') != idmov]
 
         # Notificação Telegram para situações excepcionais
-        if statusmov in ('B', 'C', 'E', 'J'):
+        if statusmov in ('B', 'C', 'E', 'J', 'P'):
             try:
                 _notificar_acao_telegram(cursor, rec, statusmov, motivo)
             except Exception as e_tg:
                 logger.warning(f"operlib._notificar_acao_telegram: {e_tg}")
 
-        # Enviar pulso: entrada (A, C, E, G) e saída (I, J)
-        if statusmov in ('A', 'C', 'E', 'G', 'I', 'J'):
+        # Enviar pulso: entrada (A, C, E, G, P) e saída (I, J)
+        if statusmov in ('A', 'C', 'E', 'G', 'I', 'J', 'P'):
             _enviar_pulso_dispositivo(rec.get('idcam'), rec.get('idcond'))
 
         return {'success': True, 'message': 'Ação registrada com sucesso'}

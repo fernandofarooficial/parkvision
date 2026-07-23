@@ -164,7 +164,7 @@ Nomenclatura legacy compacta (não mudar):
 | `cadcamera` | Câmeras (`idcam`, `idcond`, `direcao` E/S/I) |
 | `cadveiculo` | Veículos (`placa` PK, sem unidade/condomínio) |
 | `cadperm` | Permissões (`idperm`, `placa`, `idcond`, `unidade`, `data_inicio`, `data_fim` NULL=indefinida) |
-| `movcar` | Movimentos (`idmov`, `idcond`, `placa`, `contav`, `idgente`, `direcao`, `nowpost`, `origem`) |
+| `movcar` | Movimentos (`idmov`, `idcond`, `placa`, `contav`, `idgente`, `direcao`, `nowpost`, `origem`, `statusmov`, `motivo`) |
 | `vagasunidades` | Vagas por unidade (`idcond`, `unidade`, `vperm`, `seqcond`) |
 | `logbruto` | JSON bruto do Heimdall (`idlog`, `placalida`, `nowpost`, `nomecam`, `idcam`, `jsonbruto`) — inclui a foto do veículo em `jsonbruto.data.image_base64`; retenção automática de `LOGBRUTO_RETENCAO_POR_COND` (20) registros por condomínio (via `idcam`→`cadcamera.idcond`), apagando os mais antigos a cada novo insert (`visionlib/dblib/limitar_logbruto_por_condominio`) — não há mascaramento de conteúdo, o volume é controlado só pela quantidade de linhas |
 | `logsistema` | Logs do sistema (`idlog`, `nivel`, `mensagem`, `criado_em`) — gravação assíncrona via `loglib`, retenção de 3 dias (limpeza automática a cada hora) |
@@ -179,7 +179,19 @@ Nomenclatura legacy compacta (não mudar):
 
 **Unidades especiais:** 'Prestador', 'Avulso', 'Visitante' → recebem 10 vagas fixas (não consultam `vagasunidades`)
 
-**Campo `origem` em `movcar`:** identifica a fonte do movimento — `'LPR'` (câmera Heimdall), `'MANUAL'` (apontamento manual), `NULL` → tratado como `'MANUAL'` via `COALESCE`.
+**Campo `origem` em `movcar`:** identifica quem executou a decisão do movimento (gravado por `operlib.executar_acao_operador`) — `'AUTO'` (liberação automática pelo servidor) ou `'MANUAL'` (ação de um operador na tela `/operador` ou apontamento manual); `NULL` → tratado como `'MANUAL'` via `COALESCE`.
+
+**Campo `statusmov` em `movcar`:** código de uma letra que registra qual decisão foi tomada (gravado junto com `origem` em `operlib.executar_acao_operador`, via `operlib._calcular_statusmov`, ou por override explícito quando a decisão já é conhecida no chamador):
+- `Z` — ignorado (inclui duplicatas da mesma placa fechadas automaticamente)
+- `A`/`B` — entrada com permissão e vaga disponível: confirmada/recusada
+- `C`/`D` — entrada de veículo sem cadastro: confirmada/recusada
+- `E`/`F` — entrada sem permissão válida: confirmada/recusada
+- `G`/`H` — entrada com todas as vagas ocupadas: confirmada/recusada
+- `I`/`J` — saída: veículo cadastrado/não cadastrado
+- `M` — apontamento manual (`apontlib`)
+- `P` — entrada liberada automaticamente mesmo com todas as vagas ocupadas, porque a própria placa já constava como estacionada (última entrada confirmada sem saída correspondente — ver `dblib.gravar_movimento`); grava `motivo='Veículo já constava como estacionado, liberado'`
+
+Estatuses excepcionais (`B`, `C`, `E`, `J`, `P`) disparam notificação Telegram (`teleglib.teleg_acao_operador`). O pulso do relé é enviado para entrada confirmada (`A`, `C`, `E`, `G`, `P`) e saída (`I`, `J`).
 
 ## Tela de Monitoramento de Veículos (Desktop)
 
@@ -295,6 +307,9 @@ POST /api/receber-dados → apilib → dblib.gravar_movimento()
   └─ decisão de liberação automática (server-side, por direção da câmera):
        ├─ Saída (S) + placa cadastrada → auto_confirmar = True (não depende do status da permissão)
        ├─ Entrada (E) + permissão VIGENTE/INDEFINIDA + vaga disponível → auto_confirmar = True
+       ├─ Entrada (E) + permissão válida + vaga cheia, mas a própria placa já consta
+       │   como estacionada (vw_estacionados) → auto_confirmar = True, statusmov='P'
+       │   (ver "Semântica de statusmov em movcar")
        ├─ Câmera interna (I), ou entrada/saída fora dos critérios acima → fica pendente
        ├─ auto_confirmar=True  → operlib.executar_acao_operador(idmov,'confirmar',None,origem='AUTO')
        │                          (envia pulso ao relé, sem intervenção humana)

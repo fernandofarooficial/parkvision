@@ -77,6 +77,16 @@ def gravar_movimento(movdic):
                 # checar quantidade de vagas permitidas
                 if inforec['qtde_estacionada'] >= inforec['vagas_permitidas']:
                     logger.info(f"[{placa}]: Todas as vagas ocupadas")
+                    # Vaga cheia, mas se a própria placa já consta como estacionada
+                    # (última entrada confirmada sem saída correspondente), a contagem
+                    # de ocupação já a inclui — bloquear a entrada duplicaria a restrição
+                    # sobre o próprio veículo. Libera e sinaliza para o operador conferir.
+                    placas_estacionadas = [p.strip() for p in (inforec['placas_estacionadas'] or '').split(',')]
+                    if placa in placas_estacionadas:
+                        logger.info(f"[{placa}]: Veículo já constava como estacionado - liberando entrada")
+                        inforec['motivo'] = 'Veículo já constava como estacionado, liberado'
+                        inforec['statusmov_override'] = 'P'
+                        auto_confirmar = True
                 else:
                     logger.info(f"[{placa}]: Todos critérios atendidos")
                     auto_confirmar = True
@@ -96,7 +106,10 @@ def gravar_movimento(movdic):
     # Eventos válidos: liberar automaticamente quando elegível, senão aguardar o operador
     if valido:
         if auto_confirmar:
-            resultado = executar_acao_operador(inforec['idmov'], 'confirmar', None, None, origem='AUTO')
+            resultado = executar_acao_operador(
+                inforec['idmov'], 'confirmar', None, inforec.get('motivo'), origem='AUTO',
+                statusmov_override=inforec.get('statusmov_override')
+            )
             if resultado.get('success'):
                 logger.info(f"[{placa}]: Liberação automática confirmada (idmov={inforec['idmov']})")
             else:

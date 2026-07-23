@@ -93,6 +93,7 @@ def teleg_acao_operador(irec):
         C — entrada confirmada, veículo sem cadastro
         E — entrada confirmada, sem permissão válida
         J — saída de veículo não cadastrado
+        P — entrada liberada automaticamente com vaga cheia (placa já constava como estacionada)
     """
     try:
         token, chat_id = teleg_info(irec['idcond'])
@@ -115,12 +116,14 @@ def teleg_acao_operador(irec):
         'C': '⚠️ Entrada Autorizada — Veículo Não Cadastrado',
         'E': '⚠️ Entrada Autorizada — Sem Permissão',
         'J': '⚠️ Saída de Veículo Não Cadastrado',
+        'P': '⚠️ Entrada Liberada — Vaga Cheia (veículo já estacionado)',
     }
     situacoes = {
         'B': 'Veículo com permissão válida teve entrada recusada pelo operador',
         'C': 'Operador autorizou entrada de veículo não cadastrado no sistema',
         'E': 'Operador autorizou entrada de veículo sem permissão válida',
         'J': 'Veículo não cadastrado no sistema registrou saída',
+        'P': 'Entrada liberada automaticamente com vaga cheia porque a placa já constava como estacionada — conferir se não há inconsistência na ocupação',
     }
 
     titulo   = titulos.get(statusmov, f'Ação do Operador ({statusmov})')
