@@ -7,7 +7,7 @@ import logging
 from flask import jsonify
 from datetime import datetime
 from config.database import get_db_connection
-from visionlib.vplib import process_heimdall_plate, consultar_tabela_deparaplacas
+from visionlib.vplib import process_heimdall_plate
 from visionlib.operlib import adicionar_evento, executar_acao_operador
 
 logger = logging.getLogger(__name__)
@@ -318,12 +318,14 @@ def obter_nome_condominio(inforec):
     return retorno_query['nmcond']
 
 
-def obter_ultimas_fotos(idcond, limite=10):
+def obter_ultimas_fotos(idcond, limite=16):
     # Lista as últimas fotos de veículos disponíveis em logbruto.jsonbruto
     # (campo data.image_base64) para o condomínio informado.
-    # Restrita aos eventos ainda pendentes de confirmação (movcar.contav = 0)
-    # e com placa reconhecida (diferente do sentinel '*ERROR*'), via join
-    # pelo idlog compartilhado entre logbruto e movcar (ver gravar_log/registrar_log_bruto).
+    # Restrita aos eventos ainda pendentes de confirmação (movcar.contav = 0),
+    # com placa reconhecida (diferente do sentinel '*ERROR*') e cuja placa ainda
+    # não esteja mapeada em deparaplacas.placade (já teria correção conhecida,
+    # não precisa do operador olhar a foto), via join pelo idlog compartilhado
+    # entre logbruto e movcar (ver gravar_log/registrar_log_bruto).
     conn = get_db_connection()
     if not conn:
         return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
@@ -344,6 +346,7 @@ def obter_ultimas_fotos(idcond, limite=10):
               AND JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64') IS NOT NULL
               AND mc.contav = 0
               AND mc.placa != '*ERROR*'
+              AND NOT EXISTS (SELECT 1 FROM deparaplacas dp WHERE dp.placade = mc.placa)
             ORDER BY lb.id DESC
             LIMIT %s
         '''
@@ -371,9 +374,6 @@ def obter_ultimas_fotos(idcond, limite=10):
             f.pop('idmov', None)
             f['movimento_anterior'] = vizinhos_por_idmov.get(id_anterior)
             f['movimento_posterior'] = vizinhos_por_idmov.get(id_posterior)
-            # Indica se a placa lida na foto já está mapeada em deparaplacas.placade
-            # (mesma consulta usada por vplib no fluxo de correção automática de placa)
-            f['existe_em_deparaplacas'] = consultar_tabela_deparaplacas(f.get('placalida'))['found']
 
         return jsonify({'success': True, 'data': fotos})
     except Exception as err:

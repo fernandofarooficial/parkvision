@@ -201,7 +201,7 @@ Estatuses excepcionais (`B`, `C`, `E`, `J`, `P`) disparam notificação Telegram
 |--------|-----------------|-----------------|
 | 1 | Mapa de Vagas | Consultar |
 | 2 | Operador | Veículo |
-| 3 | De<>Para — modal com as últimas 10 fotos de veículos | Veículo + Permissão |
+| 3 | De<>Para — modal com as últimas 16 fotos de veículos | Veículo + Permissão |
 | 4 | Unidades | Permissão |
 | 5 | Relatórios | Apontamento |
 | 6 | Ocupadas — exibe `ocupadas/permitidas` (ex: `21/80`) | Veículo não cadastrado |
@@ -210,13 +210,11 @@ Responsivo: 3 colunas em telas médias (`≤991px`), 2 colunas em telas pequenas
 
 **Botão Ocupadas:** rótulo `Ocupadas: <span id="total-ocupadas-header">` no formato `ocupadas/permitidas` (`total_ocupadas`/`total_vagas_permitidas` — mesmos campos usados no card "Permitidas" do mapa mobile). Preenchido em `atualizarTotalNaoCadastrados()`, que reaproveita a chamada já existente a `/api/mapa-vagas/<id>` (mesma requisição que alimenta o contador de "não cadastrados") — não criar uma chamada AJAX separada para isso.
 
-**Botão De<>Para:** abre `#modalDePara` (`data-bs-toggle="modal"`), que ao exibir (`show.bs.modal`) chama `carregarFotosDePara()` → `GET /api/logbruto/ultimas-fotos/<condominio_id>` → `dblib.obter_ultimas_fotos(idcond, 10)`. Lista as últimas 10 fotos de veículos direto de `logbruto.jsonbruto.data.image_base64` (JOIN com `cadcamera` para filtrar por `idcond`, e JOIN com `movcar` pelo `idlog` compartilhado — mesmo valor gravado em ambas as tabelas no momento do evento), renderizadas como `<img>` com prefixo `data:image/jpeg;base64,`. Depende da retenção de 20 registros por condomínio em `logbruto` (ver seção Banco de Dados) para não crescer indefinidamente.
+**Botão De<>Para:** abre `#modalDePara` (`data-bs-toggle="modal"`), que ao exibir (`show.bs.modal`) chama `carregarFotosDePara()` → `GET /api/logbruto/ultimas-fotos/<condominio_id>` → `dblib.obter_ultimas_fotos(idcond, 16)`. Lista as últimas 16 fotos de veículos direto de `logbruto.jsonbruto.data.image_base64` (JOIN com `cadcamera` para filtrar por `idcond`, e JOIN com `movcar` pelo `idlog` compartilhado — mesmo valor gravado em ambas as tabelas no momento do evento), renderizadas como `<img>` com prefixo `data:image/jpeg;base64,`. Depende da retenção de 20 registros por condomínio em `logbruto` (ver seção Banco de Dados) para não crescer indefinidamente.
 
-Filtro adicional (via JOIN com `movcar`): só entram fotos de eventos com `movcar.contav = 0` (ainda pendentes, aguardando confirmação do operador — ver semântica de `contav` na seção Banco de Dados) e `movcar.placa != '*ERROR*'` (sentinel usado em `dblib`/`vplib`/`operlib` para placa não reconhecida pelo OCR). Ou seja, a tela De<>Para mostra apenas capturas com placa lida corretamente que ainda não foram processadas/confirmadas — não é mais só "as últimas 10 fotos do condomínio" em bruto.
+Filtro adicional (via JOIN/NOT EXISTS com `movcar` e `deparaplacas`): só entram fotos de eventos com `movcar.contav = 0` (ainda pendentes, aguardando confirmação do operador — ver semântica de `contav` na seção Banco de Dados), `movcar.placa != '*ERROR*'` (sentinel usado em `dblib`/`vplib`/`operlib` para placa não reconhecida pelo OCR) e cuja placa **não** esteja em `deparaplacas.placade` (`placade CHAR(7)` PK, `placapara` = placa correta correspondente) — se já existe correção conhecida para aquela placa, o operador não precisa mais olhar a foto. Ou seja, a tela De<>Para mostra apenas capturas com placa lida corretamente, ainda não processadas/confirmadas e sem correção já mapeada — não é mais só "as últimas fotos do condomínio" em bruto.
 
 Cada foto também traz `movimento_anterior`/`movimento_posterior`: placa/marca/modelo/cor do movimento confirmado (`contav = 1`) imediatamente anterior e imediatamente posterior no mesmo condomínio (por `idmov`, via subqueries `MAX`/`MIN` em `movcar`), consultados em `vw_movimentos` (que já encapsula os JOINs `cadveiculo → cadmodelo → cadmarca → cadcores`). Serve para o operador comparar visualmente qual veículo confirmado entrou/saiu logo antes e logo depois da captura pendente, ajudando a identificar a placa correta.
-
-Cada foto também traz `existe_em_deparaplacas` (bool): indica se a placa lida (`placalida`) já está mapeada em `deparaplacas.placade` (`placade CHAR(7)` PK, `placapara` = placa correta correspondente). Reaproveita `vplib.consultar_tabela_deparaplacas()` — a mesma função usada no fluxo de correção automática de placa (`dblib.gravar_movimento` → `vplib.process_heimdall_plate`) — em vez de duplicar o acesso à tabela. No front, exibe o badge "Já mapeada em De<>Para" junto à placa lida quando `true`.
 
 ## Versão Mobile (PWA)
 

@@ -670,7 +670,7 @@ def api_logbruto_ultimas_fotos(condominio_id):
     tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado'})
-    return obter_ultimas_fotos(condominio_id, 10)
+    return obter_ultimas_fotos(condominio_id, 16)
 
 
 # API para obter resumo
