@@ -4,6 +4,7 @@
 
 import json
 import logging
+import pytz
 from flask import jsonify
 from datetime import datetime
 from config.database import get_db_connection
@@ -11,6 +12,7 @@ from visionlib.vplib import process_heimdall_plate
 from visionlib.operlib import adicionar_evento, executar_acao_operador
 
 logger = logging.getLogger(__name__)
+BRASIL_TZ = pytz.timezone('America/Sao_Paulo')
 
 # Quantidade máxima de registros de logbruto mantidos por condomínio.
 # Ao inserir um novo, os mais antigos além desse limite são apagados —
@@ -376,6 +378,11 @@ def obter_ultimas_fotos(idcond, limite=16):
             f.pop('idmov', None)
             f['movimento_anterior'] = vizinhos_por_idmov.get(id_anterior)
             f['movimento_posterior'] = vizinhos_por_idmov.get(id_posterior)
+            # nowpost vem "naive" do MySQL (horário local America/Sao_Paulo sem tzinfo);
+            # sem localizar, o serializador JSON do Flask marca como GMT e o front
+            # (new Date(...).toLocaleString) exibe 3h a mais.
+            if f.get('nowpost') is not None:
+                f['nowpost'] = BRASIL_TZ.localize(f['nowpost'])
 
         return jsonify({'success': True, 'data': fotos})
     except Exception as err:
