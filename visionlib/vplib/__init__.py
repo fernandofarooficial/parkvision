@@ -6,6 +6,7 @@ Valida e corrige placas lidas pelo sistema Heimdall
 import re
 import logging
 from config.database import get_db_connection
+from flask import jsonify, request
 import mysql.connector
 
 logger = logging.getLogger(__name__)
@@ -907,6 +908,46 @@ def consultar_tabela_deparaplacas(placa_lida):
     except mysql.connector.Error as err:
         logger.error(f"Erro ao consultar tabela deparaplacas: {err}")
         return {'found': False, 'placa_destino': None, 'placa_origem': None}
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def criar_mapeamento_deparaplacas():
+    """
+    Cria (ou atualiza) um mapeamento em deparaplacas: placade -> placapara.
+
+    Usado pela tela De<>Para (templates/veiculos.html) para o operador gravar
+    manualmente a correção de uma placa mal lida, escolhendo como placapara o
+    veículo do movimento confirmado (anterior ou posterior) exibido no card.
+    """
+    data = request.json or {}
+    placade = (data.get('placade') or '').strip().upper()
+    placapara = (data.get('placapara') or '').strip().upper()
+
+    if not validar_formato_placa(placade) or not validar_formato_placa(placapara):
+        return jsonify({'success': False, 'message': 'Placa inválida'})
+
+    if placade == placapara:
+        return jsonify({'success': False, 'message': 'Placa lida e placa correta não podem ser iguais'})
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Erro ao conectar ao banco de dados'})
+
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO deparaplacas (placade, placapara)
+            VALUES (%s, %s)
+            ON DUPLICATE KEY UPDATE placapara = VALUES(placapara)
+        """, (placade, placapara))
+        conn.commit()
+        return jsonify({'success': True, 'message': f'Mapeamento {placade} → {placapara} salvo com sucesso'})
+    except mysql.connector.Error as err:
+        conn.rollback()
+        logger.error(f"criar_mapeamento_deparaplacas: erro ao salvar mapeamento - {err}")
+        return jsonify({'success': False, 'message': f'Erro ao salvar mapeamento: {err}'})
     finally:
         cursor.close()
         conn.close()

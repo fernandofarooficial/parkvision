@@ -13,6 +13,7 @@ load_dotenv()
 import datetime
 from visionlib.apilib import receber_dados
 from visionlib.dblib import obter_marcas, obter_modelos, inserir_carro, obter_cores, obter_ultimas_fotos
+from visionlib.vplib import criar_mapeamento_deparaplacas
 from visionlib.condlib import obter_dados_condminios, lista_condominios
 from visionlib.permlib import criar_permissao, modificar_permissao, buscar_permissao, obter_unidades_condominio
 from visionlib.carlib import cadastrar_veiculo_nao_cadastrado, criar_veiculo_cadveiculo, modificar_veiculo_cadveiculo
@@ -671,6 +672,16 @@ def api_logbruto_ultimas_fotos(condominio_id):
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado'})
     return obter_ultimas_fotos(condominio_id, 16)
+
+
+# API para criar mapeamento manual de placa (placade -> placapara) - tela De<>Para
+# Biblioteca vplib
+@app.route('/api/deparaplacas/criar', methods=['POST'])
+def api_criar_mapeamento_deparaplacas():
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'})
+    return criar_mapeamento_deparaplacas()
 
 
 # API para obter resumo
