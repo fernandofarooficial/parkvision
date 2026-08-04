@@ -41,20 +41,26 @@
         margin-bottom: .5rem;
     }
 
-    .info-row {
+    /* Campos de uma seção lado a lado, na mesma linha (Veículo / Permissão / Vagas) */
+    .info-linha {
         display: flex;
-        gap: .5rem;
-        margin-bottom: .3rem;
+        flex-wrap: wrap;
+        gap: .25rem 1.5rem;
     }
 
-    .info-label {
-        min-width: 110px;
+    .info-campo {
+        min-width: 0;
+    }
+
+    .info-campo .info-campo-label {
+        display: block;
+        font-size: .72rem;
         color: #6c757d;
-        flex-shrink: 0;
+        white-space: nowrap;
     }
 
-    .info-value {
-        font-weight: 500;
+    .info-campo .info-campo-valor {
+        font-weight: 600;
         color: #212529;
     }
     </style>
@@ -234,59 +240,65 @@
                         <!-- Dados do veículo -->
                         <div class="info-secao mb-3">
                             <div class="info-titulo"><i class="bi bi-car-front me-1"></i>Veículo</div>
-                            <div class="info-row">
-                                <span class="info-label">Placa</span>
-                                <span class="info-value font-monospace fw-bold" id="info-v-placa">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Marca</span>
-                                <span class="info-value" id="info-v-marca">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Modelo</span>
-                                <span class="info-value" id="info-v-modelo">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Cor</span>
-                                <span class="info-value" id="info-v-cor">—</span>
+                            <div class="info-linha">
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Placa</span>
+                                    <span class="info-campo-valor font-monospace" id="info-v-placa">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Marca</span>
+                                    <span class="info-campo-valor" id="info-v-marca">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Modelo</span>
+                                    <span class="info-campo-valor" id="info-v-modelo">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Cor</span>
+                                    <span class="info-campo-valor" id="info-v-cor">—</span>
+                                </div>
                             </div>
                         </div>
 
                         <!-- Permissão no condomínio atual -->
                         <div class="info-secao mb-3" id="info-bloco-perm">
                             <div class="info-titulo"><i class="bi bi-shield-check me-1"></i>Permissão</div>
-                            <div class="info-row">
-                                <span class="info-label">Unidade</span>
-                                <span class="info-value" id="info-p-unidade">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Status</span>
-                                <span class="info-value" id="info-p-status">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Início</span>
-                                <span class="info-value" id="info-p-inicio">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Fim</span>
-                                <span class="info-value" id="info-p-fim">—</span>
+                            <div class="info-linha">
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Unidade</span>
+                                    <span class="info-campo-valor" id="info-p-unidade">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Status</span>
+                                    <span class="info-campo-valor" id="info-p-status">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Início</span>
+                                    <span class="info-campo-valor" id="info-p-inicio">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Fim</span>
+                                    <span class="info-campo-valor" id="info-p-fim">—</span>
+                                </div>
                             </div>
                         </div>
 
                         <!-- Vagas da unidade -->
                         <div class="info-secao" id="info-bloco-vagas">
                             <div class="info-titulo"><i class="bi bi-p-square me-1"></i>Vagas da Unidade</div>
-                            <div class="info-row">
-                                <span class="info-label">Permitidas</span>
-                                <span class="info-value" id="info-vagas-total">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Ocupadas agora</span>
-                                <span class="info-value" id="info-vagas-ocupadas">—</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Disponíveis</span>
-                                <span class="info-value" id="info-vagas-disp">—</span>
+                            <div class="info-linha">
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Permitidas</span>
+                                    <span class="info-campo-valor" id="info-vagas-total">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Ocupadas agora</span>
+                                    <span class="info-campo-valor" id="info-vagas-ocupadas">—</span>
+                                </div>
+                                <div class="info-campo">
+                                    <span class="info-campo-label">Disponíveis</span>
+                                    <span class="info-campo-valor" id="info-vagas-disp">—</span>
+                                </div>
                             </div>
                         </div>
 
