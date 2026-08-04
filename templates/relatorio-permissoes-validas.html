@@ -51,6 +51,21 @@
     .table-container {
         min-height: 400px;
     }
+
+    .card-filtro {
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .card-filtro:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    }
+
+    .card-filtro.filtro-ativo {
+        outline: 3px solid #212529;
+        outline-offset: -3px;
+    }
 </style>
 {% endblock %}
 
@@ -116,7 +131,7 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card bg-warning text-white">
+        <div class="card bg-warning text-white card-filtro" id="card-vencendo" title="Clique para filtrar apenas as permissões vencendo em breve">
             <div class="card-body text-center">
                 <h4 id="total-vencendo">0</h4>
                 <p class="mb-0">Vencendo em Breve</p>
@@ -190,6 +205,7 @@
     let condominioId = null;
     let condominioNome = '';
     let dadosRelatorio = [];
+    let filtroVencendo = false;
 
     function carregarDadosCondominio() {
         $.ajax({
@@ -255,12 +271,25 @@
         });
     }
 
+    function linhasFiltradas() {
+        return filtroVencendo ? dadosRelatorio.filter(row => row[4] === 'VENCENDO') : dadosRelatorio;
+    }
+
     function renderizarTabela() {
+        const linhas = linhasFiltradas();
+
+        if (linhas.length === 0) {
+            $('#tabela-dados').html(
+                '<tr><td colspan="6" class="text-center text-muted py-4">Nenhuma permissão vencendo em breve.</td></tr>'
+            );
+            return;
+        }
+
         let html = '';
-        
-        dadosRelatorio.forEach(function(row) {
+
+        linhas.forEach(function(row) {
             const statusClass = getStatusClass(row[4]);
-            
+
             html += `<tr>
                 <td><strong>${row[0]}</strong></td>
                 <td>${row[1]}</td>
@@ -270,7 +299,7 @@
                 <td>${row[5]}</td>
             </tr>`;
         });
-        
+
         $('#tabela-dados').html(html);
     }
 
@@ -435,6 +464,13 @@
         // Atualizar relatório
         $('#btn-atualizar').click(function() {
             carregarRelatorio();
+        });
+
+        // Filtrar tabela ao clicar no quadro "Vencendo em Breve"
+        $('#card-vencendo').click(function() {
+            filtroVencendo = !filtroVencendo;
+            $(this).toggleClass('filtro-ativo', filtroVencendo);
+            renderizarTabela();
         });
 
         // Exportações
