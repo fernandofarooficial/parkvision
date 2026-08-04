@@ -81,6 +81,83 @@ def obter_relatorio_permissoes_validas(condominio_id):
             connection.close()
 
 
+def obter_relatorio_permissoes_validas_depara(condominio_id):
+    """
+    Relatório de veículos com permissões válidas (vigentes e indefinidas),
+    igual a obter_relatorio_permissoes_validas, acrescentando para cada veículo
+    todas as placas mal lidas pelo OCR já mapeadas em deparaplacas (placade)
+    que apontam para a placa correta do veículo (placapara).
+    """
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        query = """
+        SELECT
+            a.placa,
+            a.unidade,
+            CONCAT(a.nmmarca, ' ', a.nmmodelo) as marca_modelo,
+            a.cor,
+            a.status_permissao,
+            a.data_fim as data_vencimento,
+            GROUP_CONCAT(DISTINCT dp.placade ORDER BY dp.placade SEPARATOR ', ') as placas_de
+            FROM vw_autorizacoes a
+            LEFT JOIN deparaplacas dp ON dp.placapara = a.placa
+            WHERE a.idcond = %s AND a.status_permissao <> 'VENCIDA'
+            GROUP BY a.idperm
+            ORDER BY a.seqcond
+        """
+
+        cursor.execute(query, (condominio_id,))
+        resultados = cursor.fetchall()
+
+        # Formatar dados para o relatório
+        dados_relatorio = []
+        for row in resultados:
+            # Formatar data de vencimento para dd/mm/aaaa
+            data_vencimento = row['data_vencimento']
+            if data_vencimento:
+                if hasattr(data_vencimento, 'strftime'):
+                    data_vencimento_formatada = data_vencimento.strftime('%d/%m/%Y %H:%M')
+                else:
+                    data_vencimento_formatada = str(data_vencimento)
+            else:
+                data_vencimento_formatada = 'Indefinida'
+            # Verificar status Vencendo
+            status_permissao = row['status_permissao']
+            if status_permissao != 'INDEFINIDA':
+                if abs(data_vencimento - datetime.now()) <= timedelta(seconds=72*3600):
+                    status_permissao = "VENCENDO"
+
+            dados_relatorio.append([
+                row['placa'],
+                row['unidade'],
+                row['marca_modelo'],
+                row['cor'],
+                status_permissao,
+                data_vencimento_formatada,
+                row['placas_de'] or '—'
+            ])
+
+        return jsonify({
+            'success': True,
+            'data': dados_relatorio,
+            'total': len(dados_relatorio),
+            'message': 'Relatório gerado com sucesso'
+        })
+
+    except mysql.connector.Error as e:
+        return jsonify({
+            'success': False,
+            'data': [],
+            'message': f'Erro na consulta: {str(e)}'
+        })
+    finally:
+        if 'connection' in locals() and connection.is_connected():
+            cursor.close()
+            connection.close()
+
+
 def obter_relatorio_movimento_veiculos(condominio_id, data_inicio=None, data_fim=None, limite=20, pagina=1):
     """
     Relatório de movimento de veículos (entradas e saídas) com filtros e paginação

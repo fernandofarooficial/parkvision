@@ -310,6 +310,12 @@ Página web (somente `ADM`) para acompanhar os logs do sistema em tempo real, le
 - Formato de linha exibido: `DD/MM HH:MM:SS [NIVEL] mensagem` (parseado no front via regex `RE_LOG` em `logs.html`)
 - Todas as 3 rotas checam `verificar_permissao_tipo_usuario(['ADM'])` e retornam 403/redirect para não-admin
 
+## Relatórios (`rellib`)
+
+Tela `/relatorios/<condominio_id>` lista cards que levam a cada relatório (`templates/relatorios.html`, array `tiposRelatorios` no JS — cada entrada tem `id`/`titulo`/`descricao`/`icone`/`url`). Cada relatório é um par rota de página (`/relatorio-<nome>/<condominio_id>`, renderiza o template) + rota de API (`/relatorio/<nome>/<condominio_id>`, retorna JSON consumido via AJAX) — os dois SEMPRE verificam `verificar_acesso_condominio(condominio_id)`. Exportação para PDF (jsPDF) e Excel (SheetJS) é feita 100% no client, a partir do array `dadosRelatorio` já carregado — não existe endpoint de exportação no backend.
+
+**Permissão Válida + Placas De<>Para** (`/relatorio-permissoes-validas-depara/<condominio_id>` → `rellib.obter_relatorio_permissoes_validas_depara()`): mesma base do relatório "Veículos com Permissão Válida" (`vw_autorizacoes`, exclui `status_permissao = 'VENCIDA'`), acrescentando por veículo todas as `deparaplacas.placade` cujo `placapara` seja a placa da linha — feito com um único `LEFT JOIN deparaplacas ON dp.placapara = a.placa` + `GROUP_CONCAT(DISTINCT dp.placade ... SEPARATOR ', ')` agrupado por `a.idperm` (evita N+1 query por veículo). Sem placas mapeadas, a célula vem `'—'`. É um relatório independente do "Veículos com Permissão Válida" original (mantido como estava) — mesma estrutura de tabela, uma coluna a mais.
+
 ## Bug Conhecido — Veículo com 2 Permissões Ativas
 
 Se uma placa tem `cadperm` em duas unidades do mesmo condomínio, a `vw_movimentos` retorna o movimento duplicado (2 linhas por `idmov`). Causa raiz: `vw_veiculos_cond` retorna 2 linhas → JOIN multiplica. Ao implementar relatórios ou listagens, deduplique por `idmov` após fetchall.

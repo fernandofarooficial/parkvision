@@ -20,8 +20,9 @@ from visionlib.carlib import cadastrar_veiculo_nao_cadastrado, criar_veiculo_cad
 from visionlib.carlib import obter_veiculos_nao_cadastrados, buscar_veiculo_cadveiculo, gerenciar_apelido, excluir_veiculo_nao_cadastrado, corrigir_placa_veiculo
 from visionlib.listlib import obter_lista_veiculos, veiculo_detalhes, detalhes_unidade, consulta_veiculo
 from visionlib.dashlib import obter_mapa_vagas, obter_resumo
-from visionlib.rellib import (obter_relatorio_permissoes_validas, obter_relatorio_movimento_veiculos, 
-                              obter_relatorio_mapa_vagas, obter_relatorio_veiculos_condominio, 
+from visionlib.rellib import (obter_relatorio_permissoes_validas, obter_relatorio_permissoes_validas_depara,
+                              obter_relatorio_movimento_veiculos,
+                              obter_relatorio_mapa_vagas, obter_relatorio_veiculos_condominio,
                               obter_relatorio_nao_cadastrados, obter_relatorio_veiculos_estacionados)
 from globals import verificar_acesso_condominio
 
@@ -860,6 +861,15 @@ def relatorio_permissoes_validas_view(condominio_id):
         return redirect(url_for('login'))
     return render_template('relatorio-permissoes-validas.html')
 
+# Rota para visualizar relatório de permissões válidas com placas De<>Para
+@app.route('/relatorio-permissoes-validas-depara/<int:condominio_id>')
+def relatorio_permissoes_validas_depara_view(condominio_id):
+    # Verificar acesso usando novo sistema de autenticação
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return redirect(url_for('login'))
+    return render_template('relatorio-permissoes-validas-depara.html')
+
 # Rota para visualizar relatório de movimento de veículos
 @app.route('/relatorio-movimento-veiculos/<int:condominio_id>')
 def relatorio_movimento_veiculos_view(condominio_id):
@@ -911,6 +921,13 @@ def api_relatorio_permissoes_validas(condominio_id):
     if not tem_acesso:
         return jsonify({'success': False, 'message': 'Não autorizado'})
     return obter_relatorio_permissoes_validas(condominio_id)
+
+@app.route('/relatorio/permissoes-validas-depara/<int:condominio_id>')
+def api_relatorio_permissoes_validas_depara(condominio_id):
+    tem_acesso, usuario = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Não autorizado'})
+    return obter_relatorio_permissoes_validas_depara(condominio_id)
 
 @app.route('/relatorio/movimento-veiculos/<int:condominio_id>')
 def api_relatorio_movimento_veiculos(condominio_id):
