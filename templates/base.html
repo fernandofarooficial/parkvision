@@ -222,6 +222,11 @@
                             Carregando...
                         </div>
                     </div>
+                    <!-- Placas lidas incorretamente mapeadas para esta placa (De<>Para) -->
+                    <div id="cv-depara" class="mt-3" style="display:none;">
+                        <h6 class="mb-2"><i class="bi bi-arrow-left-right me-1"></i>Placas lidas mapeadas para esta (De&lt;&gt;Para)</h6>
+                        <div id="cv-depara-lista"></div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
@@ -241,6 +246,20 @@
         setTimeout(() => input.focus(), 350);
     }
 
+    function renderCvDepara(placasDe) {
+        var deparaEl    = document.getElementById('cv-depara');
+        var deparaLista = document.getElementById('cv-depara-lista');
+        if (placasDe && placasDe.length > 0) {
+            deparaLista.innerHTML = placasDe.map(function(p) {
+                return '<span class="badge bg-secondary me-1 mb-1 fs-6">' + p + '</span>';
+            }).join('');
+            deparaEl.style.display = '';
+        } else {
+            deparaLista.innerHTML = '';
+            deparaEl.style.display = 'none';
+        }
+    }
+
     function abrirConsultaVeiculo(placa) {
         const el = document.getElementById('modalConsultaVeiculo');
         if (!el) return;
@@ -252,6 +271,7 @@
         document.getElementById('cv-body').innerHTML =
             '<div class="text-center py-3">' +
             '<div class="spinner-border spinner-border-sm text-info me-2"></div>Carregando...</div>';
+        renderCvDepara([]);
 
         (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
 
@@ -266,6 +286,7 @@
                     document.getElementById('cv-body').innerHTML =
                         '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>' +
                         (data.message || 'Veículo não encontrado') + '</div>';
+                    renderCvDepara(data.data && data.data.placas_de);
                     return;
                 }
                 var v = data.data.veiculo;
@@ -273,6 +294,7 @@
                 document.getElementById('cv-marca').textContent  = v.marca;
                 document.getElementById('cv-modelo').textContent = v.modelo;
                 document.getElementById('cv-cor').textContent    = v.cor;
+                renderCvDepara(data.data.placas_de);
 
                 var perms = data.data.permissoes;
                 if (!perms || perms.length === 0) {
@@ -310,6 +332,7 @@
             .catch(function() {
                 document.getElementById('cv-body').innerHTML =
                     '<div class="alert alert-danger mb-0">Erro de conexão ao consultar veículo.</div>';
+                renderCvDepara([]);
             });
     }
 

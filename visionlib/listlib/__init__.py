@@ -302,8 +302,17 @@ def consulta_veiculo(placa):
         """, (placa,))
         veiculo = cursor.fetchone()
 
+        cursor.execute("""
+            SELECT placade FROM deparaplacas WHERE placapara = %s ORDER BY placade
+        """, (placa,))
+        placas_de = [row['placade'] for row in cursor.fetchall()]
+
         if not veiculo:
-            return jsonify({'success': False, 'message': 'Veículo não encontrado'})
+            return jsonify({
+                'success': False,
+                'message': 'Veículo não encontrado',
+                'data': {'placas_de': placas_de},
+            })
 
         cursor.execute("""
             SELECT cc.nmcond AS condominio,
@@ -343,6 +352,7 @@ def consulta_veiculo(placa):
             'data': {
                 'veiculo':    dict(veiculo),
                 'permissoes': permissoes,
+                'placas_de':  placas_de,
             }
         })
     except Exception as e:
