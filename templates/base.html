@@ -23,6 +23,41 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
     {% block extra_css %}{% endblock %}
+
+    <!-- Modal compartilhado: informações do veículo (Consultar / ícone de info do Operador) -->
+    <style>
+    .info-secao {
+        font-size: .85rem;
+    }
+
+    .info-secao .info-titulo {
+        font-size: .75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: #6c757d;
+        border-bottom: 1px solid #dee2e6;
+        padding-bottom: .25rem;
+        margin-bottom: .5rem;
+    }
+
+    .info-row {
+        display: flex;
+        gap: .5rem;
+        margin-bottom: .3rem;
+    }
+
+    .info-label {
+        min-width: 110px;
+        color: #6c757d;
+        flex-shrink: 0;
+    }
+
+    .info-value {
+        font-weight: 500;
+        color: #212529;
+    }
+    </style>
 </head>
 <body>
     <!-- Navbar -->
@@ -179,53 +214,116 @@
         </div>
     </div>
 
-    <!-- ── Modal: Quadro de Consulta de Veículo ──────────────────────────── -->
-    <div class="modal fade" id="modalConsultaVeiculo" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+    <!-- ── Modal: Informações do Veículo (Consultar / ícone de info do Operador) ──── -->
+    <div class="modal fade" id="modalInfoVeiculo" tabindex="-1" aria-labelledby="modalInfoVeiculoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-md">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title"><i class="bi bi-car-front me-2"></i>Consulta de Veículo</h5>
+                    <h5 class="modal-title" id="modalInfoVeiculoLabel">
+                        <i class="bi bi-info-circle me-2"></i>Informações do Veículo —
+                        <span id="info-placa-titulo" class="fw-bold font-monospace"></span>
+                    </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <!-- Dados cadastrais -->
-                    <div class="row g-2 mb-3">
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded text-center p-2">
-                                <div class="text-muted small">Placa</div>
-                                <div class="fw-bold fs-5" id="cv-placa">—</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded text-center p-2">
-                                <div class="text-muted small">Marca</div>
-                                <div class="fw-semibold" id="cv-marca">—</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded text-center p-2">
-                                <div class="text-muted small">Modelo</div>
-                                <div class="fw-semibold" id="cv-modelo">—</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded text-center p-2">
-                                <div class="text-muted small">Cor</div>
-                                <div class="fw-semibold" id="cv-cor">—</div>
-                            </div>
-                        </div>
+                    <div id="info-loading" class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm me-2"></div>Carregando...
                     </div>
-                    <!-- Permissões -->
-                    <div id="cv-body">
-                        <div class="text-center py-3">
-                            <div class="spinner-border spinner-border-sm text-info me-2"></div>
-                            Carregando...
+                    <div id="info-conteudo" class="d-none">
+
+                        <!-- Dados do veículo -->
+                        <div class="info-secao mb-3">
+                            <div class="info-titulo"><i class="bi bi-car-front me-1"></i>Veículo</div>
+                            <div class="info-row">
+                                <span class="info-label">Placa</span>
+                                <span class="info-value font-monospace fw-bold" id="info-v-placa">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Marca</span>
+                                <span class="info-value" id="info-v-marca">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Modelo</span>
+                                <span class="info-value" id="info-v-modelo">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Cor</span>
+                                <span class="info-value" id="info-v-cor">—</span>
+                            </div>
                         </div>
-                    </div>
-                    <!-- Placas lidas incorretamente mapeadas para esta placa (De<>Para) -->
-                    <div id="cv-depara" class="mt-3" style="display:none;">
-                        <h6 class="mb-2"><i class="bi bi-arrow-left-right me-1"></i>Placas lidas mapeadas para esta (De&lt;&gt;Para)</h6>
-                        <div id="cv-depara-lista"></div>
+
+                        <!-- Permissão no condomínio atual -->
+                        <div class="info-secao mb-3" id="info-bloco-perm">
+                            <div class="info-titulo"><i class="bi bi-shield-check me-1"></i>Permissão</div>
+                            <div class="info-row">
+                                <span class="info-label">Unidade</span>
+                                <span class="info-value" id="info-p-unidade">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Status</span>
+                                <span class="info-value" id="info-p-status">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Início</span>
+                                <span class="info-value" id="info-p-inicio">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Fim</span>
+                                <span class="info-value" id="info-p-fim">—</span>
+                            </div>
+                        </div>
+
+                        <!-- Vagas da unidade -->
+                        <div class="info-secao" id="info-bloco-vagas">
+                            <div class="info-titulo"><i class="bi bi-p-square me-1"></i>Vagas da Unidade</div>
+                            <div class="info-row">
+                                <span class="info-label">Permitidas</span>
+                                <span class="info-value" id="info-vagas-total">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Ocupadas agora</span>
+                                <span class="info-value" id="info-vagas-ocupadas">—</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Disponíveis</span>
+                                <span class="info-value" id="info-vagas-disp">—</span>
+                            </div>
+                        </div>
+
+                        <!-- Veículos estacionados na unidade -->
+                        <div class="info-secao mt-3" id="info-bloco-estacionados">
+                            <div class="info-titulo"><i class="bi bi-car-front me-1"></i>Estacionados na Unidade</div>
+                            <div id="info-lista-estacionados"></div>
+                        </div>
+
+                        <!-- Permissões em outros condomínios -->
+                        <div class="info-secao mt-3 d-none" id="info-bloco-outros">
+                            <div class="info-titulo"><i class="bi bi-buildings me-1"></i>Permissões em Outros Condomínios</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light"><tr>
+                                        <th>Condomínio</th><th>Unidade</th>
+                                        <th>Início</th><th>Fim</th><th>Status</th>
+                                    </tr></thead>
+                                    <tbody id="info-outros-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Placas lidas incorretamente mapeadas para esta placa (De<>Para) -->
+                        <div class="info-secao mt-3 d-none" id="info-bloco-depara">
+                            <div class="info-titulo"><i class="bi bi-arrow-left-right me-1"></i>Placas Lidas Mapeadas (De&lt;&gt;Para)</div>
+                            <div id="info-depara-lista"></div>
+                        </div>
+
+                        <div id="info-sem-cadastro" class="alert alert-warning small d-none">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Veículo não cadastrado no sistema.
+                        </div>
+                        <div id="info-sem-perm" class="alert alert-secondary small d-none">
+                            <i class="bi bi-shield-x me-1"></i>
+                            Nenhuma permissão encontrada para este veículo neste condomínio.
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -246,93 +344,172 @@
         setTimeout(() => input.focus(), 350);
     }
 
-    function renderCvDepara(placasDe) {
-        var deparaEl    = document.getElementById('cv-depara');
-        var deparaLista = document.getElementById('cv-depara-lista');
+    // Deriva o condomínio atual a partir da URL (/veiculos/<id>, /operador/<id>, etc.)
+    function _condIdAtual() {
+        var parts = window.location.pathname.split('/');
+        var id = parseInt(parts[2], 10);
+        return isNaN(id) ? null : id;
+    }
+
+    function _renderInfoDepara(placasDe) {
+        var bloco = document.getElementById('info-bloco-depara');
+        var lista = document.getElementById('info-depara-lista');
         if (placasDe && placasDe.length > 0) {
-            deparaLista.innerHTML = placasDe.map(function(p) {
+            lista.innerHTML = placasDe.map(function(p) {
                 return '<span class="badge bg-secondary me-1 mb-1 fs-6">' + p + '</span>';
             }).join('');
-            deparaEl.style.display = '';
+            bloco.classList.remove('d-none');
         } else {
-            deparaLista.innerHTML = '';
-            deparaEl.style.display = 'none';
+            lista.innerHTML = '';
+            bloco.classList.add('d-none');
         }
     }
 
+    function _renderInfoOutrosCondominios(perms) {
+        var bloco = document.getElementById('info-bloco-outros');
+        var tbody = document.getElementById('info-outros-tbody');
+        if (!perms || perms.length === 0) {
+            tbody.innerHTML = '';
+            bloco.classList.add('d-none');
+            return;
+        }
+        var badgeMap = {
+            'VIGENTE':   'bg-success',
+            'INDEFINIDA':'bg-primary',
+            'FUTURA':    'bg-warning text-dark',
+            'VENCIDA':   'bg-secondary',
+        };
+        tbody.innerHTML = perms.map(function(p) {
+            var cls = badgeMap[p.status] || 'bg-secondary';
+            return '<tr>' +
+                   '<td>' + p.condominio + '</td>' +
+                   '<td>' + p.unidade    + '</td>' +
+                   '<td>' + p.data_inicio + '</td>' +
+                   '<td>' + p.data_fim    + '</td>' +
+                   '<td><span class="badge ' + cls + '">' + p.status + '</span></td>' +
+                   '</tr>';
+        }).join('');
+        bloco.classList.remove('d-none');
+    }
+
     function abrirConsultaVeiculo(placa) {
-        const el = document.getElementById('modalConsultaVeiculo');
+        const el = document.getElementById('modalInfoVeiculo');
         if (!el) return;
         placa = (placa || '').toUpperCase().trim();
+        const condId = _condIdAtual();
 
-        ['cv-placa','cv-marca','cv-modelo','cv-cor'].forEach(function(id) {
-            document.getElementById(id).textContent = '...';
-        });
-        document.getElementById('cv-body').innerHTML =
-            '<div class="text-center py-3">' +
-            '<div class="spinner-border spinner-border-sm text-info me-2"></div>Carregando...</div>';
-        renderCvDepara([]);
+        document.getElementById('info-placa-titulo').textContent = placa;
+        document.getElementById('info-loading').classList.remove('d-none');
+        document.getElementById('info-conteudo').classList.add('d-none');
 
         (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
 
-        fetch('/api/consulta-veiculo/' + encodeURIComponent(placa))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (!data.success) {
-                    document.getElementById('cv-placa').textContent  = placa;
-                    document.getElementById('cv-marca').textContent  = '—';
-                    document.getElementById('cv-modelo').textContent = '—';
-                    document.getElementById('cv-cor').textContent    = '—';
-                    document.getElementById('cv-body').innerHTML =
-                        '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>' +
-                        (data.message || 'Veículo não encontrado') + '</div>';
-                    renderCvDepara(data.data && data.data.placas_de);
-                    return;
-                }
-                var v = data.data.veiculo;
-                document.getElementById('cv-placa').textContent  = v.placa;
-                document.getElementById('cv-marca').textContent  = v.marca;
-                document.getElementById('cv-modelo').textContent = v.modelo;
-                document.getElementById('cv-cor').textContent    = v.cor;
-                renderCvDepara(data.data.placas_de);
+        if (condId === null) {
+            document.getElementById('info-loading').classList.add('d-none');
+            document.getElementById('info-conteudo').classList.remove('d-none');
+            document.getElementById('info-sem-cadastro').classList.remove('d-none');
+            document.getElementById('info-sem-cadastro').innerHTML =
+                '<i class="bi bi-exclamation-triangle me-1"></i>Não foi possível identificar o condomínio atual.';
+            ['info-bloco-perm','info-bloco-vagas','info-bloco-estacionados','info-bloco-outros','info-bloco-depara']
+                .forEach(id => document.getElementById(id).classList.add('d-none'));
+            return;
+        }
 
-                var perms = data.data.permissoes;
-                if (!perms || perms.length === 0) {
-                    document.getElementById('cv-body').innerHTML =
-                        '<p class="text-muted text-center mb-0">Nenhuma permissão cadastrada para este veículo.</p>';
+        fetch(`/api/operador/info-veiculo/${condId}/${encodeURIComponent(placa)}`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('info-loading').classList.add('d-none');
+                document.getElementById('info-conteudo').classList.remove('d-none');
+
+                const semCad  = document.getElementById('info-sem-cadastro');
+                const semPerm = document.getElementById('info-sem-perm');
+                const blocoV  = document.getElementById('info-bloco-perm');
+                const blocoG  = document.getElementById('info-bloco-vagas');
+                const blocoE  = document.getElementById('info-bloco-estacionados');
+
+                semCad.innerHTML =
+                    '<i class="bi bi-exclamation-triangle me-1"></i>Veículo não cadastrado no sistema.';
+                semCad.classList.add('d-none');
+                semPerm.classList.add('d-none');
+                blocoV.classList.remove('d-none');
+                blocoG.classList.remove('d-none');
+                blocoE.classList.add('d-none');
+
+                _renderInfoOutrosCondominios(data.permissoes_outros_condominios);
+                _renderInfoDepara(data.placas_de);
+
+                if (!data.success || !data.veiculo) {
+                    semCad.classList.remove('d-none');
+                    blocoV.classList.add('d-none');
+                    blocoG.classList.add('d-none');
+                    ['info-v-placa','info-v-marca','info-v-modelo','info-v-cor'].forEach(id => {
+                        document.getElementById(id).textContent = '—';
+                    });
                     return;
                 }
-                var badgeMap = {
-                    'VIGENTE':   'bg-success',
-                    'INDEFINIDA':'bg-primary',
-                    'FUTURA':    'bg-warning text-dark',
-                    'VENCIDA':   'bg-secondary',
-                };
-                var html = '<h6 class="mb-2"><i class="bi bi-shield-check me-1"></i>Permissões (' +
-                           perms.length + ')</h6>' +
-                           '<div class="table-responsive">' +
-                           '<table class="table table-sm table-bordered mb-0">' +
-                           '<thead class="table-light"><tr>' +
-                           '<th>Condomínio</th><th>Unidade</th>' +
-                           '<th>Início</th><th>Fim</th><th>Status</th>' +
-                           '</tr></thead><tbody>';
-                perms.forEach(function(p) {
-                    var cls = badgeMap[p.status] || 'bg-secondary';
-                    html += '<tr>' +
-                            '<td>' + p.condominio + '</td>' +
-                            '<td>' + p.unidade    + '</td>' +
-                            '<td>' + p.data_inicio + '</td>' +
-                            '<td>' + p.data_fim    + '</td>' +
-                            '<td><span class="badge ' + cls + '">' + p.status + '</span></td>' +
-                            '</tr>';
-                });
-                html += '</tbody></table></div>';
-                document.getElementById('cv-body').innerHTML = html;
+
+                const v = data.veiculo;
+                document.getElementById('info-v-placa').textContent  = v.placa  || '—';
+                document.getElementById('info-v-marca').textContent  = v.marca  || '—';
+                document.getElementById('info-v-modelo').textContent = v.modelo || '—';
+                document.getElementById('info-v-cor').textContent    = v.cor    || '—';
+
+                const p = data.permissao;
+                if (!p) {
+                    semPerm.classList.remove('d-none');
+                    blocoV.classList.add('d-none');
+                    blocoG.classList.add('d-none');
+                } else {
+                    const statusBadge = {
+                        'VIGENTE':    '<span class="badge bg-success">Vigente</span>',
+                        'INDEFINIDA': '<span class="badge bg-primary">Indeterminada</span>',
+                        'VENCIDA':    '<span class="badge bg-danger">Vencida</span>',
+                        'SEM PERMISSÃO': '<span class="badge bg-secondary">Sem permissão</span>',
+                    };
+                    document.getElementById('info-p-unidade').textContent = p.unidade || '—';
+                    document.getElementById('info-p-status').innerHTML    = statusBadge[p.status_permissao] || p.status_permissao || '—';
+                    document.getElementById('info-p-inicio').textContent  =
+                        p.data_inicio ? `${p.data_inicio} ${p.hora_inicio || ''}`.trim() : '—';
+                    document.getElementById('info-p-fim').textContent     =
+                        p.data_fim    ? `${p.data_fim} ${p.hora_fim || ''}`.trim()    : 'Indeterminado';
+                }
+
+                const g = data.vagas;
+                if (!g) {
+                    blocoG.classList.add('d-none');
+                } else {
+                    const total   = parseInt(g.total_permitidas, 10) || 0;
+                    const ocupado = parseInt(g.ocupadas, 10)         || 0;
+                    const disp    = Math.max(0, total - ocupado);
+                    document.getElementById('info-vagas-total').textContent    = total;
+                    document.getElementById('info-vagas-ocupadas').textContent = ocupado;
+                    document.getElementById('info-vagas-disp').innerHTML       =
+                        disp > 0
+                            ? `<span class="text-success fw-bold">${disp}</span>`
+                            : `<span class="text-danger fw-bold">0</span>`;
+                }
+
+                const lista = data.estacionados || [];
+                if (lista.length > 0) {
+                    blocoE.classList.remove('d-none');
+                    document.getElementById('info-lista-estacionados').innerHTML =
+                        lista.map(c => `
+                            <div class="d-flex align-items-center gap-2 py-1 border-bottom" style="font-size:.82rem">
+                                <span class="font-monospace fw-bold">${c.placa}</span>
+                                <span class="text-muted">${c.marca} ${c.modelo}</span>
+                                <span class="badge rounded-pill" style="background:#6c757d;font-size:.7rem">${c.cor}</span>
+                                <span class="ms-auto text-muted" style="font-size:.75rem;white-space:nowrap">
+                                    <i class="bi bi-box-arrow-in-right me-1"></i>${c.entrada}
+                                </span>
+                            </div>`).join('');
+                }
             })
-            .catch(function() {
-                document.getElementById('cv-body').innerHTML =
-                    '<div class="alert alert-danger mb-0">Erro de conexão ao consultar veículo.</div>';
-                renderCvDepara([]);
+            .catch(() => {
+                document.getElementById('info-loading').classList.add('d-none');
+                document.getElementById('info-conteudo').classList.remove('d-none');
+                document.getElementById('info-sem-cadastro').classList.remove('d-none');
+                ['info-bloco-perm','info-bloco-vagas','info-bloco-estacionados','info-bloco-outros','info-bloco-depara'].forEach(id =>
+                    document.getElementById(id).classList.add('d-none'));
             });
     }
 

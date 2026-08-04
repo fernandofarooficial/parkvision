@@ -581,7 +581,7 @@ def api_veiculo_detalhes(condominio_id, placa):
 
 
 # API de consulta global de veículo (dados cadastrais + todas as permissões)
-# Biblioteca listlib
+# Usada pela tela de Consulta da versão mobile — ver comentário em listlib.consulta_veiculo
 @app.route('/api/consulta-veiculo/<placa>')
 def api_consulta_veiculo(placa):
     return consulta_veiculo(placa)

@@ -273,6 +273,9 @@ def detalhes_unidade(condominio_id, unidade):
 
 
 # API de consulta global de veículo (dados cadastrais + todas as permissões)
+# Usada pela tela de Consulta da versão mobile (templates/mobile/monitoramento.html) —
+# a versão desktop (Consultar / ícone de info do Operador) usa o modal unificado
+# #modalInfoVeiculo (templates/base.html) sobre /api/operador/info-veiculo/<condominio_id>/<placa>.
 # Referências no programa principal
 # @app.route('/api/consulta-veiculo/<placa>')
 # def api_consulta_veiculo(placa):

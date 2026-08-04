@@ -10,6 +10,7 @@ import time
 import threading
 import logging
 import requests
+from datetime import datetime
 from config.database import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -906,6 +907,44 @@ def obter_info_veiculo_operador(idcond, placa):
         """, (placa,))
         veiculo = cursor.fetchone()
 
+        # Placas mal lidas (De<>Para) já mapeadas manualmente para esta placa
+        cursor.execute("""
+            SELECT placade FROM deparaplacas WHERE placapara = %s ORDER BY placade
+        """, (placa,))
+        placas_de = [row['placade'] for row in cursor.fetchall()]
+
+        # Permissões em outros condomínios (seção extra, além da permissão do condomínio atual)
+        cursor.execute("""
+            SELECT cc.nmcond AS condominio,
+                   p.unidade,
+                   p.data_inicio,
+                   p.data_fim
+            FROM cadperm  p
+            JOIN cadcond cc ON cc.idcond = p.idcond
+            WHERE p.placa = %s AND p.idcond != %s
+            ORDER BY p.data_inicio DESC
+        """, (placa, idcond))
+        now = datetime.now()
+        permissoes_outros_condominios = []
+        for row in cursor.fetchall():
+            di = row['data_inicio']
+            df = row['data_fim']
+            if df is None:
+                status = 'INDEFINIDA'
+            elif di > now:
+                status = 'FUTURA'
+            elif df >= now:
+                status = 'VIGENTE'
+            else:
+                status = 'VENCIDA'
+            permissoes_outros_condominios.append({
+                'condominio':  row['condominio'],
+                'unidade':     row['unidade'] or '—',
+                'data_inicio': di.strftime('%d/%m/%Y %H:%M') if di else '—',
+                'data_fim':    df.strftime('%d/%m/%Y %H:%M') if df else 'Indefinido',
+                'status':      status,
+            })
+
         # Melhor permissão (rank mais alto)
         cursor.execute("""
             SELECT a.unidade,
@@ -986,11 +1025,13 @@ def obter_info_veiculo_operador(idcond, placa):
                 })
 
         return {
-            'success':      True,
-            'veiculo':      veiculo,
-            'permissao':    permissao,
-            'vagas':        vagas,
-            'estacionados': estacionados,
+            'success':                       True,
+            'veiculo':                       veiculo,
+            'permissao':                     permissao,
+            'vagas':                         vagas,
+            'estacionados':                  estacionados,
+            'placas_de':                     placas_de,
+            'permissoes_outros_condominios': permissoes_outros_condominios,
         }
 
     except Exception as e:
