@@ -325,7 +325,15 @@
                         <!-- Placas lidas incorretamente mapeadas para esta placa (De<>Para) -->
                         <div class="info-secao mt-3 d-none" id="info-bloco-depara">
                             <div class="info-titulo"><i class="bi bi-arrow-left-right me-1"></i>Placas Lidas Mapeadas (De&lt;&gt;Para)</div>
-                            <div id="info-depara-lista"></div>
+                            <div id="info-depara-lista" class="mb-2"></div>
+                            <div class="input-group input-group-sm" style="max-width: 280px;">
+                                <input type="text" class="form-control text-uppercase" id="info-depara-nova-placa"
+                                       maxlength="8" placeholder="Placa lida errada" autocomplete="off">
+                                <button class="btn btn-outline-primary" type="button" id="info-depara-btn-add">
+                                    <i class="bi bi-plus-lg me-1"></i>Mapear
+                                </button>
+                            </div>
+                            <div id="info-depara-feedback" class="small mt-1"></div>
                         </div>
 
                         <div id="info-sem-cadastro" class="alert alert-warning small d-none">
@@ -364,17 +372,71 @@
     }
 
     function _renderInfoDepara(placasDe) {
-        var bloco = document.getElementById('info-bloco-depara');
         var lista = document.getElementById('info-depara-lista');
         if (placasDe && placasDe.length > 0) {
             lista.innerHTML = placasDe.map(function(p) {
                 return '<span class="badge bg-secondary me-1 mb-1 fs-6">' + p + '</span>';
             }).join('');
-            bloco.classList.remove('d-none');
         } else {
-            lista.innerHTML = '';
-            bloco.classList.add('d-none');
+            lista.innerHTML = '<span class="text-muted small">Nenhuma placa mapeada para esta ainda.</span>';
         }
+    }
+
+    function _adicionarPlacaDePara() {
+        var input     = document.getElementById('info-depara-nova-placa');
+        var btn       = document.getElementById('info-depara-btn-add');
+        var feedback  = document.getElementById('info-depara-feedback');
+        var placade   = (input.value || '').toUpperCase().trim();
+        var placapara = (document.getElementById('info-placa-titulo').textContent || '').trim();
+
+        feedback.className = 'small mt-1';
+        feedback.textContent = '';
+
+        if (!placade) { input.focus(); return; }
+        if (!placapara) {
+            feedback.classList.add('text-danger');
+            feedback.textContent = 'Placa consultada não identificada.';
+            return;
+        }
+        if (placade === placapara) {
+            feedback.classList.add('text-danger');
+            feedback.textContent = 'A placa lida não pode ser igual à placa consultada.';
+            return;
+        }
+
+        btn.disabled = true;
+        input.disabled = true;
+
+        fetch('/api/deparaplacas/criar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ placade: placade, placapara: placapara }),
+        })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                input.disabled = false;
+                if (data.success) {
+                    input.value = '';
+                    feedback.classList.add('text-success');
+                    feedback.textContent = data.message || 'Mapeamento criado com sucesso.';
+                    var lista = document.getElementById('info-depara-lista');
+                    if (lista.querySelector('.text-muted')) lista.innerHTML = '';
+                    var badge = document.createElement('span');
+                    badge.className = 'badge bg-secondary me-1 mb-1 fs-6';
+                    badge.textContent = placade;
+                    lista.appendChild(badge);
+                } else {
+                    feedback.classList.add('text-danger');
+                    feedback.textContent = data.message || 'Erro ao criar mapeamento.';
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                input.disabled = false;
+                feedback.classList.add('text-danger');
+                feedback.textContent = 'Erro de conexão ao criar mapeamento.';
+            });
     }
 
     function _renderInfoOutrosCondominios(perms) {
@@ -413,6 +475,8 @@
         document.getElementById('info-placa-titulo').textContent = placa;
         document.getElementById('info-loading').classList.remove('d-none');
         document.getElementById('info-conteudo').classList.add('d-none');
+        document.getElementById('info-depara-nova-placa').value = '';
+        document.getElementById('info-depara-feedback').textContent = '';
 
         (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
 
@@ -446,6 +510,7 @@
                 blocoV.classList.remove('d-none');
                 blocoG.classList.remove('d-none');
                 blocoE.classList.add('d-none');
+                document.getElementById('info-bloco-depara').classList.remove('d-none');
 
                 _renderInfoOutrosCondominios(data.permissoes_outros_condominios);
                 _renderInfoDepara(data.placas_de);
@@ -543,6 +608,20 @@
                 if (e.key === 'Enter') btnConf && btnConf.click();
             });
             inputPlaca.addEventListener('input', function() {
+                this.value = this.value.toUpperCase();
+            });
+        }
+
+        var btnDeparaAdd   = document.getElementById('info-depara-btn-add');
+        var inputDeparaNova = document.getElementById('info-depara-nova-placa');
+        if (btnDeparaAdd) {
+            btnDeparaAdd.addEventListener('click', _adicionarPlacaDePara);
+        }
+        if (inputDeparaNova) {
+            inputDeparaNova.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); btnDeparaAdd && btnDeparaAdd.click(); }
+            });
+            inputDeparaNova.addEventListener('input', function() {
                 this.value = this.value.toUpperCase();
             });
         }
