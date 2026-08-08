@@ -328,9 +328,11 @@ def obter_ultimas_fotos(idcond, limite=16):
     # TRABALHO (mc.placa — a que o sistema efetivamente usou no movimento, já
     # passada por vplib.process_heimdall_plate) ainda não esteja mapeada em
     # deparaplacas.placade — já teria correção conhecida, não precisa do
-    # operador olhar a foto. lb.placalida (a leitura bruta da câmera, antes de
-    # qualquer correção) é devolvida só como informação para o operador
-    # comparar com a placa de trabalho, sem entrar em nenhum filtro/comparação.
+    # operador olhar a foto — nem já esteja cadastrada em cadveiculo — placa
+    # já cadastrada não precisa de correção De<>Para. lb.placalida (a leitura
+    # bruta da câmera, antes de qualquer correção) é devolvida só como
+    # informação para o operador comparar com a placa de trabalho, sem entrar
+    # em nenhum filtro/comparação.
     # Join pelo idlog compartilhado entre logbruto e movcar (ver gravar_log/registrar_log_bruto).
     conn = get_db_connection()
     if not conn:
@@ -353,6 +355,7 @@ def obter_ultimas_fotos(idcond, limite=16):
               AND mc.contav = 0
               AND mc.placa != '*ERROR*'
               AND NOT EXISTS (SELECT 1 FROM deparaplacas dp WHERE dp.placade = mc.placa)
+              AND NOT EXISTS (SELECT 1 FROM cadveiculo cv WHERE cv.placa = mc.placa)
             ORDER BY lb.id DESC
             LIMIT %s
         '''
