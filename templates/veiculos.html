@@ -1099,13 +1099,13 @@
             return;
         }
 
-        // Validação de datas
+        // Validação de datas (combinando data + hora, para permitir início/fim no mesmo dia)
         if (!tempoIndeterminado && dataFim) {
-            const inicio = new Date(dataInicio);
-            const fim = new Date(dataFim);
+            const inicio = new Date(`${dataInicio}T${horaInicio}`);
+            const fim = new Date(`${dataFim}T${horaFim}`);
 
             if (fim <= inicio) {
-                $('#cadastro-error').removeClass('d-none').text('A data de fim deve ser posterior à data de início.');
+                $('#cadastro-error').removeClass('d-none').text('A data/hora de fim deve ser posterior à data/hora de início.');
                 return;
             }
         }
