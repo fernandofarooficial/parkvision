@@ -328,7 +328,9 @@ def obter_ultimas_fotos(idcond, limite=16):
     # (logbruto.placalida, antes da correção de vplib.process_heimdall_plate)
     # ainda não esteja mapeada em deparaplacas.placade — já teria correção
     # conhecida, não precisa do operador olhar a foto. Note que mc.placa já vem
-    # corrigido (é o placapara), por isso o filtro usa placalida e não mc.placa.
+    # corrigido (é o placapara), por isso o filtro usa placalida e não mc.placa —
+    # mas mc.placa também é devolvido (como placa_trabalho) para o operador comparar
+    # a placa lida com a placa corrigida usada no movimento.
     # Join pelo idlog compartilhado entre logbruto e movcar (ver gravar_log/registrar_log_bruto).
     conn = get_db_connection()
     if not conn:
@@ -337,7 +339,7 @@ def obter_ultimas_fotos(idcond, limite=16):
     cursor = conn.cursor(dictionary=True)
     try:
         query = '''
-            SELECT lb.id, lb.idlog, lb.placalida, lb.nowpost, lb.nomecam, mc.idmov,
+            SELECT lb.id, lb.idlog, lb.placalida, mc.placa AS placa_trabalho, lb.nowpost, lb.nomecam, mc.idmov,
                    JSON_UNQUOTE(JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64')) AS foto,
                    (SELECT MAX(m2.idmov) FROM movcar m2
                      WHERE m2.idcond = mc.idcond AND m2.contav = 1 AND m2.idmov < mc.idmov) AS idmov_anterior,
