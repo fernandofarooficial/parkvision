@@ -324,13 +324,13 @@ def obter_ultimas_fotos(idcond, limite=16):
     # Lista as últimas fotos de veículos disponíveis em logbruto.jsonbruto
     # (campo data.image_base64) para o condomínio informado.
     # Restrita aos eventos ainda pendentes de confirmação (movcar.contav = 0),
-    # com placa reconhecida (diferente do sentinel '*ERROR*') e cuja placa LIDA
-    # (logbruto.placalida, antes da correção de vplib.process_heimdall_plate)
-    # ainda não esteja mapeada em deparaplacas.placade — já teria correção
-    # conhecida, não precisa do operador olhar a foto. Note que mc.placa já vem
-    # corrigido (é o placapara), por isso o filtro usa placalida e não mc.placa —
-    # mas mc.placa também é devolvido (como placa_trabalho) para o operador comparar
-    # a placa lida com a placa corrigida usada no movimento.
+    # com placa reconhecida (diferente do sentinel '*ERROR*') e cuja placa DE
+    # TRABALHO (mc.placa — a que o sistema efetivamente usou no movimento, já
+    # passada por vplib.process_heimdall_plate) ainda não esteja mapeada em
+    # deparaplacas.placade — já teria correção conhecida, não precisa do
+    # operador olhar a foto. lb.placalida (a leitura bruta da câmera, antes de
+    # qualquer correção) é devolvida só como informação para o operador
+    # comparar com a placa de trabalho, sem entrar em nenhum filtro/comparação.
     # Join pelo idlog compartilhado entre logbruto e movcar (ver gravar_log/registrar_log_bruto).
     conn = get_db_connection()
     if not conn:
@@ -352,7 +352,7 @@ def obter_ultimas_fotos(idcond, limite=16):
               AND JSON_EXTRACT(lb.jsonbruto, '$.data.image_base64') IS NOT NULL
               AND mc.contav = 0
               AND mc.placa != '*ERROR*'
-              AND NOT EXISTS (SELECT 1 FROM deparaplacas dp WHERE dp.placade = lb.placalida)
+              AND NOT EXISTS (SELECT 1 FROM deparaplacas dp WHERE dp.placade = mc.placa)
             ORDER BY lb.id DESC
             LIMIT %s
         '''

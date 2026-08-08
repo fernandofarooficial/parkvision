@@ -2062,8 +2062,8 @@ function carregarFotosDePara() {
                             '<div class="card h-100">' +
                                 '<img class="card-img-top" style="height:160px;object-fit:cover;">' +
                                 '<div class="card-body p-2">' +
-                                    '<p class="mb-1 fw-bold placa-lida"></p>' +
-                                    '<p class="mb-1 small placa-trabalho"></p>' +
+                                    '<p class="mb-1 fw-bold fs-5 placa-trabalho"></p>' +
+                                    '<p class="mb-1 small text-muted placa-lida"></p>' +
                                     '<p class="mb-1 small text-muted cam-nome"></p>' +
                                     '<p class="mb-1 small text-muted data-hora"></p>' +
                                     '<hr class="my-1">' +
@@ -2079,8 +2079,8 @@ function carregarFotosDePara() {
                         '</div>'
                     );
                     $card.find('img').attr('src', fotoSrc);
+                    $card.find('.placa-trabalho').text(item.placa_trabalho || 'N/I');
                     $card.find('.placa-lida').text(`Lida: ${item.placalida || 'N/I'}`);
-                    $card.find('.placa-trabalho').text(`Trabalho: ${item.placa_trabalho || 'N/I'}`);
                     $card.find('.cam-nome').text(item.nomecam || 'N/I');
                     $card.find('.data-hora').text(dataHora);
                     $card.find('.mov-anterior').text(formatarMovimentoVizinho(item.movimento_anterior));
@@ -2093,10 +2093,10 @@ function carregarFotosDePara() {
                     if (!placaAnterior) { $btnAnterior.prop('disabled', true); }
                     if (!placaPosterior) { $btnPosterior.prop('disabled', true); }
                     $btnAnterior.on('click', function() {
-                        criarMapeamentoDePara(item.placalida, placaAnterior, $card);
+                        criarMapeamentoDePara(item.placa_trabalho, placaAnterior, $card);
                     });
                     $btnPosterior.on('click', function() {
-                        criarMapeamentoDePara(item.placalida, placaPosterior, $card);
+                        criarMapeamentoDePara(item.placa_trabalho, placaPosterior, $card);
                     });
 
                     $('#de-para-fotos').append($card);
@@ -2112,9 +2112,9 @@ function carregarFotosDePara() {
     });
 }
 
-function criarMapeamentoDePara(placalida, placapara, $card) {
-    if (!placalida || !placapara) return;
-    if (!confirm(`Mapear placa lida ${placalida} para ${placapara} em De<>Para?`)) return;
+function criarMapeamentoDePara(placaTrabalho, placapara, $card) {
+    if (!placaTrabalho || !placapara) return;
+    if (!confirm(`Mapear placa de trabalho ${placaTrabalho} para ${placapara} em De<>Para?`)) return;
 
     const $botoes = $card.find('.btn-mapear-anterior, .btn-mapear-posterior');
     $botoes.prop('disabled', true);
@@ -2122,7 +2122,7 @@ function criarMapeamentoDePara(placalida, placapara, $card) {
         url: '/api/deparaplacas/criar',
         type: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ placade: placalida, placapara: placapara }),
+        data: JSON.stringify({ placade: placaTrabalho, placapara: placapara }),
         dataType: 'json',
         success: function(response) {
             if (response.success) {
