@@ -152,6 +152,26 @@ JOIN (
 SET dp.ocorrencias = mc.total
 WHERE dp.ocorrencias <> mc.total;
 
+-- 12. Fase 5 do plano de matching aprendido de placas (2026-08-16)
+-- Registro do modo sombra: toda vez que a Fase 3 encontraria uma correção
+-- confiável (ocorrencias >= limiar) mas MATCHING_APRENDIDO_AUTO_APLICAR
+-- ainda não está ligada, a sugestão é gravada aqui em vez de aplicada de
+-- verdade. Depois de 2-4 semanas, compara-se placa_sugerida (congelada no
+-- momento) contra o deparaplacas.placapara atual da mesma placa — se
+-- divergirem, um operador corrigiu manualmente para outro lugar depois,
+-- ou seja, a sugestão da Fase 3 teria sido errada.
+CREATE TABLE IF NOT EXISTS matching_sombra (
+    id INT NOT NULL AUTO_INCREMENT,
+    idcond INT NOT NULL,
+    placalida CHAR(7) NOT NULL,
+    placa_sugerida CHAR(7) NOT NULL,
+    ocorrencias_no_momento INT NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_placalida (placalida),
+    KEY idx_criado_em (criado_em)
+);
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 -- 
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded

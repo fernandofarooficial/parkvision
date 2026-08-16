@@ -3,6 +3,7 @@ Biblioteca para processamento de placas de veículos
 Valida e corrige placas lidas pelo sistema Heimdall
 """
 
+import os
 import re
 import time
 import logging
@@ -29,6 +30,17 @@ _CACHE_CONFUSOES_TTL_SEGUNDOS = 3600  # 1 hora
 # repetir (deparaplacas.ocorrencias) antes de ser aplicada automaticamente sem
 # passar pelo fuzzy match "ao vivo". Validado com o histórico real (ver Fase 2).
 LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA = 3
+
+
+def aplicacao_automatica_ligada():
+    """
+    Fase 5 do plano de matching aprendido (modo sombra): enquanto a env var
+    MATCHING_APRENDIDO_AUTO_APLICAR não estiver 'true', a Fase 3 não aplica
+    a correção de verdade — só registra o que faria (ver
+    registrar_decisao_sombra) para comparar depois contra o que realmente
+    aconteceu. Desligada por padrão (ausente = modo sombra).
+    """
+    return os.getenv('MATCHING_APRENDIDO_AUTO_APLICAR', 'false').strip().lower() == 'true'
 
 # Query dos casos de 1 caractere de diferença em deparaplacas, usada para
 # aprender confusões reais de OCR desta instalação (ver obter_tabela_confusoes).
@@ -158,32 +170,124 @@ def buscar_correcao_aprendida_confiavel(placa_lida, idcond, min_ocorrencias=LIMI
     aplicada aqui para não confiar cegamente num padrão aprendido em outro
     condomínio.
 
-    Retorna a placa corrigida (str) ou None se não houver correção confiável.
+    Retorna (placa_corrigida, ocorrencias) ou (None, None) se não houver
+    correção confiável. ocorrencias vai junto para permitir o registro do
+    modo sombra (ver registrar_decisao_sombra) sem uma segunda consulta.
     """
     if not placa_lida or len(placa_lida) != 7 or not idcond:
-        return None
+        return None, None
 
     conn = get_db_connection()
     if not conn:
-        return None
+        return None, None
 
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT dp.placapara
+            SELECT dp.placapara, dp.ocorrencias
             FROM deparaplacas dp
             JOIN cadperm cp ON cp.placa = dp.placapara AND cp.idcond = %s
             WHERE dp.placade = %s AND dp.ocorrencias >= %s
             LIMIT 1
         """, (idcond, placa_lida, min_ocorrencias))
         resultado = cursor.fetchone()
-        return resultado[0] if resultado else None
+        return (resultado[0], resultado[1]) if resultado else (None, None)
     except mysql.connector.Error as err:
         logger.error(f"buscar_correcao_aprendida_confiavel: erro ao consultar {placa_lida}: {err}")
-        return None
+        return None, None
     finally:
         cursor.close()
         conn.close()
+
+
+def registrar_decisao_sombra(idcond, placa_lida, placa_sugerida, ocorrencias):
+    """
+    Fase 5 do plano de matching aprendido (modo sombra): grava em
+    matching_sombra o que a Fase 3 teria decidido, sem aplicar de verdade.
+    Falha aqui não deve interromper o fluxo de matching — só loga o erro.
+    """
+    conn = get_db_connection()
+    if not conn:
+        logger.error("registrar_decisao_sombra: sem conexão com o banco")
+        return
+
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO matching_sombra (idcond, placalida, placa_sugerida, ocorrencias_no_momento)
+            VALUES (%s, %s, %s, %s)
+        """, (idcond, placa_lida, placa_sugerida, ocorrencias))
+        conn.commit()
+    except mysql.connector.Error as err:
+        conn.rollback()
+        logger.error(f"registrar_decisao_sombra: erro ao registrar {placa_lida} -> {placa_sugerida}: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def avaliar_modo_sombra(dias=None):
+    """
+    Fase 5 do plano de matching aprendido: compara cada sugestão registrada
+    em matching_sombra (congelada no momento em que a Fase 3 teria agido)
+    contra o deparaplacas.placapara ATUAL da mesma placa. Se um operador
+    corrigiu manualmente para um alvo diferente depois, a sugestão da Fase 3
+    teria sido errada — 'divergente'. Sem alteração desde então, ou sem
+    mapeamento algum hoje (raro), conta como 'confirmada'.
+
+    Args:
+        dias (int|None): restringe às sugestões dos últimos N dias; None = todas.
+
+    Returns:
+        dict: {'total': int, 'confirmadas': int, 'divergentes': int,
+               'taxa_acerto': float|None, 'detalhes_divergentes': list[dict]}
+    """
+    resultado = {'total': 0, 'confirmadas': 0, 'divergentes': 0, 'taxa_acerto': None,
+                 'detalhes_divergentes': []}
+    conn = get_db_connection()
+    if not conn:
+        logger.error("avaliar_modo_sombra: sem conexão com o banco")
+        return resultado
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = """
+            SELECT ms.idcond, ms.placalida, ms.placa_sugerida, ms.ocorrencias_no_momento,
+                   ms.criado_em, dp.placapara AS placapara_atual
+            FROM matching_sombra ms
+            LEFT JOIN deparaplacas dp ON dp.placade = ms.placalida
+        """
+        params = ()
+        if dias is not None:
+            query += " WHERE ms.criado_em >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+            params = (dias,)
+        cursor.execute(query, params)
+
+        for linha in cursor.fetchall():
+            resultado['total'] += 1
+            if linha['placapara_atual'] == linha['placa_sugerida']:
+                resultado['confirmadas'] += 1
+            else:
+                resultado['divergentes'] += 1
+                resultado['detalhes_divergentes'].append({
+                    'idcond': linha['idcond'],
+                    'placalida': linha['placalida'],
+                    'placa_sugerida': linha['placa_sugerida'],
+                    'placapara_atual': linha['placapara_atual'],
+                    'ocorrencias_no_momento': linha['ocorrencias_no_momento'],
+                    'criado_em': linha['criado_em'].strftime('%d/%m/%Y %H:%M') if linha['criado_em'] else None,
+                })
+
+        if resultado['total'] > 0:
+            resultado['taxa_acerto'] = round(resultado['confirmadas'] / resultado['total'], 3)
+
+    except mysql.connector.Error as err:
+        logger.error(f"avaliar_modo_sombra: erro ao avaliar: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return resultado
 
 
 def gerar_auditoria_deparaplacas(dias_sem_recorrencia=30, min_ocorrencias=LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA):
@@ -328,18 +432,23 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                 'match_method': 'exact_match_db'
             }
 
-        # Fase 3: correção já aprendida e recorrente (ver buscar_correcao_aprendida_confiavel)
-        # — aplica direto, sem passar pelo fuzzy match "ao vivo" nem pela fila do operador.
-        correcao_aprendida = buscar_correcao_aprendida_confiavel(placa_limpa, idcond)
+        # Fase 3: correção já aprendida e recorrente (ver buscar_correcao_aprendida_confiavel).
+        # Fase 5 (modo sombra): só aplica de verdade se aplicacao_automatica_ligada() —
+        # enquanto desligado, só registra o que faria (registrar_decisao_sombra) e segue
+        # o fluxo normal abaixo, sem aplicar nem pular a fila do operador.
+        correcao_aprendida, ocorrencias_atual = buscar_correcao_aprendida_confiavel(placa_limpa, idcond)
         if correcao_aprendida:
-            registrar_ocorrencia_correcao(placa_limpa_original, correcao_aprendida)
-            return {
-                'corrected_plate': correcao_aprendida,
-                'found_match': True,
-                'confidence': 0.98,  # Alta confiança: padrão já confirmado >= 3 vezes
-                'original_plate': placa_lida,
-                'match_method': 'learned_recurrence'
-            }
+            if aplicacao_automatica_ligada():
+                registrar_ocorrencia_correcao(placa_limpa_original, correcao_aprendida)
+                return {
+                    'corrected_plate': correcao_aprendida,
+                    'found_match': True,
+                    'confidence': 0.98,  # Alta confiança: padrão já confirmado >= limiar
+                    'original_plate': placa_lida,
+                    'match_method': 'learned_recurrence'
+                }
+            else:
+                registrar_decisao_sombra(idcond, placa_limpa_original, correcao_aprendida, ocorrencias_atual)
 
     # Validar formato da placa
     if not validar_formato_placa(placa_limpa):
