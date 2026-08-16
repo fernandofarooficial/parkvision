@@ -103,6 +103,47 @@ def obter_tabela_confusoes(min_ocorrencias=3, forcar_atualizacao=False):
     return tabela
 
 
+def registrar_ocorrencia_correcao(placa_lida, placa_corrigida):
+    """
+    Registra em deparaplacas que uma correção (placa_lida -> placa_corrigida)
+    aconteceu de novo, incrementando ocorrencias. Só deve ser chamada para
+    correções corroboradas pelo cadastro (a placa corrigida é um veículo
+    real com permissão no condomínio da leitura) — é a base do contador
+    usado na Fase 3 do plano de matching aprendido (aplicar automaticamente
+    só depois que a mesma leitura se repetir o suficiente).
+
+    Se já existir uma linha para essa placa_lida com um placapara DIFERENTE,
+    não sobrescreve (evita trocar uma correção já estabelecida por causa de
+    um match isolado divergente) — só incrementa quando o resultado bate
+    com o que já estava registrado.
+    """
+    if not placa_lida or not placa_corrigida or placa_lida == placa_corrigida:
+        return
+    if len(placa_lida) != 7 or len(placa_corrigida) != 7:
+        return
+
+    conn = get_db_connection()
+    if not conn:
+        logger.error("registrar_ocorrencia_correcao: sem conexão com o banco")
+        return
+
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO deparaplacas (placade, placapara, ocorrencias)
+            VALUES (%s, %s, 1)
+            ON DUPLICATE KEY UPDATE
+                ocorrencias = ocorrencias + (placapara = VALUES(placapara))
+        """, (placa_lida, placa_corrigida))
+        conn.commit()
+    except mysql.connector.Error as err:
+        conn.rollback()
+        logger.error(f"registrar_ocorrencia_correcao: erro ao registrar {placa_lida} -> {placa_corrigida}: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadastro_carros=False):
     """
     Processa placa lida pelo Heimdall, validando formato e aplicando correções
@@ -135,7 +176,11 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
     
     # Limpar e padronizar placa
     placa_limpa = limpar_placa(placa_lida)
-    
+    # Preservada sem alterações posteriores — usada para registrar ocorrências
+    # de correção em deparaplacas (ver registrar_ocorrencia_correcao), já que
+    # placa_limpa pode ser reatribuída mais abaixo (tentar_corrigir_placa).
+    placa_limpa_original = placa_limpa
+
     # NOVA FUNCIONALIDADE: Verificar correspondência exata com placas cadastradas primeiro
     if not pular_cadastro_carros:
         match_exato = verificar_placa_cadastrada_exata(placa_limpa, idcond)
@@ -154,6 +199,7 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
         if not pular_cadastro_carros:
             match_fuzzy = buscar_melhor_correspondencia_cadastrada(placa_lida, idcond)
             if match_fuzzy['found'] and match_fuzzy['confidence'] >= confianca_minima:
+                registrar_ocorrencia_correcao(placa_limpa_original, match_fuzzy['placa'])
                 return {
                     'corrected_plate': match_fuzzy['placa'],
                     'found_match': True,
@@ -208,6 +254,7 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                     # Verificar placas próximas (1 caractere diferente)
                     match_proximo = buscar_placa_proxima_cadastrada(placa_limpa, placas_cadastradas)
                     if match_proximo['found']:
+                        registrar_ocorrencia_correcao(placa_limpa_original, match_proximo['placa'])
                         return {
                             'corrected_plate': match_proximo['placa'],
                             'found_match': True,
@@ -222,6 +269,7 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                     if match_deparaplacas['found']:
                         # Verificar se a placa de destino está nas placas cadastradas do condomínio
                         if match_deparaplacas['placa_destino'] in placas_cadastradas:
+                            registrar_ocorrencia_correcao(placa_limpa_original, match_deparaplacas['placa_destino'])
                             return {
                                 'corrected_plate': match_deparaplacas['placa_destino'],
                                 'found_match': True,

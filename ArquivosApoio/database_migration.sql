@@ -136,6 +136,22 @@ ALTER TABLE deparaplacas
 ALTER TABLE movcar
     ADD INDEX idx_placalida (placalida);
 
+-- 11. Fase 2 do plano de matching aprendido de placas (2026-08-16)
+-- Backfill único do contador ocorrencias (coluna criada no item 10) a partir do
+-- histórico real de leituras em movcar.placalida. Depois deste backfill, o
+-- contador passa a ser mantido de forma incremental pelo próprio código
+-- (vplib.registrar_ocorrencia_correcao), chamado a cada correção corroborada
+-- pelo cadastro — este UPDATE não precisa ser reexecutado.
+UPDATE deparaplacas dp
+JOIN (
+    SELECT placalida, COUNT(*) AS total
+    FROM movcar
+    WHERE placalida IS NOT NULL
+    GROUP BY placalida
+) mc ON mc.placalida = dp.placade
+SET dp.ocorrencias = mc.total
+WHERE dp.ocorrencias <> mc.total;
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 -- 
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
