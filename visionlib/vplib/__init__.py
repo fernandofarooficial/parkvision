@@ -25,6 +25,11 @@ _CONFUSOES_OCR_BASE = {
 _CACHE_CONFUSOES = {'dados': None, 'atualizado_em': 0.0}
 _CACHE_CONFUSOES_TTL_SEGUNDOS = 3600  # 1 hora
 
+# Fase 3 do plano de matching aprendido: quantas vezes uma correção precisa se
+# repetir (deparaplacas.ocorrencias) antes de ser aplicada automaticamente sem
+# passar pelo fuzzy match "ao vivo". Validado com o histórico real (ver Fase 2).
+LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA = 3
+
 # Query dos casos de 1 caractere de diferença em deparaplacas, usada para
 # aprender confusões reais de OCR desta instalação (ver obter_tabela_confusoes).
 _QUERY_DIFERENCAS_1_CHAR = """
@@ -144,6 +149,43 @@ def registrar_ocorrencia_correcao(placa_lida, placa_corrigida):
         conn.close()
 
 
+def buscar_correcao_aprendida_confiavel(placa_lida, idcond, min_ocorrencias=LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA):
+    """
+    Fase 3 do plano de matching aprendido: verifica se já existe em
+    deparaplacas uma correção para placa_lida que (a) já se repetiu pelo
+    menos min_ocorrencias vezes e (b) aponta para uma placa com permissão
+    (cadperm) no condomínio da leitura — mesma exigência de escopo da Fase 1a,
+    aplicada aqui para não confiar cegamente num padrão aprendido em outro
+    condomínio.
+
+    Retorna a placa corrigida (str) ou None se não houver correção confiável.
+    """
+    if not placa_lida or len(placa_lida) != 7 or not idcond:
+        return None
+
+    conn = get_db_connection()
+    if not conn:
+        return None
+
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT dp.placapara
+            FROM deparaplacas dp
+            JOIN cadperm cp ON cp.placa = dp.placapara AND cp.idcond = %s
+            WHERE dp.placade = %s AND dp.ocorrencias >= %s
+            LIMIT 1
+        """, (idcond, placa_lida, min_ocorrencias))
+        resultado = cursor.fetchone()
+        return resultado[0] if resultado else None
+    except mysql.connector.Error as err:
+        logger.error(f"buscar_correcao_aprendida_confiavel: erro ao consultar {placa_lida}: {err}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadastro_carros=False):
     """
     Processa placa lida pelo Heimdall, validando formato e aplicando correções
@@ -192,7 +234,20 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                 'original_plate': placa_lida,
                 'match_method': 'exact_match_db'
             }
-    
+
+        # Fase 3: correção já aprendida e recorrente (ver buscar_correcao_aprendida_confiavel)
+        # — aplica direto, sem passar pelo fuzzy match "ao vivo" nem pela fila do operador.
+        correcao_aprendida = buscar_correcao_aprendida_confiavel(placa_limpa, idcond)
+        if correcao_aprendida:
+            registrar_ocorrencia_correcao(placa_limpa_original, correcao_aprendida)
+            return {
+                'corrected_plate': correcao_aprendida,
+                'found_match': True,
+                'confidence': 0.98,  # Alta confiança: padrão já confirmado >= 3 vezes
+                'original_plate': placa_lida,
+                'match_method': 'learned_recurrence'
+            }
+
     # Validar formato da placa
     if not validar_formato_placa(placa_limpa):
         # NOVA FUNCIONALIDADE: Tentar correções usando placas cadastradas como referência
