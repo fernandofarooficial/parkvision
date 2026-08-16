@@ -186,6 +186,99 @@ def buscar_correcao_aprendida_confiavel(placa_lida, idcond, min_ocorrencias=LIMI
         conn.close()
 
 
+def gerar_auditoria_deparaplacas(dias_sem_recorrencia=30, min_ocorrencias=LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA):
+    """
+    Auditoria (Fase 4 do plano de matching aprendido): lista mapeamentos de
+    deparaplacas que já cruzaram o limiar de aplicação automática (ver
+    LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA) e merecem revisão manual do
+    administrador. Só leitura — não desfaz nada sozinha.
+
+    Sinais verificados:
+    - 'sem_permissao_atual': a placa de destino (placapara) não tem nenhuma
+      relação (cadperm) com nenhum condomínio hoje — o mapeamento nunca mais
+      vai disparar via Fase 3 (ver buscar_correcao_aprendida_confiavel), mas
+      segue "confirmado" no histórico.
+    - 'parou_de_recorrer': já bateu o limiar, mas a última leitura dessa
+      placa (placalida) no movcar foi há mais de dias_sem_recorrencia dias
+      — sugere que as poucas repetições que confirmaram o padrão podem ter
+      sido coincidência, não um erro sistemático de OCR.
+    - 'encadeamento': a placa de destino (placapara) de uma linha também
+      aparece como leitura errada (placade) de outra linha — uma placa
+      cadastrada corretamente não deveria precisar de correção.
+
+    Returns:
+        list[dict]: cada item tem 'tipo', 'placade', 'placapara',
+        'ocorrencias', 'detalhe'.
+    """
+    achados = []
+    conn = get_db_connection()
+    if not conn:
+        logger.error("gerar_auditoria_deparaplacas: sem conexão com o banco")
+        return achados
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT dp.placade, dp.placapara, dp.ocorrencias
+            FROM deparaplacas dp
+            LEFT JOIN cadperm cp ON cp.placa = dp.placapara
+            WHERE dp.ocorrencias >= %s AND cp.placa IS NULL
+        """, (min_ocorrencias,))
+        for linha in cursor.fetchall():
+            achados.append({
+                'tipo': 'sem_permissao_atual',
+                'placade': linha['placade'],
+                'placapara': linha['placapara'],
+                'ocorrencias': linha['ocorrencias'],
+                'detalhe': 'Placa de destino não tem nenhuma permissão (cadperm) hoje — '
+                           'mapeamento confirmado, mas nunca mais vai disparar automaticamente.'
+            })
+
+        cursor.execute("""
+            SELECT dp.placade, dp.placapara, dp.ocorrencias, mc.ultima
+            FROM deparaplacas dp
+            LEFT JOIN (
+                SELECT placalida, MAX(nowpost) AS ultima FROM movcar GROUP BY placalida
+            ) mc ON mc.placalida = dp.placade
+            WHERE dp.ocorrencias >= %s
+              AND (mc.ultima IS NULL OR mc.ultima < DATE_SUB(NOW(), INTERVAL %s DAY))
+        """, (min_ocorrencias, dias_sem_recorrencia))
+        for linha in cursor.fetchall():
+            ultima = linha['ultima'].strftime('%d/%m/%Y') if linha['ultima'] else 'nunca'
+            achados.append({
+                'tipo': 'parou_de_recorrer',
+                'placade': linha['placade'],
+                'placapara': linha['placapara'],
+                'ocorrencias': linha['ocorrencias'],
+                'detalhe': f'Última leitura desta placa no movcar: {ultima} — sem recorrência '
+                           f'nos últimos {dias_sem_recorrencia} dias.'
+            })
+
+        cursor.execute("""
+            SELECT dp.placade, dp.placapara, dp.ocorrencias
+            FROM deparaplacas dp
+            JOIN deparaplacas dp2 ON dp2.placade = dp.placapara
+            WHERE dp.ocorrencias >= %s
+        """, (min_ocorrencias,))
+        for linha in cursor.fetchall():
+            achados.append({
+                'tipo': 'encadeamento',
+                'placade': linha['placade'],
+                'placapara': linha['placapara'],
+                'ocorrencias': linha['ocorrencias'],
+                'detalhe': 'A placa de destino também aparece como leitura errada em outro '
+                           'mapeamento — placa cadastrada não deveria precisar de correção.'
+            })
+
+    except mysql.connector.Error as err:
+        logger.error(f"gerar_auditoria_deparaplacas: erro ao gerar auditoria: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return achados
+
+
 def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadastro_carros=False):
     """
     Processa placa lida pelo Heimdall, validando formato e aplicando correções

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision — Auditoria De&lt;&gt;Para{% endblock %}
+
+{% block extra_css %}
+<style>
+    .aud-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: .5rem;
+    }
+
+    .aud-titulo {
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .aud-empty {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+
+    .badge-tipo {
+        font-weight: 500;
+    }
+
+    #aud-table td, #aud-table th {
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="aud-header">
+    <div>
+        <h1 class="aud-titulo"><i class="bi bi-shield-exclamation me-2"></i>Auditoria De&lt;&gt;Para</h1>
+        <p class="text-muted mb-0" style="font-size:.9rem">
+            Somente administradores — mapeamentos já aplicados automaticamente (Fase 3 do matching
+            aprendido) que merecem revisão manual. Só leitura, nada é desfeito por aqui.
+        </p>
+    </div>
+    <button id="btn-atualizar" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+    </button>
+</div>
+
+<div id="aud-vazio" class="aud-empty d-none">
+    <i class="bi bi-check-circle fs-1 d-block mb-2"></i>
+    Nenhum risco encontrado no momento.
+</div>
+
+<div class="table-responsive">
+    <table id="aud-table" class="table table-sm table-hover align-middle d-none">
+        <thead class="table-dark">
+        <tr>
+            <th>Tipo</th>
+            <th>Placa lida (placade)</th>
+            <th>Placa corrigida (placapara)</th>
+            <th>Ocorrências</th>
+            <th>Detalhe</th>
+        </tr>
+        </thead>
+        <tbody id="aud-tbody"></tbody>
+    </table>
+</div>
+
+<script>
+const ROTULOS_TIPO = {
+    'sem_permissao_atual': {texto: 'Sem permissão atual', cor: 'bg-danger'},
+    'parou_de_recorrer': {texto: 'Parou de recorrer', cor: 'bg-warning text-dark'},
+    'encadeamento': {texto: 'Encadeamento', cor: 'bg-info text-dark'}
+};
+
+async function carregarAuditoria() {
+    const tbody = document.getElementById('aud-tbody');
+    const tabela = document.getElementById('aud-table');
+    const vazio = document.getElementById('aud-vazio');
+
+    try {
+        const resp = await fetch('/api/auditoria-depara');
+        const data = await resp.json();
+        if (!data.success) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-danger">${data.message || 'Erro ao carregar auditoria'}</td></tr>`;
+            tabela.classList.remove('d-none');
+            vazio.classList.add('d-none');
+            return;
+        }
+
+        const achados = data.data || [];
+        if (achados.length === 0) {
+            tabela.classList.add('d-none');
+            vazio.classList.remove('d-none');
+            return;
+        }
+
+        tbody.innerHTML = achados.map(item => {
+            const rotulo = ROTULOS_TIPO[item.tipo] || {texto: item.tipo, cor: 'bg-secondary'};
+            return `<tr>
+                <td><span class="badge ${rotulo.cor} badge-tipo">${rotulo.texto}</span></td>
+                <td><code>${item.placade}</code></td>
+                <td><code>${item.placapara ?? '—'}</code></td>
+                <td>${item.ocorrencias}</td>
+                <td>${item.detalhe}</td>
+            </tr>`;
+        }).join('');
+
+        tabela.classList.remove('d-none');
+        vazio.classList.add('d-none');
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Erro ao carregar auditoria: ${err}</td></tr>`;
+        tabela.classList.remove('d-none');
+        vazio.classList.add('d-none');
+    }
+}
+
+document.getElementById('btn-atualizar').addEventListener('click', carregarAuditoria);
+carregarAuditoria();
+</script>
+
+{% endblock %}

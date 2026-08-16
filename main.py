@@ -13,7 +13,7 @@ load_dotenv()
 import datetime
 from visionlib.apilib import receber_dados
 from visionlib.dblib import obter_marcas, obter_modelos, inserir_carro, obter_cores, obter_ultimas_fotos
-from visionlib.vplib import criar_mapeamento_deparaplacas
+from visionlib.vplib import criar_mapeamento_deparaplacas, gerar_auditoria_deparaplacas
 from visionlib.condlib import obter_dados_condminios, lista_condominios
 from visionlib.permlib import criar_permissao, modificar_permissao, buscar_permissao, obter_unidades_condominio
 from visionlib.carlib import cadastrar_veiculo_nao_cadastrado, criar_veiculo_cadveiculo, modificar_veiculo_cadveiculo
@@ -1032,6 +1032,29 @@ def api_logs_limpar():
         app.logger.info('=== Logs limpos pelo administrador ===')
         return jsonify({'success': True, 'message': 'Logs limpos com sucesso'})
     return jsonify({'success': False, 'message': 'Erro ao limpar logs'})
+
+
+# ===== ROTAS PARA AUDITORIA DO MATCHING APRENDIDO DE PLACAS (Fase 4) =====
+
+@app.route('/auditoria-depara')
+def auditoria_depara_viewer():
+    """Página de auditoria dos mapeamentos aprendidos automaticamente em deparaplacas"""
+    if not verificar_permissao_tipo_usuario(['ADM']):
+        return redirect(url_for('login'))
+    return render_template('auditoria-depara.html')
+
+
+@app.route('/api/auditoria-depara')
+def api_auditoria_depara():
+    """Lista mapeamentos de deparaplacas com risco de falso positivo (somente leitura)."""
+    if not verificar_permissao_tipo_usuario(['ADM']):
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+
+    try:
+        achados = gerar_auditoria_deparaplacas()
+        return jsonify({'success': True, 'data': achados})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro ao gerar auditoria: {type(e).__name__}: {e}'})
 
 # ── PWA — arquivos na raiz (iOS Safari exige) ─────────────────────────────────
 
