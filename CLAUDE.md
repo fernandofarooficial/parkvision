@@ -49,6 +49,15 @@ Use um MySQL local para desenvolvimento e testes:
 - A tabela `logsistema` não faz parte do dump — é criada automaticamente pelo `loglib` (`CREATE TABLE IF NOT EXISTS`) na primeira execução do app; isso é esperado, não é um gap de schema
 - `.env.example` já reflete essa configuração (`DB_HOST=localhost`, `DB_NAME=parkvision_test`) — copiar para `.env` e preencher a senha real do MySQL local
 
+**Estado atual (2026-08-16): não há mais MySQL local configurado.** O console de banco de dados usado no dia a dia (PyCharm Database tool) está apontando direto para a produção (`@72.60.58.241`, banco `parkvision`). Enquanto esse for o caso:
+- **Claude nunca executa comandos de escrita (`INSERT`/`UPDATE`/`DELETE`/`TRUNCATE`/`ALTER`) na produção por conta própria** — nem durante testes/depuração, mesmo que pareça uma correção óbvia. Só roda escrita se o usuário pedir explicitamente, naquele momento, para alterar aquele dado específico. Consultas `SELECT` são normais e não precisam de autorização a cada vez.
+- Script de inicialização recomendado para o console (fuso horário + banco padrão):
+  ```sql
+  SET time_zone = '-03:00';
+  USE parkvision;
+  ```
+- Camadas extras de proteção a considerar: ativar o modo *read-only* da conexão no PyCharm (Properties → toggle de cadeado) e/ou criar um usuário MySQL só com `GRANT SELECT` para uso em consultas exploratórias.
+
 ## Stack
 
 - **Backend:** Python 3.13 + Flask 2.x + MySQL (sem ORM — SQL direto)
