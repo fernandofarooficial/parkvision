@@ -588,13 +588,18 @@ def obter_cores():
 
 
 def placadastrada(cond, pplaca):
-    # verifica se a placa está cadastrada
+    # verifica se a placa está cadastrada E tem relação (cadperm) com o condomínio
     # abrindo a conexão com a base de dados
     connection = get_db_connection()
     cursor = connection.cursor()
     # ler cadastro
     resultadoconsulta = False
-    cursor.execute('SELECT placa FROM cadveiculo WHERE placa = %s', (pplaca,))
+    cursor.execute('''
+        SELECT cv.placa
+        FROM cadveiculo cv
+        JOIN cadperm cp ON cp.placa = cv.placa AND cp.idcond = %s
+        WHERE cv.placa = %s
+    ''', (cond, pplaca))
     placaretornada = cursor.fetchall()
     if placaretornada:
         resultadoconsulta = True

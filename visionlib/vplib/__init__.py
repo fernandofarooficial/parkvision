@@ -4,12 +4,103 @@ Valida e corrige placas lidas pelo sistema Heimdall
 """
 
 import re
+import time
 import logging
 from config.database import get_db_connection
 from flask import jsonify, request
 import mysql.connector
 
 logger = logging.getLogger(__name__)
+
+# Base fixa de confusões OCR conhecidas — usada como piso mínimo (cold start,
+# antes de existir histórico suficiente em deparaplacas) e sempre combinada
+# com a tabela aprendida em obter_tabela_confusoes().
+_CONFUSOES_OCR_BASE = {
+    '0': ['O', 'Q', 'D'], '1': ['I', 'L', '|'], '5': ['S'], '8': ['B'], '6': ['G'],
+    'O': ['0', 'Q', 'D'], 'I': ['1', 'L', '|'], 'S': ['5'], 'B': ['8'], 'G': ['6'],
+    'Z': ['2'], '2': ['Z'], 'Q': ['O', '0'], 'D': ['0', 'O'], 'L': ['1', 'I', '|'],
+    'E': ['F'], 'F': ['E'],
+}
+
+_CACHE_CONFUSOES = {'dados': None, 'atualizado_em': 0.0}
+_CACHE_CONFUSOES_TTL_SEGUNDOS = 3600  # 1 hora
+
+# Query dos casos de 1 caractere de diferença em deparaplacas, usada para
+# aprender confusões reais de OCR desta instalação (ver obter_tabela_confusoes).
+_QUERY_DIFERENCAS_1_CHAR = """
+    SELECT char_de, char_para, COUNT(*) AS ocorrencias
+    FROM (
+        SELECT
+            CASE
+                WHEN SUBSTRING(placade,1,1)<>SUBSTRING(placapara,1,1) THEN SUBSTRING(placade,1,1)
+                WHEN SUBSTRING(placade,2,1)<>SUBSTRING(placapara,2,1) THEN SUBSTRING(placade,2,1)
+                WHEN SUBSTRING(placade,3,1)<>SUBSTRING(placapara,3,1) THEN SUBSTRING(placade,3,1)
+                WHEN SUBSTRING(placade,4,1)<>SUBSTRING(placapara,4,1) THEN SUBSTRING(placade,4,1)
+                WHEN SUBSTRING(placade,5,1)<>SUBSTRING(placapara,5,1) THEN SUBSTRING(placade,5,1)
+                WHEN SUBSTRING(placade,6,1)<>SUBSTRING(placapara,6,1) THEN SUBSTRING(placade,6,1)
+                WHEN SUBSTRING(placade,7,1)<>SUBSTRING(placapara,7,1) THEN SUBSTRING(placade,7,1)
+            END AS char_de,
+            CASE
+                WHEN SUBSTRING(placade,1,1)<>SUBSTRING(placapara,1,1) THEN SUBSTRING(placapara,1,1)
+                WHEN SUBSTRING(placade,2,1)<>SUBSTRING(placapara,2,1) THEN SUBSTRING(placapara,2,1)
+                WHEN SUBSTRING(placade,3,1)<>SUBSTRING(placapara,3,1) THEN SUBSTRING(placapara,3,1)
+                WHEN SUBSTRING(placade,4,1)<>SUBSTRING(placapara,4,1) THEN SUBSTRING(placapara,4,1)
+                WHEN SUBSTRING(placade,5,1)<>SUBSTRING(placapara,5,1) THEN SUBSTRING(placapara,5,1)
+                WHEN SUBSTRING(placade,6,1)<>SUBSTRING(placapara,6,1) THEN SUBSTRING(placapara,6,1)
+                WHEN SUBSTRING(placade,7,1)<>SUBSTRING(placapara,7,1) THEN SUBSTRING(placapara,7,1)
+            END AS char_para
+        FROM deparaplacas
+        WHERE
+            (SUBSTRING(placade,1,1)<>SUBSTRING(placapara,1,1))
+           +(SUBSTRING(placade,2,1)<>SUBSTRING(placapara,2,1))
+           +(SUBSTRING(placade,3,1)<>SUBSTRING(placapara,3,1))
+           +(SUBSTRING(placade,4,1)<>SUBSTRING(placapara,4,1))
+           +(SUBSTRING(placade,5,1)<>SUBSTRING(placapara,5,1))
+           +(SUBSTRING(placade,6,1)<>SUBSTRING(placapara,6,1))
+           +(SUBSTRING(placade,7,1)<>SUBSTRING(placapara,7,1)) = 1
+    ) diffs
+    GROUP BY char_de, char_para
+    HAVING COUNT(*) >= %s
+"""
+
+
+def obter_tabela_confusoes(min_ocorrencias=3, forcar_atualizacao=False):
+    """
+    Tabela de confusões de caractere (char -> conjunto de chars que ele pode
+    realmente ser), usada nas correções de leitura do Heimdall. Combina a base
+    fixa de confusões OCR conhecidas com os pares aprendidos a partir do
+    histórico de correções manuais em deparaplacas (só pares de 1 caractere
+    de diferença que já se repetiram >= min_ocorrencias vezes — evita
+    aprender ruído de correções isoladas sem relação com erro de OCR real).
+    Resultado fica em cache de processo por _CACHE_CONFUSOES_TTL_SEGUNDOS.
+    """
+    agora = time.time()
+    if (not forcar_atualizacao and _CACHE_CONFUSOES['dados'] is not None
+            and agora - _CACHE_CONFUSOES['atualizado_em'] < _CACHE_CONFUSOES_TTL_SEGUNDOS):
+        return _CACHE_CONFUSOES['dados']
+
+    tabela = {char: set(candidatos) for char, candidatos in _CONFUSOES_OCR_BASE.items()}
+
+    conn = get_db_connection()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(_QUERY_DIFERENCAS_1_CHAR, (min_ocorrencias,))
+            for char_de, char_para, _ocorrencias in cursor.fetchall():
+                if char_de and char_para:
+                    tabela.setdefault(char_de, set()).add(char_para)
+                    tabela.setdefault(char_para, set()).add(char_de)
+        except mysql.connector.Error as err:
+            logger.error(f"Erro ao carregar tabela de confusões aprendida: {err}")
+        finally:
+            cursor.close()
+            conn.close()
+    else:
+        logger.error("obter_tabela_confusoes: sem conexão com o banco, usando só a base fixa")
+
+    _CACHE_CONFUSOES['dados'] = tabela
+    _CACHE_CONFUSOES['atualizado_em'] = agora
+    return tabela
 
 
 def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadastro_carros=False):
@@ -102,11 +193,14 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
         if conn:
             cursor = conn.cursor()
             try:
-                # Buscar todas as placas relacionadas ao condomínio $$$$$ Checar se vai ficar só no condomínio depois
-                # query = "SELECT DISTINCT placa FROM cadperm WHERE idcond = %s"
-                # cursor.execute(query, (idcond,))
-                query = "SELECT DISTINCT placa FROM cadveiculo"
-                cursor.execute(query)
+                # Restrito às placas com relação (cadperm) com o condomínio da câmera —
+                # evita corrigir a leitura para uma placa cadastrada só em outro condomínio.
+                query = """
+                    SELECT DISTINCT cv.placa
+                    FROM cadveiculo cv
+                    JOIN cadperm cp ON cp.placa = cv.placa AND cp.idcond = %s
+                """
+                cursor.execute(query, (idcond,))
 
                 placas_cadastradas = [row[0] for row in cursor.fetchall()]
 
@@ -203,27 +297,9 @@ def tentar_corrigir_placa(placa):
     
     placa_corrigida = placa.upper()
     
-    # Dicionário de correções comuns de OCR
-    # Mapeia caracteres frequentemente confundidos
-    correcoes_ocr = {
-        # Números frequentemente confundidos com letras
-        '0': ['O', 'Q', 'D'],  # Zero com O, Q, D
-        '1': ['I', 'L', '|'],  # Um com I, L
-        '5': ['S'],            # Cinco com S
-        '8': ['B'],            # Oito com B
-        '6': ['G'],            # Seis com G
-        
-        # Letras frequentemente confundidas com números
-        'O': ['0', 'Q', 'D'],  # O com zero, Q, D
-        'I': ['1', 'L', '|'],  # I com um, L
-        'S': ['5'],            # S com cinco
-        'B': ['8'],            # B com oito
-        'G': ['6'],            # G com seis
-        'Z': ['2'],            # Z com dois
-        'Q': ['O', '0'],       # Q com O, zero
-        'D': ['0', 'O'],       # D com zero, O
-    }
-    
+    # Tabela de confusões de OCR: base fixa + padrões aprendidos do deparaplacas
+    correcoes_ocr = obter_tabela_confusoes()
+
     # NOVA FUNCIONALIDADE: Primeiro tentar conversão entre formatos
     placa_conversao = aplicar_correcoes_formato(placa_corrigida, 'conversao', correcoes_ocr)
     if placa_conversao and validar_formato_placa(placa_conversao):
@@ -424,11 +500,14 @@ def verificar_placa_cadastrada_exata(placa, idcond):
     
     cursor = conn.cursor()
     try:
-        # Buscar placa exata que tenha alguma relação com o condomínio $$$$$
-        # query = "SELECT DISTINCT placa FROM cadperm WHERE idcond = %s"
-        # cursor.execute(query, (idcond,))
-        query = "SELECT DISTINCT placa FROM cadveiculo WHERE placa = %s"
-        cursor.execute(query, (placa,))
+        # Só considera match se a placa também tiver relação (cadperm) com este condomínio
+        query = """
+            SELECT DISTINCT cv.placa
+            FROM cadveiculo cv
+            JOIN cadperm cp ON cp.placa = cv.placa AND cp.idcond = %s
+            WHERE cv.placa = %s
+        """
+        cursor.execute(query, (idcond, placa))
 
         resultado = cursor.fetchone()
         
@@ -467,11 +546,13 @@ def buscar_melhor_correspondencia_cadastrada(placa_lida, idcond, limite_similari
     
     cursor = conn.cursor()
     try:
-        # Buscar todas as placas relacionadas ao condomínio $$$$$
-        # query = "SELECT DISTINCT placa FROM cadperm WHERE idcond = %s"
-        # cursor.execute(query, (idcond,))
-        query = "SELECT DISTINCT placa FROM cadveiculo"
-        cursor.execute(query)
+        # Restrito às placas com relação (cadperm) com o condomínio da câmera
+        query = """
+            SELECT DISTINCT cv.placa
+            FROM cadveiculo cv
+            JOIN cadperm cp ON cp.placa = cv.placa AND cp.idcond = %s
+        """
+        cursor.execute(query, (idcond,))
 
         placas_cadastradas = [row[0] for row in cursor.fetchall()]
         
@@ -615,25 +696,8 @@ def calcular_similaridade_placas(placa1, placa2):
     if similaridade_formato >= 0.95:  # Alta similaridade por conversão de formato
         return similaridade_formato
     
-    # Mapa de confusões comuns OCR (bidirecional)
-    confusoes_ocr = {
-        '1': ['I', 'L', '|'],
-        'I': ['1', 'L', '|'],
-        'O': ['0', 'Q'],
-        '0': ['O', 'Q'],
-        'S': ['5'],
-        '5': ['S'],
-        'B': ['8'],
-        '8': ['B'],
-        'E': ['F'],
-        'F': ['E'],
-        'G': ['6'],
-        '6': ['G'],
-        'Z': ['2'],
-        '2': ['Z'],
-        'Q': ['O', '0'],
-        'D': ['0', 'O']
-    }
+    # Mapa de confusões OCR (bidirecional): base fixa + aprendida do deparaplacas
+    confusoes_ocr = obter_tabela_confusoes()
     
     # Contar matches exatos e similares
     matches_exatos = 0
@@ -796,26 +860,8 @@ def buscar_placa_proxima_cadastrada(placa_lida, placas_cadastradas):
     if not placa_lida or not placas_cadastradas or len(placa_lida) != 7:
         return {'found': False, 'placa': None, 'confidence': 0.0, 'method': 'invalid_input'}
     
-    # Caracteres comuns de confusão em OCR
-    substituicoes_comuns = {
-        'I': ['1', 'L', '|'],
-        '1': ['I', 'L', '|'],
-        'L': ['1', 'I', '|'],
-        'O': ['0', 'Q'],
-        '0': ['O', 'Q'],
-        'Q': ['O', '0'],
-        'S': ['5'],
-        '5': ['S'],
-        'B': ['8'],
-        '8': ['B'],
-        'E': ['F'],
-        'F': ['E'],
-        'G': ['6'],
-        '6': ['G'],
-        'Z': ['2'],
-        '2': ['Z'],
-        'D': ['0', 'O']
-    }
+    # Caracteres comuns de confusão em OCR: base fixa + aprendida do deparaplacas
+    substituicoes_comuns = obter_tabela_confusoes()
     
     placa_lida = placa_lida.upper()
     
