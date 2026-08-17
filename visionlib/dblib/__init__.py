@@ -218,9 +218,12 @@ def checar_anteriores(inforec):
     # abrir conexão com a base de dados
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
-    # Ler os últimos movimentos (incluindo idgente para distinguir pendentes de rejeitados)
-    query = "SELECT placa, contav, idgente, idcond, nowpost FROM movcar WHERE idcond = %s AND placa = %s ORDER BY nowpost DESC LIMIT 10"
-    values = (inforec['idcond'],inforec['placa'])
+    # Ler os últimos movimentos na MESMA direção (incluindo idgente para distinguir
+    # pendentes de rejeitados) — sem o filtro de direcao, uma saída minutos depois de
+    # uma entrada era tratada como duplicata da entrada e ficava travada (contav=0,
+    # sem idgente/statusmov/origem, fora da fila do operador e sem nunca ser reprocessada)
+    query = "SELECT placa, contav, idgente, idcond, nowpost FROM movcar WHERE idcond = %s AND placa = %s AND direcao = %s ORDER BY nowpost DESC LIMIT 10"
+    values = (inforec['idcond'], inforec['placa'], inforec['direcao'])
     cursor.execute(query, values)
     movimentos = cursor.fetchall()
     # verificar se a placa já foi contabilizada anteriormente:
