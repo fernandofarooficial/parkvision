@@ -123,6 +123,19 @@ ORDER BY s.data_solicitacao ASC;
 ALTER TABLE movcar
     ADD COLUMN IF NOT EXISTS origem ENUM('MANUAL','AUTO') NULL DEFAULT NULL;
 
+-- 10. Remoção de cadlocal/vw_vagas_condominio (legado abandonado) (2026-08-17)
+-- Mecanismo alternativo de ocupação em tempo real da fase inicial do projeto,
+-- substituído bem cedo pelo fluxo movcar/vw_estacionados. Confirmado morto antes
+-- da remoção: nenhuma referência a cadlocal ou vw_vagas_condominio em main.py ou
+-- visionlib/ (busca completa no código); o único código que já escreveu em
+-- cadlocal foi o script standalone ArquivosApoio/P_Acertar_CadLocal_Pelo_Movimento.py
+-- (removido neste mesmo commit) — nunca chamado pela aplicação, hardcoded para
+-- idcond=1 só, e a última atualização real em produção (cadlocal.lup) é de
+-- 2025-09-10, quase um ano parado. Backup das 76 linhas existentes feito via
+-- mysqldump antes da remoção (fora do repositório, não versionado).
+DROP VIEW IF EXISTS vw_vagas_condominio;
+DROP TABLE IF EXISTS cadlocal;
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 -- 
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
