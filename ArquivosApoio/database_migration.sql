@@ -123,6 +123,15 @@ ORDER BY s.data_solicitacao ASC;
 ALTER TABLE movcar
     ADD COLUMN IF NOT EXISTS origem ENUM('MANUAL','AUTO') NULL DEFAULT NULL;
 
+-- 10. Coluna lup (last update) em deparaplacas (2026-08-17)
+-- Marca a última vez que a linha foi tocada (criação ou incremento de ocorrencias
+-- via vplib.registrar_ocorrencia_correcao, ou correção manual via
+-- vplib.criar_mapeamento_deparaplacas) — antes só existia created_at (data de
+-- criação), sem sinal de "última recorrência". Puramente aditivo, ON UPDATE
+-- automático do MySQL, não exige mudança de código.
+ALTER TABLE deparaplacas
+    ADD COLUMN lup DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 -- 
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
