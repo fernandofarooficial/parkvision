@@ -330,26 +330,34 @@
         white-space: nowrap;
     }
 
-    /* ── Monitor de câmeras ──────────────────────────── */
-    .monitor-cam-painel {
+    /* ── Monitor de câmeras / dispositivos (uma linha) ── */
+    .monitor-status-linha {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: .5rem 1.25rem;
         border: 1px solid #dee2e6;
         border-radius: .5rem;
-        padding: .6rem .9rem;
+        padding: .5rem .9rem;
         background: #f8f9fa;
         margin-bottom: 1.2rem;
     }
 
-    .monitor-cam-header {
-        display: flex;
+    .monitor-status-grupo {
+        display: inline-flex;
         align-items: center;
-        justify-content: space-between;
-        margin-bottom: .5rem;
+        gap: .5rem;
+        flex-wrap: wrap;
     }
 
-    .monitor-cam-header h6 {
-        margin: 0;
-        font-size: .9rem;
-        font-weight: 600;
+    .monitor-status-grupo > i {
+        color: #6c757d;
+    }
+
+    .monitor-status-ts {
+        margin-left: auto;
+        font-size: .8rem;
+        white-space: nowrap;
     }
 
     .monitor-cam-item {
@@ -426,22 +434,11 @@
     </div>
 </div>
 
-<!-- Painel: status das câmeras (monitoramento background) -->
-<div id="painel-monitor-cameras" class="monitor-cam-painel d-none">
-    <div class="monitor-cam-header">
-        <h6><i class="bi bi-activity me-2"></i>Status das Câmeras</h6>
-        <small class="text-muted" id="monitor-cam-ts-geral"></small>
-    </div>
-    <div class="d-flex flex-wrap gap-2" id="monitor-cam-lista"></div>
-</div>
-
-<!-- Painel: status dos dispositivos NioBox (checagem ao vivo, sem pulso) -->
-<div id="painel-monitor-dispositivos" class="monitor-cam-painel d-none">
-    <div class="monitor-cam-header">
-        <h6><i class="bi bi-hdd-network me-2"></i>Status dos Dispositivos</h6>
-        <small class="text-muted" id="monitor-disp-ts-geral"></small>
-    </div>
-    <div class="d-flex flex-wrap gap-2" id="monitor-disp-lista"></div>
+<!-- Painel: status das câmeras + dispositivos NioBox, em uma única linha -->
+<div id="painel-monitor-status" class="monitor-status-linha d-none">
+    <span class="monitor-status-grupo"><i class="bi bi-camera-video"></i><span id="monitor-cam-lista" class="monitor-status-grupo"></span></span>
+    <span class="monitor-status-grupo"><i class="bi bi-hdd-network"></i><span id="monitor-disp-lista" class="monitor-status-grupo"></span></span>
+    <small class="text-muted monitor-status-ts" id="monitor-status-ts"></small>
 </div>
 
 <!-- Painel de Câmeras (visível somente se existirem câmeras com RTSP) -->
@@ -2118,34 +2115,43 @@
     }
 
     /* ── Status das câmeras (monitor background) ──── */
+    let _ultimoStatusTs = null;
+
+    // Painel único (câmeras + dispositivos, uma linha) — mostra assim que qualquer
+    // um dos dois grupos tiver dado, e só atualiza o timestamp exibido se for mais
+    // recente que o que já está na tela (as duas checagens rodam independentes).
+    function _atualizarPainelStatus(ts, em) {
+        document.getElementById('painel-monitor-status').classList.remove('d-none');
+        if (ts && (!_ultimoStatusTs || ts > _ultimoStatusTs)) {
+            _ultimoStatusTs = ts;
+            document.getElementById('monitor-status-ts').textContent = 'Última verificação: ' + em;
+        }
+    }
+
     function carregarStatusCameras() {
         fetch(`/api/operador/monitor-cameras/${condId}`)
             .then(r => r.json())
             .then(data => {
                 if (!data.success || !Array.isArray(data.cameras) || data.cameras.length === 0) return;
 
-                const painel  = document.getElementById('painel-monitor-cameras');
-                const lista   = document.getElementById('monitor-cam-lista');
-                const tsGeral = document.getElementById('monitor-cam-ts-geral');
-
-                // Timestamp da verificação mais recente
+                const lista = document.getElementById('monitor-cam-lista');
                 const ref = data.cameras.reduce((best, c) => {
                     return (!best || (c.checado_ts && c.checado_ts > best.ts))
                         ? { ts: c.checado_ts, em: c.checado_em }
                         : best;
                 }, null);
-                tsGeral.textContent = ref ? 'Última verificação: ' + ref.em : '';
 
                 lista.innerHTML = data.cameras.map(c => {
                     const cls = c.ativo ? 'bg-success' : 'bg-danger';
                     const txt = c.ativo ? 'Ativo' : 'Inativo';
-                    return `<div class="monitor-cam-item">
+                    return `<span class="monitor-cam-item">
                                 <span class="badge ${cls}">${txt}</span>
                                 <span class="monitor-cam-nome">${c.nome}</span>
-                            </div>`;
+                            </span>`;
                 }).join('');
 
-                painel.classList.remove('d-none');
+                if (ref) _atualizarPainelStatus(ref.ts, ref.em);
+                else document.getElementById('painel-monitor-status').classList.remove('d-none');
             })
             .catch(() => {});
     }
@@ -2157,28 +2163,24 @@
             .then(data => {
                 if (!data.success || !Array.isArray(data.dispositivos) || data.dispositivos.length === 0) return;
 
-                const painel  = document.getElementById('painel-monitor-dispositivos');
-                const lista   = document.getElementById('monitor-disp-lista');
-                const tsGeral = document.getElementById('monitor-disp-ts-geral');
-
-                // Timestamp da verificação mais recente
+                const lista = document.getElementById('monitor-disp-lista');
                 const ref = data.dispositivos.reduce((best, d) => {
                     return (!best || (d.checado_ts && d.checado_ts > best.ts))
                         ? { ts: d.checado_ts, em: d.checado_em }
                         : best;
                 }, null);
-                tsGeral.textContent = ref ? 'Última verificação: ' + ref.em : '';
 
                 lista.innerHTML = data.dispositivos.map(d => {
                     const cls = d.ativo ? 'bg-success' : 'bg-danger';
                     const txt = d.ativo ? 'Online' : 'Offline';
-                    return `<div class="monitor-cam-item">
+                    return `<span class="monitor-cam-item">
                                 <span class="badge ${cls}">${txt}</span>
                                 <span class="monitor-cam-nome">${d.label}</span>
-                            </div>`;
+                            </span>`;
                 }).join('');
 
-                painel.classList.remove('d-none');
+                if (ref) _atualizarPainelStatus(ref.ts, ref.em);
+                else document.getElementById('painel-monitor-status').classList.remove('d-none');
             })
             .catch(() => {});
     }
