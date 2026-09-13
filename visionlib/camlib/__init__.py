@@ -34,9 +34,16 @@ def obter_status_cameras(idcond: int) -> list:
                    COALESCE(cc.nomecamera, CONCAT('Câm. ', cc.idcam)) AS nome,
                    cw.ultimo_status                                    AS status,
                    cw.ultima_verificacao,
-                   UNIX_TIMESTAMP(cw.ultima_verificacao)              AS checado_ts
+                   UNIX_TIMESTAMP(cw.ultima_verificacao)              AS checado_ts,
+                   TIMESTAMPDIFF(SECOND, ev.offline_desde, NOW())     AS offline_segundos
             FROM cadcamera cc
             JOIN camwatch.camera cw ON cw.id = cc.camwatch_camera_id
+            LEFT JOIN (
+                SELECT camera_id, MAX(timestamp) AS offline_desde
+                FROM camwatch.evento_camera
+                WHERE status = 'offline'
+                GROUP BY camera_id
+            ) ev ON ev.camera_id = cw.id
             WHERE cc.idcond = %s
               AND cc.camwatch_camera_id IS NOT NULL
             ORDER BY cc.nomecamera
@@ -45,12 +52,16 @@ def obter_status_cameras(idcond: int) -> list:
         result = []
         for row in rows:
             dt = row['ultima_verificacao']
+            ativo = (row['status'] == 'online') if row['status'] is not None else None
             result.append({
-                'idcam':      row['idcam'],
-                'nome':       row['nome'],
-                'ativo':      (row['status'] == 'online') if row['status'] is not None else None,
-                'checado_em': dt.strftime('%d/%m/%Y %H:%M:%S') if dt else None,
-                'checado_ts': float(row['checado_ts']) if row['checado_ts'] else None,
+                'idcam':           row['idcam'],
+                'nome':            row['nome'],
+                'ativo':           ativo,
+                'checado_em':      dt.strftime('%d/%m/%Y %H:%M:%S') if dt else None,
+                'checado_ts':      float(row['checado_ts']) if row['checado_ts'] else None,
+                # só faz sentido quando ativo=False; evento offline pode ser antigo
+                # (já recuperado) se ativo for True/None, por isso o filtro explícito
+                'offline_segundos': int(row['offline_segundos']) if (ativo is False and row['offline_segundos'] is not None) else None,
             })
         return result
     except Exception as e:
@@ -59,3 +70,12 @@ def obter_status_cameras(idcond: int) -> list:
     finally:
         cursor.close()
         conn.close()
+
+
+def formatar_duracao(segundos: int) -> str:
+    """Formata segundos como 'X min' ou 'Xh Ymin' — usado no alerta de WhatsApp."""
+    minutos = segundos // 60
+    if minutos < 60:
+        return f"{minutos} min"
+    horas, minutos_resto = divmod(minutos, 60)
+    return f"{horas}h{minutos_resto:02d}min" if minutos_resto else f"{horas}h"

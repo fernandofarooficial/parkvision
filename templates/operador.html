@@ -2128,6 +2128,13 @@
         }
     }
 
+    function _formatarDuracao(segundos) {
+        const min = Math.floor(segundos / 60);
+        if (min < 60) return `${min} min`;
+        const h = Math.floor(min / 60), restoMin = min % 60;
+        return restoMin ? `${h}h${String(restoMin).padStart(2, '0')}min` : `${h}h`;
+    }
+
     function carregarStatusCameras() {
         fetch(`/api/operador/monitor-cameras/${condId}`)
             .then(r => r.json())
@@ -2144,9 +2151,13 @@
                 lista.innerHTML = data.cameras.map(c => {
                     const cls = c.ativo ? 'bg-success' : 'bg-danger';
                     const txt = c.ativo ? 'Ativo' : 'Inativo';
+                    const duracao = (!c.ativo && c.offline_segundos != null)
+                        ? `<span class="text-muted" style="font-size:.75rem">há ${_formatarDuracao(c.offline_segundos)}</span>`
+                        : '';
                     return `<span class="monitor-cam-item">
                                 <span class="badge ${cls}">${txt}</span>
                                 <span class="monitor-cam-nome">${c.nome}</span>
+                                ${duracao}
                             </span>`;
                 }).join('');
 
