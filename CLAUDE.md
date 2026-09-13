@@ -105,7 +105,7 @@ templates/
 static/               # CSS, imagens
   icons/              # Ícones PWA (apple-touch-icon, favicon, icon-192, icon-512)
   manifest.json       # Web App Manifest (PWA)
-  sw.js               # Service Worker (PWA — cache offline básico)
+  sw.js               # Service Worker (cache offline básico + eventos push/notificationclick) — servido em /sw.js (raiz), não /static/sw.js (ver seção "Versão Mobile (PWA)")
 ArquivosApoio/        # Scripts utilitários (não entram em produção)
 doc_suporte/BaseDeDados/
   base_parkvision.txt # Schema MySQL completo
@@ -155,7 +155,7 @@ return jsonify({'success': False, 'message': 'Mensagem de erro'})
 - Tipos: `ADM` (total), `MONITOR` (leitura + edição), `SINDICO` (somente leitura — visualização e relatórios)
 - Em código legado: `globals.verificar_autenticacao()` / `globals.verificar_acesso_condominio(idcond)`
 
-**Enforcement de SINDICO somente leitura:** hook global `bloquear_escrita_sindico` (`@app.before_request` em `main.py`) bloqueia qualquer requisição `POST`/`PUT`/`DELETE`/`PATCH` de usuário `SINDICO`, exceto as rotas em `_ROTAS_ESCRITA_LIVRES_SINDICO` (login/logout/alterar-senha/recuperação de senha, solicitação de inscrição e o webhook do Heimdall). Novas rotas de escrita ficam bloqueadas para SINDICO por padrão — só adicionar à allowlist se for autoatendimento de conta ou endpoint público/webhook sem sessão de usuário.
+**Enforcement de SINDICO somente leitura:** hook global `bloquear_escrita_sindico` (`@app.before_request` em `main.py`) bloqueia qualquer requisição `POST`/`PUT`/`DELETE`/`PATCH` de usuário `SINDICO`, exceto as rotas em `_ROTAS_ESCRITA_LIVRES_SINDICO` (login/logout/alterar-senha/recuperação de senha, solicitação de inscrição, o webhook do Heimdall, e `/api/m/push-subscribe`/`push-unsubscribe`). Novas rotas de escrita ficam bloqueadas para SINDICO por padrão — só adicionar à allowlist se for autoatendimento de conta (ex: ativar notificação push) ou endpoint público/webhook sem sessão de usuário.
 
 ### Logging
 ```python
@@ -184,6 +184,7 @@ Nomenclatura legacy compacta (não mudar):
 | `logbruto` | JSON bruto do Heimdall (`idlog`, `placalida`, `nowpost`, `nomecam`, `idcam`, `jsonbruto`) — inclui a foto do veículo em `jsonbruto.data.image_base64`; retenção automática de `LOGBRUTO_RETENCAO_POR_COND` (20) registros por condomínio (via `idcam`→`cadcamera.idcond`), apagando os mais antigos a cada novo insert (`visionlib/dblib/limitar_logbruto_por_condominio`) — não há mascaramento de conteúdo, o volume é controlado só pela quantidade de linhas |
 | `logsistema` | Logs do sistema (`idlog`, `nivel`, `mensagem`, `criado_em`) — gravação assíncrona via `loglib`, retenção de 3 dias (limpeza automática a cada hora) |
 | `usuarios` | Usuários (`idgente`, `tipo_usuario`, `ativo`) |
+| `usuario_condominios` | Quais condomínios cada usuário pode acessar (`idgente`, `idcond`) — fonte de `session['usuario']['condominios']` no login; `ADM` tem acesso a todos independente de linha aqui. Consultada direto (sem sessão) por `pushlib._obter_inscricoes_condominio` pra decidir quem recebe alerta de status |
 | `deparaplacas` | Correções de leitura (`placade` CHAR(7) PK = placa lida errada, `placapara` = placa correta, `ocorrencias` = quantas vezes essa correção já se repetiu — ver seção "Matching Aprendido de Placas") |
 | `matching_sombra` | Modo sombra do matching aprendido (`idcond`, `placalida`, `placa_sugerida`, `ocorrencias_no_momento`, `criado_em`) — sugestões da Fase 3 registradas sem serem aplicadas, para avaliação posterior (ver seção "Matching Aprendido de Placas") |
 | `cadmensagem_whatsapp` | Destino de WhatsApp por condomínio (`idcond` PK, `numero`) para os alertas de mudança de status de câmera/NioBox — ver seção "Alertas de Status (WhatsApp + Push Mobile)". Sem linha para o condomínio, o alerta é só pulado (sem erro) |
@@ -260,6 +261,8 @@ O endpoint antigo (`/api/consulta-veiculo/<placa>`, `listlib.consulta_veiculo`, 
 
 Rotas sob o prefixo `/app/` servem a interface mobile — uma PWA instalável via `static/manifest.json` + `static/sw.js`.
 
+**Service Worker servido na raiz (`/sw.js`), não em `/static/sw.js`:** o escopo padrão de um Service Worker é o diretório do próprio script — registrado em `/static/sw.js` ele nunca controlaria páginas em `/app/`, e qualquer código que dependa de `navigator.serviceWorker.ready` (ex: notificações push) ficaria pendurado pra sempre, sem erro algum (foi exatamente o que quebrou o botão de notificações até ser diagnosticado). Rota dedicada em `main.py` (`/sw.js`, mesmo padrão já usado para `apple-touch-icon.png`/`favicon.ico`, que o iOS também exige na raiz) serve o arquivo físico que continua em `static/sw.js`. As três páginas que registram o Service Worker (`login.html`, `condominio.html`, `monitoramento.html`) chamam `navigator.serviceWorker.register('/sw.js')` — nunca `/static/sw.js`.
+
 ### Rotas de página
 
 | Rota | Descrição |
@@ -287,19 +290,29 @@ Todas exigem autenticação via `verificar_autenticacao_usuario()` e leem `idcon
 | `/api/m/criar-permissao` | POST | `permlib` | Cria nova permissão (veículo já cadastrado) |
 | `/api/m/modificar-permissao` | PUT | `permlib` | Altera prazo de permissão vigente |
 | `/api/m/novo-veiculo` | POST | `mobilelib` | Cria veículo + permissão em uma operação |
+| `/api/m/status-monitoramento` | GET | `camlib` + `operlib` | Status de câmeras (CamWatch) e dispositivos NioBox do condomínio — mesmas funções da tela Operador desktop (`obter_status_cameras`/`obter_status_dispositivos`) |
+| `/api/m/push-subscribe` | POST | `pushlib` | Salva inscrição de Web Push do dispositivo, vinculada a `session['usuario']['idgente']`. Na allowlist de escrita do SINDICO (autoatendimento de preferência pessoal) |
+| `/api/m/push-unsubscribe` | POST | `pushlib` | Remove inscrição de Web Push pelo `endpoint`. Também na allowlist do SINDICO |
 
 > Para marcas/modelos/cores, o frontend mobile usa as APIs públicas já existentes: `/api/marcas`, `/api/modelos/<marca>`, `/api/cores`.
 
 ### Funcionalidades da SPA (`/app/monitoramento`)
 
-Menu inferior com 4 abas:
+Menu inferior com 5 abas:
 - **Início** — monitoramento em tempo real (polling 30 s)
 - **Mapa** — barra de estatísticas (Unidades, Permitidas, Ocupadas, Livres) + grid de unidades com código de cores (Excesso=vermelho, Completo=azul, Parcial=amarelo, Livre=branco); cada unidade exibe `vocup/vperm` e vagas disponíveis (`vperm - vocup`); toque na unidade abre veículos estacionados
   - `total_vagas_permitidas` (card "Permitidas") vem de `cadcond.limite`, com fallback para soma de `vagasunidades.vperm` (`dashlib`)
   - Classe CSS de status "Livre" é `livre` (não usar `vazio` — colide com a classe genérica de lista vazia e desconfigura o tamanho da célula/legenda)
+- **Monitor** — status de câmeras (Ativo/Inativo, com "há X min" quando offline) e dispositivos NioBox (Online/Offline), via `/api/m/status-monitoramento`; carregado sob demanda na primeira vez que a aba abre (mesmo padrão de Mapa/Estacionados). No topo, botão Ativar/Desativar notificações push (ver seção "Alertas de Status")
 - **Estacionados** — lista de veículos com placa, unidade, veículo, hora de entrada
 - **Mais (⋮)** — abre 4 formulários deslizantes: Novo Veículo, Criar Permissão, Alterar Permissão, Consulta
   - Perfil `SINDICO` (somente leitura) não vê os itens Novo Veículo, Criar Permissão e Alterar Permissão no menu — apenas Consulta (`templates/mobile/monitoramento.html`, condicional `{% if usuario.tipo_usuario != 'SINDICO' %}`). É reforço de UI: o bloqueio real já é feito no backend por `bloquear_escrita_sindico`.
+
+### Notificações Push (mobile)
+
+Botão na aba Monitor (`alternarNotificacoes()` em `monitoramento.html`) pede permissão do navegador (`Notification.requestPermission()`), assina via `PushManager.subscribe()` (chave pública em `VAPID_PUBLIC_KEY`, injetada no template) e manda a inscrição pra `/api/m/push-subscribe`. Todo o fluxo tem tratamento de erro visível no texto de status (não falha silenciosamente) — importante porque não dá pra inspecionar o console do Safari/iOS remotamente. `Notification.requestPermission()` é chamado o mais perto possível do clique, sem `fetch`/rede antes, porque o WebKit (Safari/iOS) é rígido quanto a isso — um `await` de rede antes pode fazer o navegador simplesmente não mostrar o prompt.
+
+**iOS:** exige 16.4+ e que o PWA tenha sido adicionado à Tela de Início (Safari "solto", sem instalar, não expõe a Push API — `'PushManager' in window` retorna `false` e o botão mostra "Não suportado neste navegador"). Testado funcionando em iOS 26.x, inclusive espelhando a notificação para o Apple Watch automaticamente (comportamento padrão do iOS, nada específico do ParkVision).
 
 ### Funções do `mobilelib`
 
@@ -373,7 +386,8 @@ Quando uma câmera (via CamWatch) ou um NioBox muda de `online` para `offline` (
 - **Envio push mobile:** `visionlib/pushlib.enviar_push(idcond, titulo, corpo)` — Web Push padrão (VAPID), biblioteca `pywebpush`. Manda pra **todo usuário ativo com acesso ao `idcond`** no momento do envio (`usuarios.tipo_usuario = 'ADM'` OU existe linha em `usuario_condominios` — não usa sessão, quem envia é a thread de background). Cada inscrição é um dispositivo/navegador (`push_subscriptions`); usuário com vários dispositivos recebe em todos. Configuração em `.env`: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY_FILE` (caminho pro `.pem`, nunca committar — está no `.gitignore`), `VAPID_CLAIMS_EMAIL`. Resposta `404`/`410` do push service (inscrição expirada/revogada) remove a linha de `push_subscriptions` automaticamente.
 - **Onde o usuário ativa/desativa (mobile):** aba "Monitor" (`templates/mobile/monitoramento.html`) tem um botão Ativar/Desativar que pede permissão do navegador (`Notification.requestPermission()`), assina via `PushManager.subscribe()` e manda a inscrição pra `/api/m/push-subscribe` (ou `/api/m/push-unsubscribe`) — essas duas rotas estão na allowlist de escrita do SINDICO (`_ROTAS_ESCRITA_LIVRES_SINDICO`, é autoatendimento de preferência pessoal, não dado operacional do condomínio). O Service Worker (`static/sw.js`) trata os eventos `push` (exibe a notificação) e `notificationclick` (foca ou abre `/app/monitoramento`).
 - **"Já notificado" e os dois canais:** `statuslib._notificar()` manda pelos dois canais e só marca o episódio como notificado (evita repetir a cada ciclo) se **pelo menos um** dos dois entregou com sucesso — então se só o WhatsApp estiver configurado (ou só o push), a notificação sai mesmo assim; se nenhum dos dois estiver configurado/tiver destinatário, a tentativa se repete a cada ciclo até que um funcione.
-- **O que NÃO está coberto:** condomínios sem `camwatch_camera_id` nem `iddisp` configurado não entram na checagem (`statuslib._listar_condominios_monitorados` só olha `cadcamera`). Uma câmera com `camwatch.camera.ultimo_status = 'desconhecido'` (ou `NULL`) é tratada como "sem dado" e não conta como mudança de estado nem soma tempo de offline. Web Push em iOS só funciona se o usuário adicionou o PWA à tela de início (Safari "solto" não recebe push).
+- **O que NÃO está coberto:** condomínios sem `camwatch_camera_id` nem `iddisp` configurado não entram na checagem (`statuslib._listar_condominios_monitorados` só olha `cadcamera`). Uma câmera com `camwatch.camera.ultimo_status = 'desconhecido'` (ou `NULL`) é tratada como "sem dado" e não conta como mudança de estado nem soma tempo de offline. Web Push em iOS depende do Service Worker estar em `/sw.js` (raiz) — ver seção "Versão Mobile (PWA)"; sem isso `navigator.serviceWorker.ready` nunca resolve e o botão de notificações trava sem erro.
+- **Validado em produção (2026-09-13):** WhatsApp e push mobile testados de ponta a ponta — mensagem de teste recebida em ambos os canais; push confirmado em iOS 26.x, inclusive espelhando automaticamente pro Apple Watch (comportamento padrão do iOS, não é nada específico do ParkVision).
 
 ## Fluxo LPR (informação para contexto)
 
