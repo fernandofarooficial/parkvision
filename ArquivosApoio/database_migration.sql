@@ -213,6 +213,28 @@ CREATE TABLE IF NOT EXISTS cadmensagem_whatsapp (
     PRIMARY KEY (idcond)
 );
 
+-- 16. Inscrições de Web Push (mobile) para os mesmos alertas do WhatsApp (2026-09-13)
+-- Cada linha é a inscrição de um dispositivo (endpoint do navegador) para
+-- notificações push, vinculada ao usuário que autorizou (idgente). Quando uma
+-- câmera/NioBox muda de status, visionlib/statuslib manda a mesma notificação
+-- (WhatsApp + push) para os usuários com acesso ao condomínio no momento —
+-- consulta usuario_condominios (+ ADM, que tem acesso a tudo), não a sessão
+-- (quem dispara o envio é uma thread de background, sem sessão de ninguém).
+-- Um usuário pode ter várias linhas (um dispositivo/navegador por linha).
+-- Assinatura inválida/expirada (push service responde 404/410) é removida
+-- pelo próprio código de envio, não precisa de limpeza manual.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INT NOT NULL AUTO_INCREMENT,
+    idgente INT NOT NULL,
+    endpoint VARCHAR(500) NOT NULL,
+    p256dh VARCHAR(255) NOT NULL,
+    auth VARCHAR(255) NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_endpoint (endpoint),
+    KEY idx_idgente (idgente)
+);
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 --
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded

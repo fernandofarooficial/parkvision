@@ -7,3 +7,4 @@ pytz
 python-dotenv
 opencv-python-headless
 bcrypt
+pywebpush

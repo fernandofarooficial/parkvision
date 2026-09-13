@@ -399,6 +399,16 @@
     <!-- ══════════════════ VIEW: STATUS (Câmeras / NioBox) ══════════════════ -->
     <div id="view-status" class="view">
         <div class="lista">
+            <div class="card">
+                <div class="status-item" style="border:none;padding:0">
+                    <div>
+                        <div class="status-nome">Notificações no celular</div>
+                        <div class="status-duracao" id="push-status-texto">Verificando…</div>
+                    </div>
+                    <button class="btn-secondary" style="width:auto;padding:8px 14px;margin:0"
+                            id="btn-push-toggle" onclick="alternarNotificacoes()">Ativar</button>
+                </div>
+            </div>
             <div class="secao-titulo">Câmeras</div>
             <div class="card">
                 <div id="status-cameras-lista"><div class="spinner">Carregando…</div></div>
@@ -721,6 +731,7 @@
 
     <script>
         const IDCOND = {{ idcond }};
+        const VAPID_PUBLIC_KEY = "{{ vapid_public_key }}";
         let mapaCarregado = false;
         let estCarregado  = false;
         let statusCarregado = false;
@@ -736,6 +747,7 @@
             if (tab === 'mapa' && !mapaCarregado) carregarMapa();
             if (tab === 'estacionados' && !estCarregado) carregarEstacionados();
             if (tab === 'status' && !statusCarregado) carregarStatusMonitoramento();
+            if (tab === 'status') atualizarStatusPush();
         }
 
         /* ══════════════════ SHEETS ══════════════════ */
@@ -1244,6 +1256,65 @@
 
         /* ══════════════════ PWA ══════════════════ */
         if ('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+
+        /* ══════════════════ NOTIFICAÇÕES PUSH ══════════════════ */
+
+        function _urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = atob(base64);
+            return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+        }
+
+        async function atualizarStatusPush() {
+            const btn = document.getElementById('btn-push-toggle');
+            const txt = document.getElementById('push-status-texto');
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || !VAPID_PUBLIC_KEY) {
+                txt.textContent = 'Não suportado neste navegador';
+                btn.style.display = 'none';
+                return;
+            }
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                const sub = await reg.pushManager.getSubscription();
+                if (sub) {
+                    txt.textContent = 'Ativadas neste dispositivo';
+                    btn.textContent = 'Desativar';
+                } else {
+                    txt.textContent = 'Avisa quando câmera/dispositivo cair';
+                    btn.textContent = 'Ativar';
+                }
+            } catch { txt.textContent = 'Não disponível'; btn.style.display = 'none'; }
+        }
+
+        async function alternarNotificacoes() {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            try {
+                if (sub) {
+                    await fetch('/api/m/push-unsubscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoint: sub.endpoint }),
+                    });
+                    await sub.unsubscribe();
+                } else {
+                    const permissao = await Notification.requestPermission();
+                    if (permissao !== 'granted') { atualizarStatusPush(); return; }
+                    const novaSub = await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+                    });
+                    const j = novaSub.toJSON();
+                    await fetch('/api/m/push-subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys }),
+                    });
+                }
+            } catch { /* usuário cancelou o prompt, ou navegador bloqueou — sem erro visível */ }
+            atualizarStatusPush();
+        }
     </script>
 </body>
 </html>

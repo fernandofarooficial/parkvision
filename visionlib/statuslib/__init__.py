@@ -3,7 +3,8 @@
 # ---------------------
 # Monitoramento em background de mudança de status (online/offline) de câmeras
 # (lidas do CamWatch, ver camlib) e dispositivos NioBox (ver operlib) — envia
-# WhatsApp via Evolution API quando muda, nunca a cada checagem.
+# WhatsApp (Evolution API) e push mobile (pushlib, Web Push/VAPID) quando muda,
+# nunca a cada checagem. Mesmo conteúdo nos dois canais.
 #
 # Câmeras e dispositivos usam critérios diferentes de notificação:
 #   - Câmera: só notifica offline depois de CAM_LIMIAR_OFFLINE_SEGUNDOS (10 min)
@@ -33,6 +34,7 @@ import requests
 from config.database import get_db_connection
 from visionlib.camlib import obter_status_cameras, formatar_duracao
 from visionlib.operlib import obter_status_dispositivos
+from visionlib import pushlib
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,22 @@ def _enviar_whatsapp(numero, mensagem):
         return False
 
 
+def _notificar(idcond, nome_cond, numero_whatsapp, corpo):
+    """
+    Manda o mesmo alerta pelos dois canais — WhatsApp (número por condomínio,
+    cadmensagem_whatsapp) e push mobile (todo usuário com acesso ao
+    condomínio, ver pushlib). Retorna True se pelo menos um canal entregou.
+    """
+    titulo = f"ParkVision — {nome_cond}"
+    ok_whatsapp = _enviar_whatsapp(numero_whatsapp, f"{titulo}\n{corpo}")
+    try:
+        ok_push = pushlib.enviar_push(idcond, titulo, corpo)
+    except Exception as e:
+        logger.error(f"statuslib._notificar: push falhou — {e}")
+        ok_push = False
+    return ok_whatsapp or ok_push
+
+
 def _verificar_cameras_condominio(idcond, nome_cond, numero_whatsapp):
     """
     Checa as câmeras do condomínio. Notifica OFFLINE só após
@@ -147,9 +165,8 @@ def _verificar_cameras_condominio(idcond, nome_cond, numero_whatsapp):
             with _status_lock:
                 estava_notificado = _cam_notificado.pop(chave, False)
             if estava_notificado:
-                mensagem = f"ParkVision — {nome_cond}\nCâmera {cam['nome']}: ONLINE ✅ (voltou)"
                 logger.info(f"statuslib: câmera recuperada — {nome_cond} / {cam['nome']}")
-                _enviar_whatsapp(numero_whatsapp, mensagem)
+                _notificar(idcond, nome_cond, numero_whatsapp, f"Câmera {cam['nome']}: ONLINE ✅ (voltou)")
             continue
 
         algum_offline = True
@@ -158,9 +175,8 @@ def _verificar_cameras_condominio(idcond, nome_cond, numero_whatsapp):
             ja_notificado = _cam_notificado.get(chave, False)
         if not ja_notificado and segundos >= CAM_LIMIAR_OFFLINE_SEGUNDOS:
             duracao = formatar_duracao(segundos)
-            mensagem = f"ParkVision — {nome_cond}\nCâmera {cam['nome']}: OFFLINE ⚠️ há {duracao}"
             logger.info(f"statuslib: câmera offline confirmada — {nome_cond} / {cam['nome']} ({duracao})")
-            if _enviar_whatsapp(numero_whatsapp, mensagem):
+            if _notificar(idcond, nome_cond, numero_whatsapp, f"Câmera {cam['nome']}: OFFLINE ⚠️ há {duracao}"):
                 with _status_lock:
                     _cam_notificado[chave] = True
 
@@ -182,9 +198,8 @@ def _verificar_dispositivos_condominio(idcond, nome_cond, numero_whatsapp):
             continue
 
         status_txt = 'ONLINE ✅' if ativo else 'OFFLINE ⚠️'
-        mensagem = f"ParkVision — {nome_cond}\nDispositivo {disp['label']}: {status_txt}"
         logger.info(f"statuslib: mudança de status — {nome_cond} / Dispositivo {disp['label']} -> {status_txt}")
-        _enviar_whatsapp(numero_whatsapp, mensagem)
+        _notificar(idcond, nome_cond, numero_whatsapp, f"Dispositivo {disp['label']}: {status_txt}")
 
 
 def _monitor_loop(interval_normal_seconds):

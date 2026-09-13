@@ -44,6 +44,7 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_resumo_vagas_cond, obter_acoes_recentes)
 from visionlib.camlib import obter_status_cameras
 from visionlib.statuslib import iniciar_monitor_status
+from visionlib.pushlib import salvar_inscricao, remover_inscricao
 from visionlib.loglib import iniciar_persistencia_logs, obter_logs, contar_logs, limpar_todos as limpar_todos_logs
 from visionlib.mobilelib import (obter_ultimos_movimentos_mobile, obter_estacionados_mobile,
                                   obter_veiculos_unidade_mobile, novo_veiculo_mobile,
@@ -86,6 +87,8 @@ _ROTAS_ESCRITA_LIVRES_SINDICO = {
     '/api/solicitar-inscricao',
     '/api/heimdall/webservice/lpr',
     '/app/login',
+    '/api/m/push-subscribe',
+    '/api/m/push-unsubscribe',
 }
 
 
@@ -1183,7 +1186,8 @@ def mobile_monitoramento():
                            usuario=usuario,
                            idcond=idcond,
                            nmcond=nmcond,
-                           movimentos=movimentos)
+                           movimentos=movimentos,
+                           vapid_public_key=os.getenv('VAPID_PUBLIC_KEY', ''))
 
 
 @app.route('/app/logout')
@@ -1241,6 +1245,33 @@ def api_m_status_monitoramento():
     cameras = obter_status_cameras(idcond)
     dispositivos = obter_status_dispositivos(idcond)
     return jsonify({'success': True, 'cameras': cameras, 'dispositivos': dispositivos})
+
+
+@app.route('/api/m/push-subscribe', methods=['POST'])
+def api_m_push_subscribe():
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    data = request.get_json() or {}
+    endpoint = data.get('endpoint')
+    keys = data.get('keys', {})
+    if not endpoint or not keys.get('p256dh') or not keys.get('auth'):
+        return jsonify({'success': False, 'message': 'Inscrição inválida'}), 400
+    ok = salvar_inscricao(usuario['idgente'], endpoint, keys['p256dh'], keys['auth'])
+    return jsonify({'success': ok})
+
+
+@app.route('/api/m/push-unsubscribe', methods=['POST'])
+def api_m_push_unsubscribe():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    data = request.get_json() or {}
+    endpoint = data.get('endpoint')
+    if not endpoint:
+        return jsonify({'success': False, 'message': 'Endpoint obrigatório'}), 400
+    ok = remover_inscricao(endpoint)
+    return jsonify({'success': ok})
 
 
 @app.route('/api/m/unidade-veiculos/<unidade>')
