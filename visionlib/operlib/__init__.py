@@ -250,7 +250,7 @@ def _camera_tem_dispositivo(idcam):
         conn.close()
 
 
-def _enviar_pulso_dispositivo(idcam, idcond):
+def _enviar_pulso_dispositivo(idcam, idcond, direcao=None):
     """
     Envia pulso ao relé do dispositivo associado à câmera que gerou o movimento.
 
@@ -262,9 +262,12 @@ def _enviar_pulso_dispositivo(idcam, idcond):
     if not idcam or not idcond:
         return
 
+    direcao_label = 'saída' if direcao == 'S' else 'entrada'
+    tag = f"_enviar_pulso_dispositivo({direcao_label})"
+
     conn = get_db_connection()
     if not conn:
-        logger.warning("_enviar_pulso_dispositivo: sem conexão com o banco")
+        logger.warning(f"{tag}: sem conexão com o banco")
         return
 
     cursor = conn.cursor(dictionary=True)
@@ -285,7 +288,7 @@ def _enviar_pulso_dispositivo(idcam, idcond):
 
     if not row:
         logger.info(
-            f"_enviar_pulso_dispositivo: nenhum dispositivo configurado "
+            f"{tag}: nenhum dispositivo configurado "
             f"para idcam={idcam}, idcond={idcond}"
         )
         return
@@ -301,7 +304,7 @@ def _enviar_pulso_dispositivo(idcam, idcond):
         ultima = _pulse_dedup.get(dedup_key)
         if ultima is not None and (now - ultima) < PULSE_DEDUP_SECONDS:
             logger.warning(
-                f"_enviar_pulso_dispositivo: pulso IGNORADO (dedup {now - ultima:.1f}s < {PULSE_DEDUP_SECONDS}s) "
+                f"{tag}: pulso IGNORADO (dedup {now - ultima:.1f}s < {PULSE_DEDUP_SECONDS}s) "
                 f"→ {url} relé={rele} idcam={idcam}"
             )
             return
@@ -314,11 +317,11 @@ def _enviar_pulso_dispositivo(idcam, idcond):
         resp.raise_for_status()
         resultado = resp.json().get("result", "?")
         logger.info(
-            f"_enviar_pulso_dispositivo: pulso enviado → {url} "
+            f"{tag}: pulso enviado → {url} "
             f"relé={rele} resultado={resultado}"
         )
     except requests.exceptions.RequestException as e:
-        logger.error(f"_enviar_pulso_dispositivo: falha ao enviar pulso → {url} — {e}")
+        logger.error(f"{tag}: falha ao enviar pulso → {url} — {e}")
 
 
 def obter_cameras_dispositivo_por_direcao(idcond):
@@ -380,7 +383,7 @@ def enviar_pulso_por_direcao(idcond, direcao):
         f"câmeras={[c['idcam'] for c in cameras]}"
     )
     for cam in cameras:
-        _enviar_pulso_dispositivo(cam['idcam'], idcond)
+        _enviar_pulso_dispositivo(cam['idcam'], idcond, direcao)
 
     return {'success': True, 'message': f'Pulso enviado ({len(cameras)} câmera(s))'}
 
@@ -594,7 +597,7 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL', s
 
         # Enviar pulso: entrada (A, C, E, G, P) e saída (I, J)
         if statusmov in ('A', 'C', 'E', 'G', 'I', 'J', 'P'):
-            _enviar_pulso_dispositivo(rec.get('idcam'), rec.get('idcond'))
+            _enviar_pulso_dispositivo(rec.get('idcam'), rec.get('idcond'), direcao_cam)
 
         return {'success': True, 'message': 'Ação registrada com sucesso'}
 
