@@ -355,6 +355,8 @@ O ParkVision **não verifica mais suas próprias câmeras** (não há mais RTSP 
 
 Diferente das câmeras (delegadas ao CamWatch), não existe app externo monitorando os relés NioBox — o próprio ParkVision faz a checagem, sem enviar pulso: `visionlib/operlib.obter_status_dispositivos(idcond)` dá um `GET /get_device_info` (rota de leitura do NioBox) em cada dispositivo vinculado a uma câmera do condomínio (`cadcamera.iddisp IS NOT NULL`, via `caddisp.urldisp`), rotulando o resultado por `direcao` (Entrada/Saída) em vez de nome de câmera. Checagem é **ao vivo, a cada chamada** (sem thread própria nem cache em banco) — servida por `/api/operador/monitor-dispositivos/<idcond>`, chamada pelo front a cada 5 min (mesmo cadence do painel de câmeras).
 
+`operlib._checar_dispositivo_online` confirma **online** numa única leitura de sucesso, mas só confirma **offline** depois de `DISPOSITIVO_TENTATIVAS_OFFLINE` (3) leituras seguidas falhando, com `DISPOSITIVO_INTERVALO_RETENTATIVA` (10s) entre cada uma — evita marcar offline por uma falha isolada de rede. Efeito colateral: quando o dispositivo está de fato offline, a checagem daquele dispositivo demora ~20s (2 esperas de 10s) antes de responder; com 2 dispositivos offline no mesmo condomínio (checados em sequência, não em paralelo), a chamada a `obter_status_dispositivos` pode levar ~40s.
+
 ## Alertas de Status (WhatsApp)
 
 Quando uma câmera (via CamWatch) ou um NioBox muda de `online` para `offline` (ou vice-versa), o ParkVision manda um WhatsApp — não usa mais Telegram para isso (o `_notificar_mudanca_status` do `camlib` antigo foi removido junto com o RTSP health-check próprio).

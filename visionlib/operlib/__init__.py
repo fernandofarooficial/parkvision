@@ -392,19 +392,31 @@ def enviar_pulso_por_direcao(idcond, direcao):
 
 _LABEL_DIRECAO_DISPOSITIVO = {'E': 'Entrada', 'S': 'Saída'}
 
+DISPOSITIVO_TENTATIVAS_OFFLINE = 3   # leituras necessárias para confirmar offline
+DISPOSITIVO_INTERVALO_RETENTATIVA = 10  # segundos entre cada leitura de confirmação
+
 
 def _checar_dispositivo_online(urldisp, timeout=3):
     """
     Verifica se o dispositivo (NioBox) está online via GET /get_device_info —
     rota de leitura do próprio dispositivo, NÃO aciona relé/pulso.
+
+    Uma leitura de sucesso já confirma online. Para confirmar offline, faz
+    DISPOSITIVO_TENTATIVAS_OFFLINE leituras com DISPOSITIVO_INTERVALO_RETENTATIVA
+    segundos entre elas — evita marcar offline por uma falha isolada de rede.
     """
     url = f"http://{urldisp.rstrip('/')}/get_device_info"
-    try:
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
-        return resp.json().get('result') == 'success'
-    except (requests.exceptions.RequestException, ValueError):
-        return False
+    for tentativa in range(1, DISPOSITIVO_TENTATIVAS_OFFLINE + 1):
+        try:
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            if resp.json().get('result') == 'success':
+                return True
+        except (requests.exceptions.RequestException, ValueError):
+            pass
+        if tentativa < DISPOSITIVO_TENTATIVAS_OFFLINE:
+            time.sleep(DISPOSITIVO_INTERVALO_RETENTATIVA)
+    return False
 
 
 def obter_status_dispositivos(idcond):
