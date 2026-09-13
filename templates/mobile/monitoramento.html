@@ -1288,31 +1288,74 @@
         }
 
         async function alternarNotificacoes() {
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.getSubscription();
+            const txt = document.getElementById('push-status-texto');
+
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+                txt.textContent = 'Não suportado neste navegador';
+                return;
+            }
+
+            let reg, sub;
             try {
-                if (sub) {
+                reg = await navigator.serviceWorker.ready;
+                sub = await reg.pushManager.getSubscription();
+            } catch (err) {
+                txt.textContent = 'Erro ao acessar o Service Worker';
+                console.error('push: serviceWorker/getSubscription', err);
+                return;
+            }
+
+            if (sub) {
+                try {
                     await fetch('/api/m/push-unsubscribe', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ endpoint: sub.endpoint }),
                     });
                     await sub.unsubscribe();
-                } else {
-                    const permissao = await Notification.requestPermission();
-                    if (permissao !== 'granted') { atualizarStatusPush(); return; }
-                    const novaSub = await reg.pushManager.subscribe({
-                        userVisibleOnly: true,
-                        applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-                    });
-                    const j = novaSub.toJSON();
-                    await fetch('/api/m/push-subscribe', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys }),
-                    });
+                } catch (err) {
+                    txt.textContent = 'Erro ao desativar';
+                    console.error('push: unsubscribe', err);
+                    return;
                 }
-            } catch { /* usuário cancelou o prompt, ou navegador bloqueou — sem erro visível */ }
+                atualizarStatusPush();
+                return;
+            }
+
+            // iOS/Safari é rígido quanto a chamar requestPermission() o mais perto
+            // possível do clique — nada de fetch/rede antes disso.
+            let permissao;
+            try {
+                permissao = await Notification.requestPermission();
+            } catch (err) {
+                txt.textContent = 'Erro ao pedir permissão';
+                console.error('push: requestPermission', err);
+                return;
+            }
+            if (permissao !== 'granted') {
+                txt.textContent = (permissao === 'denied')
+                    ? 'Permissão negada — ative em Ajustes do iPhone > Notificações'
+                    : 'Permissão não concedida';
+                return;
+            }
+
+            try {
+                const novaSub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+                });
+                const j = novaSub.toJSON();
+                await fetch('/api/m/push-subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys }),
+                });
+            } catch (err) {
+                txt.textContent = 'Erro ao assinar notificações';
+                console.error('push: subscribe', err);
+                return;
+            }
+
             atualizarStatusPush();
         }
     </script>
