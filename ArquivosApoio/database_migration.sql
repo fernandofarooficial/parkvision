@@ -123,6 +123,64 @@ ORDER BY s.data_solicitacao ASC;
 ALTER TABLE movcar
     ADD COLUMN IF NOT EXISTS origem ENUM('MANUAL','AUTO') NULL DEFAULT NULL;
 
+-- 10. Fase 0 do plano de matching aprendido de placas (2026-08-16)
+-- Contador de quantas vezes uma leitura (placade) já foi observada — usado para só
+-- aplicar automaticamente uma correção aprendida depois de se repetir (limiar >=3,
+-- validado a partir do histórico real de deparaplacas x movcar).
+ALTER TABLE deparaplacas
+    ADD COLUMN ocorrencias INT NOT NULL DEFAULT 1;
+
+-- Índice em movcar.placalida — necessário para consultar rapidamente o histórico de
+-- leituras brutas por placa (backfill do contador acima e geração periódica da
+-- tabela aprendida de confusões de caractere por posição).
+ALTER TABLE movcar
+    ADD INDEX idx_placalida (placalida);
+
+-- 11. Fase 2 do plano de matching aprendido de placas (2026-08-16)
+-- Backfill único do contador ocorrencias (coluna criada no item 10) a partir do
+-- histórico real de leituras em movcar.placalida. Depois deste backfill, o
+-- contador passa a ser mantido de forma incremental pelo próprio código
+-- (vplib.registrar_ocorrencia_correcao), chamado a cada correção corroborada
+-- pelo cadastro — este UPDATE não precisa ser reexecutado.
+UPDATE deparaplacas dp
+JOIN (
+    SELECT placalida, COUNT(*) AS total
+    FROM movcar
+    WHERE placalida IS NOT NULL
+    GROUP BY placalida
+) mc ON mc.placalida = dp.placade
+SET dp.ocorrencias = mc.total
+WHERE dp.ocorrencias <> mc.total;
+
+-- 12. Fase 5 do plano de matching aprendido de placas (2026-08-16)
+-- Registro do modo sombra: toda vez que a Fase 3 encontraria uma correção
+-- confiável (ocorrencias >= limiar) mas MATCHING_APRENDIDO_AUTO_APLICAR
+-- ainda não está ligada, a sugestão é gravada aqui em vez de aplicada de
+-- verdade. Depois de 2-4 semanas, compara-se placa_sugerida (congelada no
+-- momento) contra o deparaplacas.placapara atual da mesma placa — se
+-- divergirem, um operador corrigiu manualmente para outro lugar depois,
+-- ou seja, a sugestão da Fase 3 teria sido errada.
+CREATE TABLE IF NOT EXISTS matching_sombra (
+    id INT NOT NULL AUTO_INCREMENT,
+    idcond INT NOT NULL,
+    placalida CHAR(7) NOT NULL,
+    placa_sugerida CHAR(7) NOT NULL,
+    ocorrencias_no_momento INT NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_placalida (placalida),
+    KEY idx_criado_em (criado_em)
+);
+
+-- 13. Coluna lup (last update) em deparaplacas (2026-08-17)
+-- Marca a última vez que a linha foi tocada (criação ou incremento de ocorrencias
+-- via vplib.registrar_ocorrencia_correcao, ou correção manual via
+-- vplib.criar_mapeamento_deparaplacas) — antes só existia created_at (data de
+-- criação), sem sinal de "última recorrência". Puramente aditivo, ON UPDATE
+-- automático do MySQL, não exige mudança de código.
+ALTER TABLE deparaplacas
+    ADD COLUMN lup DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 -- 
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded

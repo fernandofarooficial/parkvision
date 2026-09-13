@@ -3,13 +3,384 @@ Biblioteca para processamento de placas de veículos
 Valida e corrige placas lidas pelo sistema Heimdall
 """
 
+import os
 import re
+import time
 import logging
 from config.database import get_db_connection
 from flask import jsonify, request
 import mysql.connector
 
 logger = logging.getLogger(__name__)
+
+# Base fixa de confusões OCR conhecidas — usada como piso mínimo (cold start,
+# antes de existir histórico suficiente em deparaplacas) e sempre combinada
+# com a tabela aprendida em obter_tabela_confusoes().
+_CONFUSOES_OCR_BASE = {
+    '0': ['O', 'Q', 'D'], '1': ['I', 'L', '|'], '5': ['S'], '8': ['B'], '6': ['G'],
+    'O': ['0', 'Q', 'D'], 'I': ['1', 'L', '|'], 'S': ['5'], 'B': ['8'], 'G': ['6'],
+    'Z': ['2'], '2': ['Z'], 'Q': ['O', '0'], 'D': ['0', 'O'], 'L': ['1', 'I', '|'],
+    'E': ['F'], 'F': ['E'],
+}
+
+_CACHE_CONFUSOES = {'dados': None, 'atualizado_em': 0.0}
+_CACHE_CONFUSOES_TTL_SEGUNDOS = 3600  # 1 hora
+
+# Fase 3 do plano de matching aprendido: quantas vezes uma correção precisa se
+# repetir (deparaplacas.ocorrencias) antes de ser aplicada automaticamente sem
+# passar pelo fuzzy match "ao vivo". Validado com o histórico real (ver Fase 2).
+LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA = 3
+
+
+def aplicacao_automatica_ligada():
+    """
+    Fase 5 do plano de matching aprendido (modo sombra): enquanto a env var
+    MATCHING_APRENDIDO_AUTO_APLICAR não estiver 'true', a Fase 3 não aplica
+    a correção de verdade — só registra o que faria (ver
+    registrar_decisao_sombra) para comparar depois contra o que realmente
+    aconteceu. Desligada por padrão (ausente = modo sombra).
+    """
+    return os.getenv('MATCHING_APRENDIDO_AUTO_APLICAR', 'false').strip().lower() == 'true'
+
+# Query dos casos de 1 caractere de diferença em deparaplacas, usada para
+# aprender confusões reais de OCR desta instalação (ver obter_tabela_confusoes).
+_QUERY_DIFERENCAS_1_CHAR = """
+    SELECT char_de, char_para, COUNT(*) AS ocorrencias
+    FROM (
+        SELECT
+            CASE
+                WHEN SUBSTRING(placade,1,1)<>SUBSTRING(placapara,1,1) THEN SUBSTRING(placade,1,1)
+                WHEN SUBSTRING(placade,2,1)<>SUBSTRING(placapara,2,1) THEN SUBSTRING(placade,2,1)
+                WHEN SUBSTRING(placade,3,1)<>SUBSTRING(placapara,3,1) THEN SUBSTRING(placade,3,1)
+                WHEN SUBSTRING(placade,4,1)<>SUBSTRING(placapara,4,1) THEN SUBSTRING(placade,4,1)
+                WHEN SUBSTRING(placade,5,1)<>SUBSTRING(placapara,5,1) THEN SUBSTRING(placade,5,1)
+                WHEN SUBSTRING(placade,6,1)<>SUBSTRING(placapara,6,1) THEN SUBSTRING(placade,6,1)
+                WHEN SUBSTRING(placade,7,1)<>SUBSTRING(placapara,7,1) THEN SUBSTRING(placade,7,1)
+            END AS char_de,
+            CASE
+                WHEN SUBSTRING(placade,1,1)<>SUBSTRING(placapara,1,1) THEN SUBSTRING(placapara,1,1)
+                WHEN SUBSTRING(placade,2,1)<>SUBSTRING(placapara,2,1) THEN SUBSTRING(placapara,2,1)
+                WHEN SUBSTRING(placade,3,1)<>SUBSTRING(placapara,3,1) THEN SUBSTRING(placapara,3,1)
+                WHEN SUBSTRING(placade,4,1)<>SUBSTRING(placapara,4,1) THEN SUBSTRING(placapara,4,1)
+                WHEN SUBSTRING(placade,5,1)<>SUBSTRING(placapara,5,1) THEN SUBSTRING(placapara,5,1)
+                WHEN SUBSTRING(placade,6,1)<>SUBSTRING(placapara,6,1) THEN SUBSTRING(placapara,6,1)
+                WHEN SUBSTRING(placade,7,1)<>SUBSTRING(placapara,7,1) THEN SUBSTRING(placapara,7,1)
+            END AS char_para
+        FROM deparaplacas
+        WHERE
+            (SUBSTRING(placade,1,1)<>SUBSTRING(placapara,1,1))
+           +(SUBSTRING(placade,2,1)<>SUBSTRING(placapara,2,1))
+           +(SUBSTRING(placade,3,1)<>SUBSTRING(placapara,3,1))
+           +(SUBSTRING(placade,4,1)<>SUBSTRING(placapara,4,1))
+           +(SUBSTRING(placade,5,1)<>SUBSTRING(placapara,5,1))
+           +(SUBSTRING(placade,6,1)<>SUBSTRING(placapara,6,1))
+           +(SUBSTRING(placade,7,1)<>SUBSTRING(placapara,7,1)) = 1
+    ) diffs
+    GROUP BY char_de, char_para
+    HAVING COUNT(*) >= %s
+"""
+
+
+def obter_tabela_confusoes(min_ocorrencias=3, forcar_atualizacao=False):
+    """
+    Tabela de confusões de caractere (char -> conjunto de chars que ele pode
+    realmente ser), usada nas correções de leitura do Heimdall. Combina a base
+    fixa de confusões OCR conhecidas com os pares aprendidos a partir do
+    histórico de correções manuais em deparaplacas (só pares de 1 caractere
+    de diferença que já se repetiram >= min_ocorrencias vezes — evita
+    aprender ruído de correções isoladas sem relação com erro de OCR real).
+    Resultado fica em cache de processo por _CACHE_CONFUSOES_TTL_SEGUNDOS.
+    """
+    agora = time.time()
+    if (not forcar_atualizacao and _CACHE_CONFUSOES['dados'] is not None
+            and agora - _CACHE_CONFUSOES['atualizado_em'] < _CACHE_CONFUSOES_TTL_SEGUNDOS):
+        return _CACHE_CONFUSOES['dados']
+
+    tabela = {char: set(candidatos) for char, candidatos in _CONFUSOES_OCR_BASE.items()}
+
+    conn = get_db_connection()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(_QUERY_DIFERENCAS_1_CHAR, (min_ocorrencias,))
+            for char_de, char_para, _ocorrencias in cursor.fetchall():
+                if char_de and char_para:
+                    tabela.setdefault(char_de, set()).add(char_para)
+                    tabela.setdefault(char_para, set()).add(char_de)
+        except mysql.connector.Error as err:
+            logger.error(f"Erro ao carregar tabela de confusões aprendida: {err}")
+        finally:
+            cursor.close()
+            conn.close()
+    else:
+        logger.error("obter_tabela_confusoes: sem conexão com o banco, usando só a base fixa")
+
+    _CACHE_CONFUSOES['dados'] = tabela
+    _CACHE_CONFUSOES['atualizado_em'] = agora
+    return tabela
+
+
+def registrar_ocorrencia_correcao(placa_lida, placa_corrigida):
+    """
+    Registra em deparaplacas que uma correção (placa_lida -> placa_corrigida)
+    aconteceu de novo, incrementando ocorrencias. Só deve ser chamada para
+    correções corroboradas pelo cadastro (a placa corrigida é um veículo
+    real com permissão no condomínio da leitura) — é a base do contador
+    usado na Fase 3 do plano de matching aprendido (aplicar automaticamente
+    só depois que a mesma leitura se repetir o suficiente).
+
+    Se já existir uma linha para essa placa_lida com um placapara DIFERENTE,
+    não sobrescreve (evita trocar uma correção já estabelecida por causa de
+    um match isolado divergente) — só incrementa quando o resultado bate
+    com o que já estava registrado.
+    """
+    if not placa_lida or not placa_corrigida or placa_lida == placa_corrigida:
+        return
+    if len(placa_lida) != 7 or len(placa_corrigida) != 7:
+        return
+
+    conn = get_db_connection()
+    if not conn:
+        logger.error("registrar_ocorrencia_correcao: sem conexão com o banco")
+        return
+
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO deparaplacas (placade, placapara, ocorrencias)
+            VALUES (%s, %s, 1)
+            ON DUPLICATE KEY UPDATE
+                ocorrencias = ocorrencias + (placapara = VALUES(placapara))
+        """, (placa_lida, placa_corrigida))
+        conn.commit()
+    except mysql.connector.Error as err:
+        conn.rollback()
+        logger.error(f"registrar_ocorrencia_correcao: erro ao registrar {placa_lida} -> {placa_corrigida}: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def buscar_correcao_aprendida_confiavel(placa_lida, idcond, min_ocorrencias=LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA):
+    """
+    Fase 3 do plano de matching aprendido: verifica se já existe em
+    deparaplacas uma correção para placa_lida que (a) já se repetiu pelo
+    menos min_ocorrencias vezes e (b) aponta para uma placa com permissão
+    (cadperm) no condomínio da leitura — mesma exigência de escopo da Fase 1a,
+    aplicada aqui para não confiar cegamente num padrão aprendido em outro
+    condomínio.
+
+    Retorna (placa_corrigida, ocorrencias) ou (None, None) se não houver
+    correção confiável. ocorrencias vai junto para permitir o registro do
+    modo sombra (ver registrar_decisao_sombra) sem uma segunda consulta.
+    """
+    if not placa_lida or len(placa_lida) != 7 or not idcond:
+        return None, None
+
+    conn = get_db_connection()
+    if not conn:
+        return None, None
+
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT dp.placapara, dp.ocorrencias
+            FROM deparaplacas dp
+            JOIN cadperm cp ON cp.placa = dp.placapara AND cp.idcond = %s
+            WHERE dp.placade = %s AND dp.ocorrencias >= %s
+            LIMIT 1
+        """, (idcond, placa_lida, min_ocorrencias))
+        resultado = cursor.fetchone()
+        return (resultado[0], resultado[1]) if resultado else (None, None)
+    except mysql.connector.Error as err:
+        logger.error(f"buscar_correcao_aprendida_confiavel: erro ao consultar {placa_lida}: {err}")
+        return None, None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def registrar_decisao_sombra(idcond, placa_lida, placa_sugerida, ocorrencias):
+    """
+    Fase 5 do plano de matching aprendido (modo sombra): grava em
+    matching_sombra o que a Fase 3 teria decidido, sem aplicar de verdade.
+    Falha aqui não deve interromper o fluxo de matching — só loga o erro.
+    """
+    conn = get_db_connection()
+    if not conn:
+        logger.error("registrar_decisao_sombra: sem conexão com o banco")
+        return
+
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO matching_sombra (idcond, placalida, placa_sugerida, ocorrencias_no_momento)
+            VALUES (%s, %s, %s, %s)
+        """, (idcond, placa_lida, placa_sugerida, ocorrencias))
+        conn.commit()
+    except mysql.connector.Error as err:
+        conn.rollback()
+        logger.error(f"registrar_decisao_sombra: erro ao registrar {placa_lida} -> {placa_sugerida}: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def avaliar_modo_sombra(dias=None):
+    """
+    Fase 5 do plano de matching aprendido: compara cada sugestão registrada
+    em matching_sombra (congelada no momento em que a Fase 3 teria agido)
+    contra o deparaplacas.placapara ATUAL da mesma placa. Se um operador
+    corrigiu manualmente para um alvo diferente depois, a sugestão da Fase 3
+    teria sido errada — 'divergente'. Sem alteração desde então, ou sem
+    mapeamento algum hoje (raro), conta como 'confirmada'.
+
+    Args:
+        dias (int|None): restringe às sugestões dos últimos N dias; None = todas.
+
+    Returns:
+        dict: {'total': int, 'confirmadas': int, 'divergentes': int,
+               'taxa_acerto': float|None, 'detalhes_divergentes': list[dict]}
+    """
+    resultado = {'total': 0, 'confirmadas': 0, 'divergentes': 0, 'taxa_acerto': None,
+                 'detalhes_divergentes': []}
+    conn = get_db_connection()
+    if not conn:
+        logger.error("avaliar_modo_sombra: sem conexão com o banco")
+        return resultado
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = """
+            SELECT ms.idcond, ms.placalida, ms.placa_sugerida, ms.ocorrencias_no_momento,
+                   ms.criado_em, dp.placapara AS placapara_atual
+            FROM matching_sombra ms
+            LEFT JOIN deparaplacas dp ON dp.placade = ms.placalida
+        """
+        params = ()
+        if dias is not None:
+            query += " WHERE ms.criado_em >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+            params = (dias,)
+        cursor.execute(query, params)
+
+        for linha in cursor.fetchall():
+            resultado['total'] += 1
+            if linha['placapara_atual'] == linha['placa_sugerida']:
+                resultado['confirmadas'] += 1
+            else:
+                resultado['divergentes'] += 1
+                resultado['detalhes_divergentes'].append({
+                    'idcond': linha['idcond'],
+                    'placalida': linha['placalida'],
+                    'placa_sugerida': linha['placa_sugerida'],
+                    'placapara_atual': linha['placapara_atual'],
+                    'ocorrencias_no_momento': linha['ocorrencias_no_momento'],
+                    'criado_em': linha['criado_em'].strftime('%d/%m/%Y %H:%M') if linha['criado_em'] else None,
+                })
+
+        if resultado['total'] > 0:
+            resultado['taxa_acerto'] = round(resultado['confirmadas'] / resultado['total'], 3)
+
+    except mysql.connector.Error as err:
+        logger.error(f"avaliar_modo_sombra: erro ao avaliar: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return resultado
+
+
+def gerar_auditoria_deparaplacas(dias_sem_recorrencia=30, min_ocorrencias=LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA):
+    """
+    Auditoria (Fase 4 do plano de matching aprendido): lista mapeamentos de
+    deparaplacas que já cruzaram o limiar de aplicação automática (ver
+    LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA) e merecem revisão manual do
+    administrador. Só leitura — não desfaz nada sozinha.
+
+    Sinais verificados:
+    - 'sem_permissao_atual': a placa de destino (placapara) não tem nenhuma
+      relação (cadperm) com nenhum condomínio hoje — o mapeamento nunca mais
+      vai disparar via Fase 3 (ver buscar_correcao_aprendida_confiavel), mas
+      segue "confirmado" no histórico.
+    - 'parou_de_recorrer': já bateu o limiar, mas a última leitura dessa
+      placa (placalida) no movcar foi há mais de dias_sem_recorrencia dias
+      — sugere que as poucas repetições que confirmaram o padrão podem ter
+      sido coincidência, não um erro sistemático de OCR.
+    - 'encadeamento': a placa de destino (placapara) de uma linha também
+      aparece como leitura errada (placade) de outra linha — uma placa
+      cadastrada corretamente não deveria precisar de correção.
+
+    Returns:
+        list[dict]: cada item tem 'tipo', 'placade', 'placapara',
+        'ocorrencias', 'detalhe'.
+    """
+    achados = []
+    conn = get_db_connection()
+    if not conn:
+        logger.error("gerar_auditoria_deparaplacas: sem conexão com o banco")
+        return achados
+
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT dp.placade, dp.placapara, dp.ocorrencias
+            FROM deparaplacas dp
+            LEFT JOIN cadperm cp ON cp.placa = dp.placapara
+            WHERE dp.ocorrencias >= %s AND cp.placa IS NULL
+        """, (min_ocorrencias,))
+        for linha in cursor.fetchall():
+            achados.append({
+                'tipo': 'sem_permissao_atual',
+                'placade': linha['placade'],
+                'placapara': linha['placapara'],
+                'ocorrencias': linha['ocorrencias'],
+                'detalhe': 'Placa de destino não tem nenhuma permissão (cadperm) hoje — '
+                           'mapeamento confirmado, mas nunca mais vai disparar automaticamente.'
+            })
+
+        cursor.execute("""
+            SELECT dp.placade, dp.placapara, dp.ocorrencias, mc.ultima
+            FROM deparaplacas dp
+            LEFT JOIN (
+                SELECT placalida, MAX(nowpost) AS ultima FROM movcar GROUP BY placalida
+            ) mc ON mc.placalida = dp.placade
+            WHERE dp.ocorrencias >= %s
+              AND (mc.ultima IS NULL OR mc.ultima < DATE_SUB(NOW(), INTERVAL %s DAY))
+        """, (min_ocorrencias, dias_sem_recorrencia))
+        for linha in cursor.fetchall():
+            ultima = linha['ultima'].strftime('%d/%m/%Y') if linha['ultima'] else 'nunca'
+            achados.append({
+                'tipo': 'parou_de_recorrer',
+                'placade': linha['placade'],
+                'placapara': linha['placapara'],
+                'ocorrencias': linha['ocorrencias'],
+                'detalhe': f'Última leitura desta placa no movcar: {ultima} — sem recorrência '
+                           f'nos últimos {dias_sem_recorrencia} dias.'
+            })
+
+        cursor.execute("""
+            SELECT dp.placade, dp.placapara, dp.ocorrencias
+            FROM deparaplacas dp
+            JOIN deparaplacas dp2 ON dp2.placade = dp.placapara
+            WHERE dp.ocorrencias >= %s
+        """, (min_ocorrencias,))
+        for linha in cursor.fetchall():
+            achados.append({
+                'tipo': 'encadeamento',
+                'placade': linha['placade'],
+                'placapara': linha['placapara'],
+                'ocorrencias': linha['ocorrencias'],
+                'detalhe': 'A placa de destino também aparece como leitura errada em outro '
+                           'mapeamento — placa cadastrada não deveria precisar de correção.'
+            })
+
+    except mysql.connector.Error as err:
+        logger.error(f"gerar_auditoria_deparaplacas: erro ao gerar auditoria: {err}")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return achados
 
 
 def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadastro_carros=False):
@@ -44,7 +415,11 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
     
     # Limpar e padronizar placa
     placa_limpa = limpar_placa(placa_lida)
-    
+    # Preservada sem alterações posteriores — usada para registrar ocorrências
+    # de correção em deparaplacas (ver registrar_ocorrencia_correcao), já que
+    # placa_limpa pode ser reatribuída mais abaixo (tentar_corrigir_placa).
+    placa_limpa_original = placa_limpa
+
     # NOVA FUNCIONALIDADE: Verificar correspondência exata com placas cadastradas primeiro
     if not pular_cadastro_carros:
         match_exato = verificar_placa_cadastrada_exata(placa_limpa, idcond)
@@ -56,13 +431,32 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                 'original_plate': placa_lida,
                 'match_method': 'exact_match_db'
             }
-    
+
+        # Fase 3: correção já aprendida e recorrente (ver buscar_correcao_aprendida_confiavel).
+        # Fase 5 (modo sombra): só aplica de verdade se aplicacao_automatica_ligada() —
+        # enquanto desligado, só registra o que faria (registrar_decisao_sombra) e segue
+        # o fluxo normal abaixo, sem aplicar nem pular a fila do operador.
+        correcao_aprendida, ocorrencias_atual = buscar_correcao_aprendida_confiavel(placa_limpa, idcond)
+        if correcao_aprendida:
+            if aplicacao_automatica_ligada():
+                registrar_ocorrencia_correcao(placa_limpa_original, correcao_aprendida)
+                return {
+                    'corrected_plate': correcao_aprendida,
+                    'found_match': True,
+                    'confidence': 0.98,  # Alta confiança: padrão já confirmado >= limiar
+                    'original_plate': placa_lida,
+                    'match_method': 'learned_recurrence'
+                }
+            else:
+                registrar_decisao_sombra(idcond, placa_limpa_original, correcao_aprendida, ocorrencias_atual)
+
     # Validar formato da placa
     if not validar_formato_placa(placa_limpa):
         # NOVA FUNCIONALIDADE: Tentar correções usando placas cadastradas como referência
         if not pular_cadastro_carros:
             match_fuzzy = buscar_melhor_correspondencia_cadastrada(placa_lida, idcond)
             if match_fuzzy['found'] and match_fuzzy['confidence'] >= confianca_minima:
+                registrar_ocorrencia_correcao(placa_limpa_original, match_fuzzy['placa'])
                 return {
                     'corrected_plate': match_fuzzy['placa'],
                     'found_match': True,
@@ -102,11 +496,14 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
         if conn:
             cursor = conn.cursor()
             try:
-                # Buscar todas as placas relacionadas ao condomínio $$$$$ Checar se vai ficar só no condomínio depois
-                # query = "SELECT DISTINCT placa FROM cadperm WHERE idcond = %s"
-                # cursor.execute(query, (idcond,))
-                query = "SELECT DISTINCT placa FROM cadveiculo"
-                cursor.execute(query)
+                # Restrito às placas com relação (cadperm) com o condomínio da câmera —
+                # evita corrigir a leitura para uma placa cadastrada só em outro condomínio.
+                query = """
+                    SELECT DISTINCT cv.placa
+                    FROM cadveiculo cv
+                    JOIN cadperm cp ON cp.placa = cv.placa AND cp.idcond = %s
+                """
+                cursor.execute(query, (idcond,))
 
                 placas_cadastradas = [row[0] for row in cursor.fetchall()]
 
@@ -114,6 +511,7 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                     # Verificar placas próximas (1 caractere diferente)
                     match_proximo = buscar_placa_proxima_cadastrada(placa_limpa, placas_cadastradas)
                     if match_proximo['found']:
+                        registrar_ocorrencia_correcao(placa_limpa_original, match_proximo['placa'])
                         return {
                             'corrected_plate': match_proximo['placa'],
                             'found_match': True,
@@ -128,6 +526,7 @@ def process_heimdall_plate(placa_lida, idcond, confianca_minima=0.8, pular_cadas
                     if match_deparaplacas['found']:
                         # Verificar se a placa de destino está nas placas cadastradas do condomínio
                         if match_deparaplacas['placa_destino'] in placas_cadastradas:
+                            registrar_ocorrencia_correcao(placa_limpa_original, match_deparaplacas['placa_destino'])
                             return {
                                 'corrected_plate': match_deparaplacas['placa_destino'],
                                 'found_match': True,
@@ -203,27 +602,9 @@ def tentar_corrigir_placa(placa):
     
     placa_corrigida = placa.upper()
     
-    # Dicionário de correções comuns de OCR
-    # Mapeia caracteres frequentemente confundidos
-    correcoes_ocr = {
-        # Números frequentemente confundidos com letras
-        '0': ['O', 'Q', 'D'],  # Zero com O, Q, D
-        '1': ['I', 'L', '|'],  # Um com I, L
-        '5': ['S'],            # Cinco com S
-        '8': ['B'],            # Oito com B
-        '6': ['G'],            # Seis com G
-        
-        # Letras frequentemente confundidas com números
-        'O': ['0', 'Q', 'D'],  # O com zero, Q, D
-        'I': ['1', 'L', '|'],  # I com um, L
-        'S': ['5'],            # S com cinco
-        'B': ['8'],            # B com oito
-        'G': ['6'],            # G com seis
-        'Z': ['2'],            # Z com dois
-        'Q': ['O', '0'],       # Q com O, zero
-        'D': ['0', 'O'],       # D com zero, O
-    }
-    
+    # Tabela de confusões de OCR: base fixa + padrões aprendidos do deparaplacas
+    correcoes_ocr = obter_tabela_confusoes()
+
     # NOVA FUNCIONALIDADE: Primeiro tentar conversão entre formatos
     placa_conversao = aplicar_correcoes_formato(placa_corrigida, 'conversao', correcoes_ocr)
     if placa_conversao and validar_formato_placa(placa_conversao):
@@ -424,11 +805,14 @@ def verificar_placa_cadastrada_exata(placa, idcond):
     
     cursor = conn.cursor()
     try:
-        # Buscar placa exata que tenha alguma relação com o condomínio $$$$$
-        # query = "SELECT DISTINCT placa FROM cadperm WHERE idcond = %s"
-        # cursor.execute(query, (idcond,))
-        query = "SELECT DISTINCT placa FROM cadveiculo WHERE placa = %s"
-        cursor.execute(query, (placa,))
+        # Só considera match se a placa também tiver relação (cadperm) com este condomínio
+        query = """
+            SELECT DISTINCT cv.placa
+            FROM cadveiculo cv
+            JOIN cadperm cp ON cp.placa = cv.placa AND cp.idcond = %s
+            WHERE cv.placa = %s
+        """
+        cursor.execute(query, (idcond, placa))
 
         resultado = cursor.fetchone()
         
@@ -467,11 +851,13 @@ def buscar_melhor_correspondencia_cadastrada(placa_lida, idcond, limite_similari
     
     cursor = conn.cursor()
     try:
-        # Buscar todas as placas relacionadas ao condomínio $$$$$
-        # query = "SELECT DISTINCT placa FROM cadperm WHERE idcond = %s"
-        # cursor.execute(query, (idcond,))
-        query = "SELECT DISTINCT placa FROM cadveiculo"
-        cursor.execute(query)
+        # Restrito às placas com relação (cadperm) com o condomínio da câmera
+        query = """
+            SELECT DISTINCT cv.placa
+            FROM cadveiculo cv
+            JOIN cadperm cp ON cp.placa = cv.placa AND cp.idcond = %s
+        """
+        cursor.execute(query, (idcond,))
 
         placas_cadastradas = [row[0] for row in cursor.fetchall()]
         
@@ -615,25 +1001,8 @@ def calcular_similaridade_placas(placa1, placa2):
     if similaridade_formato >= 0.95:  # Alta similaridade por conversão de formato
         return similaridade_formato
     
-    # Mapa de confusões comuns OCR (bidirecional)
-    confusoes_ocr = {
-        '1': ['I', 'L', '|'],
-        'I': ['1', 'L', '|'],
-        'O': ['0', 'Q'],
-        '0': ['O', 'Q'],
-        'S': ['5'],
-        '5': ['S'],
-        'B': ['8'],
-        '8': ['B'],
-        'E': ['F'],
-        'F': ['E'],
-        'G': ['6'],
-        '6': ['G'],
-        'Z': ['2'],
-        '2': ['Z'],
-        'Q': ['O', '0'],
-        'D': ['0', 'O']
-    }
+    # Mapa de confusões OCR (bidirecional): base fixa + aprendida do deparaplacas
+    confusoes_ocr = obter_tabela_confusoes()
     
     # Contar matches exatos e similares
     matches_exatos = 0
@@ -796,26 +1165,8 @@ def buscar_placa_proxima_cadastrada(placa_lida, placas_cadastradas):
     if not placa_lida or not placas_cadastradas or len(placa_lida) != 7:
         return {'found': False, 'placa': None, 'confidence': 0.0, 'method': 'invalid_input'}
     
-    # Caracteres comuns de confusão em OCR
-    substituicoes_comuns = {
-        'I': ['1', 'L', '|'],
-        '1': ['I', 'L', '|'],
-        'L': ['1', 'I', '|'],
-        'O': ['0', 'Q'],
-        '0': ['O', 'Q'],
-        'Q': ['O', '0'],
-        'S': ['5'],
-        '5': ['S'],
-        'B': ['8'],
-        '8': ['B'],
-        'E': ['F'],
-        'F': ['E'],
-        'G': ['6'],
-        '6': ['G'],
-        'Z': ['2'],
-        '2': ['Z'],
-        'D': ['0', 'O']
-    }
+    # Caracteres comuns de confusão em OCR: base fixa + aprendida do deparaplacas
+    substituicoes_comuns = obter_tabela_confusoes()
     
     placa_lida = placa_lida.upper()
     

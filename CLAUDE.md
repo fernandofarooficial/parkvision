@@ -39,6 +39,8 @@ systemctl restart flaskapp
 ```
 A VPS tem seu próprio `.env` (`/home/workuser/parkvision/.env`), independente do `.env` local — mudanças de configuração local (ex: apontar para banco de teste) não se propagam para lá.
 
+**Estado atual (2026-08-17):** a VPS está rodando a branch `feature/matching-placas-aprendido` (não `main`) — deploy feito assim de propósito para validar o modo sombra da Fase 5 do matching aprendido de placas (ver seção própria) em produção antes de abrir mão do PR aberto. Ao fazer deploy dali em diante, checar `git branch --show-current` na VPS antes de assumir que é `main`.
+
 ## Desenvolvimento Local
 
 **Nunca rodar a aplicação local nem testes apontando para o banco de produção.** O app local (`127.0.0.1:5000`) e a instância da VPS são processos independentes, mas se o `.env` local apontar para `DB_HOST=72.60.58.241`, qualquer escrita feita localmente grava direto em dados reais — e algumas ações (ex: `enviar_pulso_por_direcao` em `visionlib/operlib/__init__.py`) fazem uma chamada HTTP real para o relé físico do portão (`caddisp.urldisp`), ou seja, um teste de "abrir porta" local pode acionar o portão de verdade em um condomínio real.
@@ -178,6 +180,8 @@ Nomenclatura legacy compacta (não mudar):
 | `logbruto` | JSON bruto do Heimdall (`idlog`, `placalida`, `nowpost`, `nomecam`, `idcam`, `jsonbruto`) — inclui a foto do veículo em `jsonbruto.data.image_base64`; retenção automática de `LOGBRUTO_RETENCAO_POR_COND` (20) registros por condomínio (via `idcam`→`cadcamera.idcond`), apagando os mais antigos a cada novo insert (`visionlib/dblib/limitar_logbruto_por_condominio`) — não há mascaramento de conteúdo, o volume é controlado só pela quantidade de linhas |
 | `logsistema` | Logs do sistema (`idlog`, `nivel`, `mensagem`, `criado_em`) — gravação assíncrona via `loglib`, retenção de 3 dias (limpeza automática a cada hora) |
 | `usuarios` | Usuários (`idgente`, `tipo_usuario`, `ativo`) |
+| `deparaplacas` | Correções de leitura (`placade` CHAR(7) PK = placa lida errada, `placapara` = placa correta, `ocorrencias` = quantas vezes essa correção já se repetiu — ver seção "Matching Aprendido de Placas") |
+| `matching_sombra` | Modo sombra do matching aprendido (`idcond`, `placalida`, `placa_sugerida`, `ocorrencias_no_momento`, `criado_em`) — sugestões da Fase 3 registradas sem serem aplicadas, para avaliação posterior (ver seção "Matching Aprendido de Placas") |
 
 **Views principais:** `vw_autorizacoes`, `vw_estacionados`, `vw_movimentos`, `vw_last_mov`, `vw_veiculos_cond`, `vw_veiculos_autorizados`
 
@@ -335,6 +339,10 @@ Se uma placa tem `cadperm` em duas unidades do mesmo condomínio, a `vw_moviment
 
 ## Fluxo LPR (informação para contexto)
 
+> `vplib.process_heimdall_plate()` — ver seção "Matching Aprendido de Placas" logo abaixo para como a
+> validação/correção de placa funciona hoje (escopo por condomínio, tabela de confusão OCR aprendida,
+> e o atalho de aplicação automática da Fase 3, hoje em modo sombra).
+
 ```
 POST /api/receber-dados → apilib → dblib.gravar_movimento()
   ├─ vplib.process_heimdall_plate()  # valida/corrige placa
@@ -359,6 +367,29 @@ POST /api/receber-dados → apilib → dblib.gravar_movimento()
 > fechasse, a sessão expirasse ou a rede caísse). A tela Operador ainda mostra o evento auto-liberado via
 > `pollAcoes`/`registrar_acao_store` (badge "AUTO"), mas não precisa estar aberta para o pulso ser enviado.
 
+## Matching Aprendido de Placas (`vplib`)
+
+Evolução do `vplib.process_heimdall_plate()` em 5 fases, motivada por uma análise de dados real de produção: ~25-27% das leituras do Heimdall nunca viravam uma placa válida mesmo depois de toda a lógica de correção existente, e o dicionário fixo de confusões OCR cobria só ~20% dos casos reais de erro de 1 caractere. Estado atual: **Fases 1-2 ativas em produção, Fase 3 em modo sombra** (não aplica de verdade ainda — ver Fase 5). Script de migração completo em `ArquivosApoio/database_migration.sql`, itens 10-12.
+
+**Fase 1 — geração de candidatas mais precisa:**
+- Toda busca de placa candidata em `vplib` (`verificar_placa_cadastrada_exata`, `buscar_melhor_correspondencia_cadastrada`, `buscar_placa_proxima_cadastrada`, e a busca inline em `process_heimdall_plate`) é restrita a placas com relação (`cadperm`) com o condomínio da câmera — antes buscava em todo o `cadveiculo`, podendo corrigir a leitura para uma placa cadastrada só em outro condomínio. Mesma correção em `dblib.placadastrada` (recebia `idcond` e não usava).
+- `vplib.obter_tabela_confusoes(min_ocorrencias=3)` substituiu os antigos dicionários fixos de confusão OCR — combina uma base fixa mínima (`_CONFUSOES_OCR_BASE`, cold start) com pares aprendidos a partir dos casos de 1 caractere de diferença em `deparaplacas` que já se repetiram `>= min_ocorrencias` vezes (evita aprender ruído de correções isoladas). Cache em memória por 1h.
+
+**Fase 2 — contador de recorrência (`deparaplacas.ocorrencias`):**
+- `vplib.registrar_ocorrencia_correcao(placa_lida, placa_corrigida)` incrementa (`INSERT ... ON DUPLICATE KEY UPDATE`) toda vez que `process_heimdall_plate` encontra uma correção **corroborada pelo cadastro** (`match_method` em `fuzzy_match_db`, `valid_format_single_char_correction`, `valid_format_deparaplacas_table`) — não em `format_valid_not_registered` (palpite sem corroboração não conta ocorrência). Não sobrescreve nem incrementa se a mesma leitura já tiver um `placapara` diferente registrado, para não trocar uma correção estabelecida por um match isolado divergente.
+
+**Fase 3 — aplicação automática (`LIMIAR_OCORRENCIAS_APLICACAO_AUTOMATICA = 3`):**
+- `vplib.buscar_correcao_aprendida_confiavel(placa_lida, idcond)` verifica se já existe uma correção com `ocorrencias >= 3` **e** cuja placa de destino tem permissão no condomínio da leitura (mesmo escopo da Fase 1a). Quando encontrada, `process_heimdall_plate` aplicaria direto (`match_method='learned_recurrence'`), sem passar pelo fuzzy match "ao vivo" nem pela fila do operador.
+
+**Fase 4 — auditoria (`/auditoria-depara`, somente `ADM`, link no menu do usuário em `base.html`):**
+- `vplib.gerar_auditoria_deparaplacas()` sinaliza mapeamentos que já cruzaram o limiar e merecem revisão manual: `sem_permissao_atual` (destino sem `cadperm` hoje — nunca mais dispara), `parou_de_recorrer` (sem leitura recente da mesma placa em `movcar`, default 30 dias), `encadeamento` (o destino de um mapeamento também aparece como leitura errada de outro). Só leitura/alerta, não desfaz nada sozinha.
+- Rotas: `/auditoria-depara` (página) e `/api/auditoria-depara` (JSON) — mesmo padrão de `/logs`.
+
+**Fase 5 — modo sombra (proteção antes de confiar na Fase 3 de verdade):**
+- `vplib.aplicacao_automatica_ligada()` lê a env var `MATCHING_APRENDIDO_AUTO_APLICAR` (default `false`/ausente = modo sombra). Enquanto desligada, a Fase 3 **não aplica** a correção — só grava a sugestão em `matching_sombra` via `vplib.registrar_decisao_sombra()` e segue o fluxo normal, como se a Fase 3 não existisse.
+- `vplib.avaliar_modo_sombra(dias=None)` compara cada sugestão congelada em `matching_sombra` contra o `deparaplacas.placapara` **atual** da mesma placa — divergência = um operador corrigiu manualmente para outro lugar depois, ou seja, a sugestão da Fase 3 teria sido errada. Exposto em `/api/auditoria-depara/sombra` e na mesma página `/auditoria-depara` (seção "Modo Sombra").
+- **Antes de ligar `MATCHING_APRENDIDO_AUTO_APLICAR=true` no `.env` da VPS, validar a taxa de acerto em `/auditoria-depara` com pelo menos 2-4 semanas de dados reais.**
+
 ## Convenções de Nomenclatura
 
 - **Python:** `snake_case` funções e variáveis, `UPPER_SNAKE_CASE` constantes
@@ -370,7 +401,7 @@ POST /api/receber-dados → apilib → dblib.gravar_movimento()
 
 ## Env Vars Relevantes
 
-`SECRET_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `CAMERAS_ENABLED`, `CAM_MONITOR_INTERVAL_MIN`, `SESSION_COOKIE_SECURE`
+`SECRET_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `CAMERAS_ENABLED`, `CAM_MONITOR_INTERVAL_MIN`, `SESSION_COOKIE_SECURE`, `MATCHING_APRENDIDO_AUTO_APLICAR` (default `false` = modo sombra da Fase 5 do matching aprendido de placas — ver seção própria)
 
 ## Reuso de Queries — Verificar Antes de Escrever SQL
 
@@ -404,5 +435,5 @@ Antes de escrever qualquer query nova, verificar nesta ordem:
 - Não filtrar dados sem `idcond`
 - Não retornar JSON sem o campo `success`
 - Não usar `print()` para debug — usar `logger`
-- Não modificar views SQL sem atualizar `doc_suporte/BaseDeDados/views.txt`
+- Mudanças de schema (tabelas ou views) não precisam atualizar `doc_suporte/BaseDeDados/` — essa pasta está no `.gitignore`, fora do controle de versão deste repositório, e pode nem existir localmente na máquina onde o Claude Code está rodando. Documentar lá (se aplicável) é responsabilidade do usuário, fora desta sessão.
 - Não reescrever JOINs que já existem em views — consultar a seção "Reuso de Queries" acima

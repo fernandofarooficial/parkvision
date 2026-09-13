@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}ParkVision — Auditoria De&lt;&gt;Para{% endblock %}
+
+{% block extra_css %}
+<style>
+    .aud-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: .5rem;
+    }
+
+    .aud-titulo {
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .aud-empty {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+
+    .badge-tipo {
+        font-weight: 500;
+    }
+
+    #aud-table td, #aud-table th {
+        vertical-align: middle;
+    }
+
+    .sombra-card {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: .5rem;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .sombra-stat {
+        font-size: 1.6rem;
+        font-weight: 600;
+    }
+
+    .sombra-label {
+        font-size: .8rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="aud-header">
+    <div>
+        <h1 class="aud-titulo"><i class="bi bi-shield-exclamation me-2"></i>Auditoria De&lt;&gt;Para</h1>
+        <p class="text-muted mb-0" style="font-size:.9rem">
+            Somente administradores — mapeamentos já aplicados automaticamente (Fase 3 do matching
+            aprendido) que merecem revisão manual. Só leitura, nada é desfeito por aqui.
+        </p>
+    </div>
+    <button id="btn-atualizar" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+    </button>
+</div>
+
+<!-- Fase 5: avaliação do modo sombra -->
+<div class="sombra-card">
+    <h2 class="h6 mb-3"><i class="bi bi-eye me-2"></i>Modo Sombra (Fase 5)</h2>
+    <div id="sombra-resumo" class="d-flex flex-wrap gap-4">
+        <div class="text-muted" style="font-size:.9rem">Carregando…</div>
+    </div>
+    <div id="sombra-divergentes-wrapper" class="mt-3 d-none">
+        <p class="mb-1" style="font-size:.85rem"><strong>Sugestões divergentes</strong> — a Fase 3 teria corrigido para uma placa diferente da que ficou registrada depois:</p>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                <tr>
+                    <th>Condomínio</th>
+                    <th>Placa lida</th>
+                    <th>Sugestão (Fase 3)</th>
+                    <th>Registrado depois</th>
+                    <th>Ocorrências</th>
+                    <th>Quando</th>
+                </tr>
+                </thead>
+                <tbody id="sombra-divergentes-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="aud-vazio" class="aud-empty d-none">
+    <i class="bi bi-check-circle fs-1 d-block mb-2"></i>
+    Nenhum risco encontrado no momento.
+</div>
+
+<div class="table-responsive">
+    <table id="aud-table" class="table table-sm table-hover align-middle d-none">
+        <thead class="table-dark">
+        <tr>
+            <th>Tipo</th>
+            <th>Placa lida (placade)</th>
+            <th>Placa corrigida (placapara)</th>
+            <th>Ocorrências</th>
+            <th>Detalhe</th>
+        </tr>
+        </thead>
+        <tbody id="aud-tbody"></tbody>
+    </table>
+</div>
+
+<script>
+const ROTULOS_TIPO = {
+    'sem_permissao_atual': {texto: 'Sem permissão atual', cor: 'bg-danger'},
+    'parou_de_recorrer': {texto: 'Parou de recorrer', cor: 'bg-warning text-dark'},
+    'encadeamento': {texto: 'Encadeamento', cor: 'bg-info text-dark'}
+};
+
+async function carregarAuditoria() {
+    const tbody = document.getElementById('aud-tbody');
+    const tabela = document.getElementById('aud-table');
+    const vazio = document.getElementById('aud-vazio');
+
+    try {
+        const resp = await fetch('/api/auditoria-depara');
+        const data = await resp.json();
+        if (!data.success) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-danger">${data.message || 'Erro ao carregar auditoria'}</td></tr>`;
+            tabela.classList.remove('d-none');
+            vazio.classList.add('d-none');
+            return;
+        }
+
+        const achados = data.data || [];
+        if (achados.length === 0) {
+            tabela.classList.add('d-none');
+            vazio.classList.remove('d-none');
+            return;
+        }
+
+        tbody.innerHTML = achados.map(item => {
+            const rotulo = ROTULOS_TIPO[item.tipo] || {texto: item.tipo, cor: 'bg-secondary'};
+            return `<tr>
+                <td><span class="badge ${rotulo.cor} badge-tipo">${rotulo.texto}</span></td>
+                <td><code>${item.placade}</code></td>
+                <td><code>${item.placapara ?? '—'}</code></td>
+                <td>${item.ocorrencias}</td>
+                <td>${item.detalhe}</td>
+            </tr>`;
+        }).join('');
+
+        tabela.classList.remove('d-none');
+        vazio.classList.add('d-none');
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Erro ao carregar auditoria: ${err}</td></tr>`;
+        tabela.classList.remove('d-none');
+        vazio.classList.add('d-none');
+    }
+}
+
+async function carregarModoSombra() {
+    const resumo = document.getElementById('sombra-resumo');
+    const wrapper = document.getElementById('sombra-divergentes-wrapper');
+    const tbody = document.getElementById('sombra-divergentes-tbody');
+
+    try {
+        const resp = await fetch('/api/auditoria-depara/sombra');
+        const data = await resp.json();
+        if (!data.success) {
+            resumo.innerHTML = `<div class="text-danger">${data.message || 'Erro ao carregar modo sombra'}</div>`;
+            return;
+        }
+
+        const av = data.data;
+        if (av.total === 0) {
+            resumo.innerHTML = '<div class="text-muted" style="font-size:.9rem">Nenhuma sugestão registrada ainda no modo sombra.</div>';
+            wrapper.classList.add('d-none');
+            return;
+        }
+
+        const pct = av.taxa_acerto !== null ? Math.round(av.taxa_acerto * 100) : '—';
+        resumo.innerHTML = `
+            <div><div class="sombra-stat">${av.total}</div><div class="sombra-label">sugestões registradas</div></div>
+            <div><div class="sombra-stat text-success">${av.confirmadas}</div><div class="sombra-label">confirmadas</div></div>
+            <div><div class="sombra-stat text-danger">${av.divergentes}</div><div class="sombra-label">divergentes</div></div>
+            <div><div class="sombra-stat">${pct}%</div><div class="sombra-label">taxa de acerto</div></div>
+        `;
+
+        if (av.detalhes_divergentes.length > 0) {
+            tbody.innerHTML = av.detalhes_divergentes.map(d => `<tr>
+                <td>${d.idcond}</td>
+                <td><code>${d.placalida}</code></td>
+                <td><code>${d.placa_sugerida}</code></td>
+                <td><code>${d.placapara_atual ?? '—'}</code></td>
+                <td>${d.ocorrencias_no_momento}</td>
+                <td>${d.criado_em ?? '—'}</td>
+            </tr>`).join('');
+            wrapper.classList.remove('d-none');
+        } else {
+            wrapper.classList.add('d-none');
+        }
+    } catch (err) {
+        resumo.innerHTML = `<div class="text-danger">Erro ao carregar modo sombra: ${err}</div>`;
+    }
+}
+
+document.getElementById('btn-atualizar').addEventListener('click', () => {
+    carregarAuditoria();
+    carregarModoSombra();
+});
+carregarAuditoria();
+carregarModoSombra();
+</script>
+
+{% endblock %}
