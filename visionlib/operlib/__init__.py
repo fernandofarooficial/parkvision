@@ -10,10 +10,12 @@ import time
 import threading
 import logging
 import requests
+import pytz
 from datetime import datetime
 from config.database import get_db_connection
 
 logger = logging.getLogger(__name__)
+BRASIL_TZ = pytz.timezone('America/Sao_Paulo')
 
 _event_store = {}       # {idcond: [event_dict, ...]}  — mais recente primeiro
 _event_lock = threading.Lock()
@@ -386,6 +388,73 @@ def enviar_pulso_por_direcao(idcond, direcao):
         _enviar_pulso_dispositivo(cam['idcam'], idcond, direcao)
 
     return {'success': True, 'message': f'Pulso enviado ({len(cameras)} câmera(s))'}
+
+
+_LABEL_DIRECAO_DISPOSITIVO = {'E': 'Entrada', 'S': 'Saída'}
+
+
+def _checar_dispositivo_online(urldisp, timeout=3):
+    """
+    Verifica se o dispositivo (NioBox) está online via GET /get_device_info —
+    rota de leitura do próprio dispositivo, NÃO aciona relé/pulso.
+    """
+    url = f"http://{urldisp.rstrip('/')}/get_device_info"
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json().get('result') == 'success'
+    except (requests.exceptions.RequestException, ValueError):
+        return False
+
+
+def obter_status_dispositivos(idcond):
+    """
+    Verifica, em tempo real, se os dispositivos (NioBox) das câmeras do
+    condomínio estão online (sem enviar pulso). Uma entrada por câmera com
+    iddisp configurado, rotulada pela direção da câmera (Entrada/Saída).
+
+    Retorna:
+        list[dict]: [{idcam, direcao, label, ativo, checado_em, checado_ts}]
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT cc.idcam, cc.direcao, cd.urldisp
+            FROM cadcamera cc
+            JOIN caddisp cd ON cd.iddisp = cc.iddisp
+            WHERE cc.idcond = %s AND cc.iddisp IS NOT NULL
+            ORDER BY cc.direcao
+        """, (idcond,))
+        rows = cursor.fetchall()
+    except Exception as e:
+        logger.error(f"operlib.obter_status_dispositivos: {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+    agora = datetime.now(BRASIL_TZ)
+    checado_em = agora.strftime('%d/%m/%Y %H:%M:%S')
+    checado_ts = agora.timestamp()
+
+    cache_urldisp = {}
+    resultado = []
+    for row in rows:
+        urldisp = row['urldisp']
+        if urldisp not in cache_urldisp:
+            cache_urldisp[urldisp] = _checar_dispositivo_online(urldisp)
+        resultado.append({
+            'idcam':      row['idcam'],
+            'direcao':    row['direcao'],
+            'label':      _LABEL_DIRECAO_DISPOSITIVO.get(row['direcao'], row['direcao']),
+            'ativo':      cache_urldisp[urldisp],
+            'checado_em': checado_em,
+            'checado_ts': checado_ts,
+        })
+    return resultado
 
 
 def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):

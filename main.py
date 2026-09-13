@@ -39,7 +39,7 @@ from visionlib.apontlib import obter_veiculos_cadastrados, obter_ultimo_moviment
 from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
                                corrigir_placa_operador, enviar_pulso_por_direcao,
-                               obter_cameras_dispositivo_por_direcao,
+                               obter_cameras_dispositivo_por_direcao, obter_status_dispositivos,
                                obter_info_veiculo_operador, obter_ultimos_movimentos,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
 from visionlib.camlib import obter_status_cameras
@@ -314,6 +314,16 @@ def api_operador_monitor_cameras(condominio_id):
     cameras = obter_status_cameras(condominio_id)
     cameras_enabled = os.getenv('CAMERAS_ENABLED', 'true').lower() != 'false'
     return jsonify({'success': True, 'cameras': cameras, 'cameras_enabled': cameras_enabled})
+
+
+# API: status dos dispositivos NioBox (checagem ao vivo, sem enviar pulso)
+@app.route('/api/operador/monitor-dispositivos/<int:condominio_id>')
+def api_operador_monitor_dispositivos(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    dispositivos = obter_status_dispositivos(condominio_id)
+    return jsonify({'success': True, 'dispositivos': dispositivos})
 
 
 # API: snapshot JPEG de câmera via RTSP

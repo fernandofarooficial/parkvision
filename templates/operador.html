@@ -435,6 +435,15 @@
     <div class="d-flex flex-wrap gap-2" id="monitor-cam-lista"></div>
 </div>
 
+<!-- Painel: status dos dispositivos NioBox (checagem ao vivo, sem pulso) -->
+<div id="painel-monitor-dispositivos" class="monitor-cam-painel d-none">
+    <div class="monitor-cam-header">
+        <h6><i class="bi bi-hdd-network me-2"></i>Status dos Dispositivos</h6>
+        <small class="text-muted" id="monitor-disp-ts-geral"></small>
+    </div>
+    <div class="d-flex flex-wrap gap-2" id="monitor-disp-lista"></div>
+</div>
+
 <!-- Painel de Câmeras (visível somente se existirem câmeras com RTSP) -->
 <div id="painel-cameras" class="cameras-painel d-none">
     <div class="cameras-header">
@@ -2141,6 +2150,39 @@
             .catch(() => {});
     }
 
+    /* ── Status dos dispositivos NioBox (checagem ao vivo, sem pulso) ─ */
+    function carregarStatusDispositivos() {
+        fetch(`/api/operador/monitor-dispositivos/${condId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success || !Array.isArray(data.dispositivos) || data.dispositivos.length === 0) return;
+
+                const painel  = document.getElementById('painel-monitor-dispositivos');
+                const lista   = document.getElementById('monitor-disp-lista');
+                const tsGeral = document.getElementById('monitor-disp-ts-geral');
+
+                // Timestamp da verificação mais recente
+                const ref = data.dispositivos.reduce((best, d) => {
+                    return (!best || (d.checado_ts && d.checado_ts > best.ts))
+                        ? { ts: d.checado_ts, em: d.checado_em }
+                        : best;
+                }, null);
+                tsGeral.textContent = ref ? 'Última verificação: ' + ref.em : '';
+
+                lista.innerHTML = data.dispositivos.map(d => {
+                    const cls = d.ativo ? 'bg-success' : 'bg-danger';
+                    const txt = d.ativo ? 'Online' : 'Offline';
+                    return `<div class="monitor-cam-item">
+                                <span class="badge ${cls}">${txt}</span>
+                                <span class="monitor-cam-nome">${d.label}</span>
+                            </div>`;
+                }).join('');
+
+                painel.classList.remove('d-none');
+            })
+            .catch(() => {});
+    }
+
     /* ── Inicialização ────────────────────────────── */
     document.addEventListener('DOMContentLoaded', function () {
         dotConn.className = 'op-dot op-dot-neutro';
@@ -2156,6 +2198,8 @@
         setInterval(atualizarResumoVagas, 10000);
         carregarStatusCameras();
         setInterval(carregarStatusCameras, 5 * 60 * 1000);
+        carregarStatusDispositivos();
+        setInterval(carregarStatusDispositivos, 5 * 60 * 1000);
     });
 
 })();
