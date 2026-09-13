@@ -43,6 +43,7 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_info_veiculo_operador, obter_ultimos_movimentos,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
 from visionlib.camlib import obter_status_cameras
+from visionlib.statuslib import iniciar_monitor_status
 from visionlib.loglib import iniciar_persistencia_logs, obter_logs, contar_logs, limpar_todos as limpar_todos_logs
 from visionlib.mobilelib import (obter_ultimos_movimentos_mobile, obter_estacionados_mobile,
                                   obter_veiculos_unidade_mobile, novo_veiculo_mobile,
@@ -1327,6 +1328,7 @@ def api_m_novo_veiculo():
 # Em produção ou sem reloader, a variável não está definida — inicia normalmente.
 if os.environ.get('WERKZEUG_RUN_MAIN', 'false') == 'true' or not os.environ.get('WERKZEUG_RUN_MAIN'):
     iniciar_persistencia_logs()
+    iniciar_monitor_status()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

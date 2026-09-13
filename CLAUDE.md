@@ -95,6 +95,7 @@ visionlib/
   apontlib/           # Apontamento manual (bypass câmera)
   unidlib/            # Gestão de unidades habitacionais
   teleglib/           # Notificações Telegram
+  statuslib/          # Monitor background: mudança de status câmera/NioBox -> WhatsApp (Evolution API)
   apilib/             # Receptor webhook Heimdall (wrapper sobre gravar_movimento)
   mobilelib/          # Queries para a versão mobile (movimentos, estacionados, mapa, permissões, novo veículo)
 
@@ -184,6 +185,7 @@ Nomenclatura legacy compacta (não mudar):
 | `usuarios` | Usuários (`idgente`, `tipo_usuario`, `ativo`) |
 | `deparaplacas` | Correções de leitura (`placade` CHAR(7) PK = placa lida errada, `placapara` = placa correta, `ocorrencias` = quantas vezes essa correção já se repetiu — ver seção "Matching Aprendido de Placas") |
 | `matching_sombra` | Modo sombra do matching aprendido (`idcond`, `placalida`, `placa_sugerida`, `ocorrencias_no_momento`, `criado_em`) — sugestões da Fase 3 registradas sem serem aplicadas, para avaliação posterior (ver seção "Matching Aprendido de Placas") |
+| `cadmensagem_whatsapp` | Destino de WhatsApp por condomínio (`idcond` PK, `numero`) para os alertas de mudança de status de câmera/NioBox — ver seção "Alertas de Status (WhatsApp)". Sem linha para o condomínio, o alerta é só pulado (sem erro) |
 
 **Views principais:** `vw_autorizacoes`, `vw_estacionados`, `vw_movimentos`, `vw_last_mov`, `vw_veiculos_cond`, `vw_veiculos_autorizados`
 
@@ -347,6 +349,21 @@ O ParkVision **não verifica mais suas próprias câmeras** (não há mais RTSP 
 - `visionlib/camlib.obter_status_cameras(idcond)` faz um `JOIN` direto (`cadcamera INNER JOIN camwatch.camera`) — cross-database na mesma conexão MySQL, funciona porque o usuário do `.env` do ParkVision já tem grant de leitura no banco `camwatch`. Câmeras com `camwatch_camera_id IS NULL` simplesmente não aparecem no resultado (degrada bem: `/api/operador/monitor-cameras/<idcond>` retorna lista vazia e o painel na tela Operador fica oculto, sem erro).
 - **Preenchimento é manual e incremental**, condomínio por condomínio, via `UPDATE` direto (não existe tela de cadastro de câmeras no ParkVision). Hoje só o condomínio 2 (Veraneio) está mapeado: `idcam 190` (Entrada) → `camwatch_camera_id 2`, `idcam 164` (Saída) → `camwatch_camera_id 1`. Ver `ArquivosApoio/database_migration.sql`, item 14.
 - Colunas antigas `cadcamera.cam_ativo`/`cam_checado_em` (do monitor RTSP removido) ficaram no schema sem uso — não foram dropadas.
+- Na tela Operador os dois painéis (câmeras e dispositivos NioBox, ver "Checagem de Dispositivos NioBox" abaixo) foram unificados em uma única linha (`#painel-monitor-status`, `templates/operador.html`) — não são mais dois blocos empilhados.
+
+## Checagem de Dispositivos NioBox
+
+Diferente das câmeras (delegadas ao CamWatch), não existe app externo monitorando os relés NioBox — o próprio ParkVision faz a checagem, sem enviar pulso: `visionlib/operlib.obter_status_dispositivos(idcond)` dá um `GET /get_device_info` (rota de leitura do NioBox) em cada dispositivo vinculado a uma câmera do condomínio (`cadcamera.iddisp IS NOT NULL`, via `caddisp.urldisp`), rotulando o resultado por `direcao` (Entrada/Saída) em vez de nome de câmera. Checagem é **ao vivo, a cada chamada** (sem thread própria nem cache em banco) — servida por `/api/operador/monitor-dispositivos/<idcond>`, chamada pelo front a cada 5 min (mesmo cadence do painel de câmeras).
+
+## Alertas de Status (WhatsApp)
+
+Quando uma câmera (via CamWatch) ou um NioBox muda de `online` para `offline` (ou vice-versa), o ParkVision manda um WhatsApp — não usa mais Telegram para isso (o `_notificar_mudanca_status` do `camlib` antigo foi removido junto com o RTSP health-check próprio).
+
+- **Quem checa:** `visionlib/statuslib` — thread de background própria (`iniciar_monitor_status()`, chamada em `main.py` junto com `iniciar_persistencia_logs()`), intervalo `STATUS_MONITOR_INTERVAL_MIN` (default 5 min). Diferente do painel da tela Operador (que só atualiza enquanto alguém está com a tela aberta), essa thread roda sempre, independente de qualquer navegador — é ela quem de fato detecta e notifica a mudança.
+- **Onde fica o "último status conhecido":** em memória (dict `_ultimo_status` em `statuslib`, protegido por lock), não no banco — decisão deliberada, ver discussão que levou a isso: o Gunicorn roda com `--workers 1` (um processo só, threads `gthread`), então não há o problema clássico de workers vendo estados diferentes. Efeito colateral aceito: o estado zera a cada `systemctl restart flaskapp` (deploy), então a primeira checagem pós-restart nunca notifica (não há "anterior" pra comparar) — só atrasa a detecção de uma mudança em até um ciclo, se ela coincidir bem com o restart.
+- **Envio:** via **Evolution API** (self-hosted nesta mesma VPS — containers Docker `evolution-api`/`evolution-db`/`evolution-redis`, porta `8080`), instance `parkvision-alertas` (linkada a um WhatsApp real via QR code). Configuração em `.env`: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`.
+- **Destino por condomínio:** tabela `cadmensagem_whatsapp` (`idcond` PK, `numero`) — diferente do Telegram (`cadmensagem`, token+chat_id), aqui é só o número de destino, porque o remetente (a instance) é único e compartilhado entre todos os condomínios. Sem linha para o condomínio, o alerta é só pulado (log de warning, sem erro).
+- **O que NÃO está coberto:** condomínios sem `camwatch_camera_id` nem `iddisp` configurado não entram na checagem (`statuslib._listar_condominios_monitorados` só olha `cadcamera`). Uma câmera com `camwatch.camera.ultimo_status = 'desconhecido'` (ou `NULL`) é tratada como "sem dado" e não conta como mudança de estado.
 
 ## Fluxo LPR (informação para contexto)
 
@@ -412,7 +429,7 @@ Evolução do `vplib.process_heimdall_plate()` em 5 fases, motivada por uma aná
 
 ## Env Vars Relevantes
 
-`SECRET_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `CAMERAS_ENABLED`, `SESSION_COOKIE_SECURE`, `MATCHING_APRENDIDO_AUTO_APLICAR` (default `false` = modo sombra da Fase 5 do matching aprendido de placas — ver seção própria)
+`SECRET_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `CAMERAS_ENABLED`, `SESSION_COOKIE_SECURE`, `MATCHING_APRENDIDO_AUTO_APLICAR` (default `false` = modo sombra da Fase 5 do matching aprendido de placas — ver seção própria), `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`, `STATUS_MONITOR_INTERVAL_MIN` (default 5 — ver seção "Alertas de Status (WhatsApp)")
 
 ## Reuso de Queries — Verificar Antes de Escrever SQL
 

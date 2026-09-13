@@ -199,6 +199,20 @@ ALTER TABLE cadcamera
 UPDATE cadcamera SET camwatch_camera_id = 2 WHERE idcam = 190 AND idcond = 2; -- Veraneio Entrada
 UPDATE cadcamera SET camwatch_camera_id = 1 WHERE idcam = 164 AND idcond = 2; -- Veraneio Saída
 
+-- 15. Destino de WhatsApp por condomínio para alertas de mudança de status (2026-09-13)
+-- Quando a checagem em background (visionlib/statuslib) detecta que uma câmera
+-- (camwatch.camera.ultimo_status) ou um dispositivo NioBox (GET /get_device_info)
+-- mudou de online para offline ou vice-versa, envia uma mensagem via Evolution API
+-- (instance 'parkvision-alertas', já conectada a um WhatsApp real) para o número
+-- cadastrado aqui. Sem linha para o idcond, o alerta é simplesmente pulado (mesmo
+-- comportamento de "sem configuração = sem painel/aviso" já usado em
+-- camwatch_camera_id e cadmensagem). PK em idcond: um destino por condomínio.
+CREATE TABLE IF NOT EXISTS cadmensagem_whatsapp (
+    idcond INT NOT NULL,
+    numero VARCHAR(20) NOT NULL,
+    PRIMARY KEY (idcond)
+);
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 --
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
