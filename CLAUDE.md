@@ -39,6 +39,8 @@ systemctl restart flaskapp
 ```
 A VPS tem seu próprio `.env` (`/home/workuser/parkvision/.env`), independente do `.env` local — mudanças de configuração local (ex: apontar para banco de teste) não se propagam para lá.
 
+**Propriedade dos arquivos em `/home/workuser/parkvision`:** deve ser `workuser:workuser` (é o usuário que roda `flaskapp.service`). Se o deploy for feito via SSH como `root` (ex: chave/alias sem usuário `workuser` disponível), `git pull` deixa os arquivos atualizados como `root:root` — o app ainda funciona (permissões `644`/`755` dão leitura a todos), mas o processo `workuser` perde permissão de escrita no diretório, o que quebra silenciosamente a rotação de log (`RotatingFileHandler` em `logging_config.py` precisa renomear/remover arquivos em `parkvision.log.*`, e isso exige permissão de escrita no diretório, não só no arquivo). Foi o que aconteceu entre 2026-04-04 (data em que `parkvision.log.2`/`.3` pararam de ser atualizados) e 2026-09-13 (quando corrigido). Se depois de um deploy aparecer `PermissionError` em `journalctl -u flaskapp` apontando para `parkvision.log.*`, rodar como root: `chown -R workuser:workuser /home/workuser/parkvision`.
+
 **Estado atual (2026-08-17):** a VPS está rodando a branch `feature/matching-placas-aprendido` (não `main`) — deploy feito assim de propósito para validar o modo sombra da Fase 5 do matching aprendido de placas (ver seção própria) em produção antes de abrir mão do PR aberto. Ao fazer deploy dali em diante, checar `git branch --show-current` na VPS antes de assumir que é `main`.
 
 ## Desenvolvimento Local
@@ -87,7 +89,7 @@ visionlib/
   listlib/            # Listagens (usa vw_movimentos)
   dashlib/            # Mapa de vagas (usa vw_estacionados)
   rellib/             # Relatórios
-  camlib/             # Daemon RTSP health-check de câmeras
+  camlib/             # Status de câmeras lido do CamWatch (app externo, banco `camwatch` — ver seção própria)
   loglib/             # Persistência assíncrona de logs (tabela logsistema) + limpeza automática (retenção 3 dias)
   condlib/            # Dados de condomínios
   apontlib/           # Apontamento manual (bypass câmera)
@@ -172,7 +174,7 @@ Nomenclatura legacy compacta (não mudar):
 | Tabela | Descrição |
 |--------|-----------|
 | `cadcond` | Condomínios (`idcond`, `nmcond`, `limite` — total de vagas do condomínio, prevalece sobre a soma de `vagasunidades.vperm` quando > 0; qualquer tela que exiba "total de vagas" deve seguir esse fallback — `dashlib.obter_mapa_vagas` e `unidlib.listar_unidades_vagas` já fazem isso) |
-| `cadcamera` | Câmeras (`idcam`, `idcond`, `direcao` E/S/I) |
+| `cadcamera` | Câmeras (`idcam`, `idcond`, `direcao` E/S/I, `camwatch_camera_id` — vínculo manual com o CamWatch, ver seção "Status de Câmeras (CamWatch)") |
 | `cadveiculo` | Veículos (`placa` PK, sem unidade/condomínio) |
 | `cadperm` | Permissões (`idperm`, `placa`, `idcond`, `unidade`, `data_inicio`, `data_fim` NULL=indefinida) |
 | `movcar` | Movimentos (`idmov`, `idcond`, `placa`, `contav`, `idgente`, `direcao`, `nowpost`, `origem`, `statusmov`, `motivo`) |
@@ -337,6 +339,15 @@ Tela `/relatorios/<condominio_id>` lista cards que levam a cada relatório (`tem
 
 Se uma placa tem `cadperm` em duas unidades do mesmo condomínio, a `vw_movimentos` retorna o movimento duplicado (2 linhas por `idmov`). Causa raiz: `vw_veiculos_cond` retorna 2 linhas → JOIN multiplica. Ao implementar relatórios ou listagens, deduplique por `idmov` após fetchall.
 
+## Status de Câmeras (CamWatch)
+
+O ParkVision **não verifica mais suas próprias câmeras** (não há mais RTSP health-check nem thread de background em `camlib`). O status vem de um app externo já rodando nesta mesma VPS: **CamWatch** — dois serviços systemd (`camwatch-checker`, daemon que roda `ffprobe` contra cada câmera; `camwatch-web`, Gunicorn na porta 5005), código em `/home/workuser/camwatch`, banco MySQL próprio `camwatch` no **mesmo servidor** MySQL do ParkVision. Tabela relevante: `camwatch.camera` (`id`, `nome`, `url_rtsp`, `ultimo_status` ENUM `online`/`offline`/`desconhecido`, `ultima_verificacao`).
+
+- `cadcamera.camwatch_camera_id` (INT NULL) é o vínculo manual entre os dois cadastros — aponta para `camwatch.camera.id`. Não existe chave de correspondência automática confiável: `cadcamera.rtsp` está vazio em produção, e os nomes de câmera do CamWatch (ex: `Bravas Entrada`, `Portão garagem`) não seguem o mesmo padrão dos nomes do ParkVision (ex: `Blaia Entrada`). O nome do *grupo* no CamWatch (`camwatch.grupo_camera.nome`, formato `"<código> <NomeCondomínio>"`, ex: `"6003 Veraneio"`) bate com `cadcond.nmcond` e ajuda a achar o condomínio certo, mas a câmera dentro do grupo ainda precisa ser confirmada visualmente por uma pessoa.
+- `visionlib/camlib.obter_status_cameras(idcond)` faz um `JOIN` direto (`cadcamera INNER JOIN camwatch.camera`) — cross-database na mesma conexão MySQL, funciona porque o usuário do `.env` do ParkVision já tem grant de leitura no banco `camwatch`. Câmeras com `camwatch_camera_id IS NULL` simplesmente não aparecem no resultado (degrada bem: `/api/operador/monitor-cameras/<idcond>` retorna lista vazia e o painel na tela Operador fica oculto, sem erro).
+- **Preenchimento é manual e incremental**, condomínio por condomínio, via `UPDATE` direto (não existe tela de cadastro de câmeras no ParkVision). Hoje só o condomínio 2 (Veraneio) está mapeado: `idcam 190` (Entrada) → `camwatch_camera_id 2`, `idcam 164` (Saída) → `camwatch_camera_id 1`. Ver `ArquivosApoio/database_migration.sql`, item 14.
+- Colunas antigas `cadcamera.cam_ativo`/`cam_checado_em` (do monitor RTSP removido) ficaram no schema sem uso — não foram dropadas.
+
 ## Fluxo LPR (informação para contexto)
 
 > `vplib.process_heimdall_plate()` — ver seção "Matching Aprendido de Placas" logo abaixo para como a
@@ -401,7 +412,7 @@ Evolução do `vplib.process_heimdall_plate()` em 5 fases, motivada por uma aná
 
 ## Env Vars Relevantes
 
-`SECRET_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `CAMERAS_ENABLED`, `CAM_MONITOR_INTERVAL_MIN`, `SESSION_COOKIE_SECURE`, `MATCHING_APRENDIDO_AUTO_APLICAR` (default `false` = modo sombra da Fase 5 do matching aprendido de placas — ver seção própria)
+`SECRET_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `CAMERAS_ENABLED`, `SESSION_COOKIE_SECURE`, `MATCHING_APRENDIDO_AUTO_APLICAR` (default `false` = modo sombra da Fase 5 do matching aprendido de placas — ver seção própria)
 
 ## Reuso de Queries — Verificar Antes de Escrever SQL
 

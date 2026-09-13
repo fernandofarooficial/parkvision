@@ -181,8 +181,26 @@ CREATE TABLE IF NOT EXISTS matching_sombra (
 ALTER TABLE deparaplacas
     ADD COLUMN lup DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
 
+-- 14. Mapeamento de câmeras com o CamWatch (2026-09-13)
+-- ParkVision deixou de fazer sua própria verificação de câmera (RTSP OPTIONS
+-- via camlib) e passou a ler o status de um app externo já rodando na mesma
+-- VPS/servidor MySQL: CamWatch (banco `camwatch`, tabela `camera.ultimo_status`,
+-- 'online'/'offline'/'desconhecido'). camwatch_camera_id aponta para
+-- camwatch.camera.id — quando NULL, a câmera simplesmente não aparece no painel
+-- de monitoramento (visionlib/camlib.obter_status_cameras faz INNER JOIN).
+-- Preenchimento é manual, condomínio por condomínio (não há chave de
+-- correspondência confiável por nome ou RTSP entre os dois cadastros) — feito
+-- via UPDATE direto, sem tela própria. Preenchido inicialmente só para o
+-- condomínio 2 (Veraneio): idcam 190 (Entrada) -> camwatch_camera_id 2,
+-- idcam 164 (Saída) -> camwatch_camera_id 1.
+ALTER TABLE cadcamera
+    ADD COLUMN camwatch_camera_id INT NULL DEFAULT NULL;
+
+UPDATE cadcamera SET camwatch_camera_id = 2 WHERE idcam = 190 AND idcond = 2; -- Veraneio Entrada
+UPDATE cadcamera SET camwatch_camera_id = 1 WHERE idcam = 164 AND idcond = 2; -- Veraneio Saída
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
--- 
+--
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
 -- 2. 'usuario_condominios' controla quais condomínios cada usuário pode acessar
 -- 3. 'solicitacoes_inscricao' gerencia pedidos de cadastro

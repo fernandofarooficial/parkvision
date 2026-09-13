@@ -42,7 +42,7 @@ from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, execu
                                obter_cameras_dispositivo_por_direcao,
                                obter_info_veiculo_operador, obter_ultimos_movimentos,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
-from visionlib.camlib import iniciar_monitor_cameras, obter_status_cameras
+from visionlib.camlib import obter_status_cameras
 from visionlib.loglib import iniciar_persistencia_logs, obter_logs, contar_logs, limpar_todos as limpar_todos_logs
 from visionlib.mobilelib import (obter_ultimos_movimentos_mobile, obter_estacionados_mobile,
                                   obter_veiculos_unidade_mobile, novo_veiculo_mobile,
@@ -1313,11 +1313,9 @@ def api_m_novo_veiculo():
     return jsonify({'success': ok, 'message': msg})
 
 
-# ── Monitor de câmeras em background ──────────────────────────────────────────
 # WERKZEUG_RUN_MAIN='true' indica o processo filho do reloader (desenvolvimento).
 # Em produção ou sem reloader, a variável não está definida — inicia normalmente.
 if os.environ.get('WERKZEUG_RUN_MAIN', 'false') == 'true' or not os.environ.get('WERKZEUG_RUN_MAIN'):
-    iniciar_monitor_cameras()
     iniciar_persistencia_logs()
 
 if __name__ == '__main__':
