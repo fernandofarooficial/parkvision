@@ -1098,6 +1098,16 @@ def favicon():
     return send_from_directory('static/icons', 'favicon-32.png', mimetype='image/png')
 
 
+@app.route('/sw.js')
+def service_worker():
+    # Servido na raiz (não em /static/sw.js) de propósito: o escopo padrão de um
+    # Service Worker é o diretório do próprio script, então registrado em
+    # /static/ ele nunca controlaria páginas em /app/ — navigator.serviceWorker.ready
+    # ficaria pendurado pra sempre (sem erro), quebrando tudo que depende dele
+    # (notificações push). Registrado a partir da raiz, o escopo cobre o site inteiro.
+    return send_from_directory('static', 'sw.js', mimetype='application/javascript')
+
+
 # ── PWA Mobile ────────────────────────────────────────────────────────────────
 
 @app.route('/app/')
