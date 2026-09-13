@@ -1230,6 +1230,19 @@ def api_m_estacionados():
     return jsonify({'success': True, 'data': veiculos})
 
 
+@app.route('/api/m/status-monitoramento')
+def api_m_status_monitoramento():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+    cameras = obter_status_cameras(idcond)
+    dispositivos = obter_status_dispositivos(idcond)
+    return jsonify({'success': True, 'cameras': cameras, 'dispositivos': dispositivos})
+
+
 @app.route('/api/m/unidade-veiculos/<unidade>')
 def api_m_unidade_veiculos(unidade):
     autenticado, _ = verificar_autenticacao_usuario()
