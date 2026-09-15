@@ -207,7 +207,7 @@
                 <th>Vagas(Ocup/Perm)</th>
                 <th>Última Movimentação</th>
                 <th>Status</th>
-                <th>Tempo</th>
+                <th>Modo</th>
                 <th>Permissão</th>
             </tr>
         </thead>
@@ -781,32 +781,14 @@
         return data.toLocaleString('pt-BR');
     }
 
-    function calcularTempo(dataString) {
-        if (!dataString) {
-            return "N/A";
+    function formatarModo(veiculo) {
+        if (!veiculo.ultima) {
+            return '<span class="text-muted">—</span>';
         }
-
-        const data = new Date(dataString);
-
-        // Verificar se a data é válida e não é anterior a 2000
-        if (isNaN(data.getTime()) || data.getFullYear() < 2000) {
-            return "N/A";
+        if (veiculo.modo === 'AUTO') {
+            return '<span class="badge bg-secondary"><i class="bi bi-robot me-1"></i>Auto</span>';
         }
-
-        const agora = new Date();
-        const diff = Math.abs(agora - data);
-
-        const minutos = Math.floor(diff / 60000);
-        const horas = Math.floor(minutos / 60);
-        const dias = Math.floor(horas / 24);
-
-        if (dias > 0) {
-            return `${dias} dia(s)`;
-        } else if (horas > 0) {
-            return `${horas} hora(s)`;
-        } else {
-            return `${minutos} minuto(s)`;
-        }
+        return '<span class="badge bg-primary"><i class="bi bi-person me-1"></i>Manual</span>';
     }
 
     function formatarPermanencia(veiculo) {
@@ -911,7 +893,7 @@
                 <td>${statusVagaHtml}</td>
                 <td>${formatarData(veiculo.ultima)}</td>
                 <td>${determinarStatus(veiculo)}</td>
-                <td>${calcularTempo(veiculo.ultima)}</td>
+                <td>${formatarModo(veiculo)}</td>
                 <td>${formatarPermanencia(veiculo)}</td>
             </tr>`;
         });

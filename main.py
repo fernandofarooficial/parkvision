@@ -13,7 +13,7 @@ load_dotenv()
 import datetime
 from visionlib.apilib import receber_dados
 from visionlib.dblib import obter_marcas, obter_modelos, inserir_carro, obter_cores, obter_ultimas_fotos
-from visionlib.vplib import criar_mapeamento_deparaplacas
+from visionlib.vplib import criar_mapeamento_deparaplacas, gerar_auditoria_deparaplacas, avaliar_modo_sombra
 from visionlib.condlib import obter_dados_condminios, lista_condominios
 from visionlib.permlib import criar_permissao, modificar_permissao, buscar_permissao, obter_unidades_condominio
 from visionlib.carlib import cadastrar_veiculo_nao_cadastrado, criar_veiculo_cadveiculo, modificar_veiculo_cadveiculo
@@ -39,10 +39,12 @@ from visionlib.apontlib import obter_veiculos_cadastrados, obter_ultimo_moviment
 from visionlib.operlib import (obter_eventos_recentes, obter_historico_db, executar_acao_operador,
                                obter_cameras_rtsp, obter_rtsp_camera, capturar_snapshot_rtsp,
                                corrigir_placa_operador, enviar_pulso_por_direcao,
-                               obter_cameras_dispositivo_por_direcao,
+                               obter_cameras_dispositivo_por_direcao, obter_status_dispositivos,
                                obter_info_veiculo_operador, obter_ultimos_movimentos,
                                obter_resumo_vagas_cond, obter_acoes_recentes)
-from visionlib.camlib import iniciar_monitor_cameras, obter_status_cameras
+from visionlib.camlib import obter_status_cameras
+from visionlib.statuslib import iniciar_monitor_status
+from visionlib.pushlib import salvar_inscricao, remover_inscricao
 from visionlib.loglib import iniciar_persistencia_logs, obter_logs, contar_logs, limpar_todos as limpar_todos_logs
 from visionlib.mobilelib import (obter_ultimos_movimentos_mobile, obter_estacionados_mobile,
                                   obter_veiculos_unidade_mobile, novo_veiculo_mobile,
@@ -85,6 +87,8 @@ _ROTAS_ESCRITA_LIVRES_SINDICO = {
     '/api/solicitar-inscricao',
     '/api/heimdall/webservice/lpr',
     '/app/login',
+    '/api/m/push-subscribe',
+    '/api/m/push-unsubscribe',
 }
 
 
@@ -314,6 +318,16 @@ def api_operador_monitor_cameras(condominio_id):
     cameras = obter_status_cameras(condominio_id)
     cameras_enabled = os.getenv('CAMERAS_ENABLED', 'true').lower() != 'false'
     return jsonify({'success': True, 'cameras': cameras, 'cameras_enabled': cameras_enabled})
+
+
+# API: status dos dispositivos NioBox (checagem ao vivo, sem enviar pulso)
+@app.route('/api/operador/monitor-dispositivos/<int:condominio_id>')
+def api_operador_monitor_dispositivos(condominio_id):
+    tem_acesso, _ = verificar_acesso_condominio(condominio_id)
+    if not tem_acesso:
+        return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+    dispositivos = obter_status_dispositivos(condominio_id)
+    return jsonify({'success': True, 'dispositivos': dispositivos})
 
 
 # API: snapshot JPEG de câmera via RTSP
@@ -1033,6 +1047,44 @@ def api_logs_limpar():
         return jsonify({'success': True, 'message': 'Logs limpos com sucesso'})
     return jsonify({'success': False, 'message': 'Erro ao limpar logs'})
 
+
+# ===== ROTAS PARA AUDITORIA DO MATCHING APRENDIDO DE PLACAS (Fase 4) =====
+
+@app.route('/auditoria-depara')
+def auditoria_depara_viewer():
+    """Página de auditoria dos mapeamentos aprendidos automaticamente em deparaplacas"""
+    if not verificar_permissao_tipo_usuario(['ADM']):
+        return redirect(url_for('login'))
+    return render_template('auditoria-depara.html')
+
+
+@app.route('/api/auditoria-depara')
+def api_auditoria_depara():
+    """Lista mapeamentos de deparaplacas com risco de falso positivo (somente leitura)."""
+    if not verificar_permissao_tipo_usuario(['ADM']):
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+
+    try:
+        achados = gerar_auditoria_deparaplacas()
+        return jsonify({'success': True, 'data': achados})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro ao gerar auditoria: {type(e).__name__}: {e}'})
+
+
+@app.route('/api/auditoria-depara/sombra')
+def api_auditoria_depara_sombra():
+    """Avaliação do modo sombra (Fase 5): compara o que a Fase 3 teria decidido
+    contra o que ficou registrado depois em deparaplacas (somente leitura)."""
+    if not verificar_permissao_tipo_usuario(['ADM']):
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 403
+
+    try:
+        dias = request.args.get('dias', type=int)
+        avaliacao = avaliar_modo_sombra(dias=dias)
+        return jsonify({'success': True, 'data': avaliacao})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro ao avaliar modo sombra: {type(e).__name__}: {e}'})
+
 # ── PWA — arquivos na raiz (iOS Safari exige) ─────────────────────────────────
 
 @app.route('/apple-touch-icon.png')
@@ -1044,6 +1096,16 @@ def apple_touch_icon():
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory('static/icons', 'favicon-32.png', mimetype='image/png')
+
+
+@app.route('/sw.js')
+def service_worker():
+    # Servido na raiz (não em /static/sw.js) de propósito: o escopo padrão de um
+    # Service Worker é o diretório do próprio script, então registrado em
+    # /static/ ele nunca controlaria páginas em /app/ — navigator.serviceWorker.ready
+    # ficaria pendurado pra sempre (sem erro), quebrando tudo que depende dele
+    # (notificações push). Registrado a partir da raiz, o escopo cobre o site inteiro.
+    return send_from_directory('static', 'sw.js', mimetype='application/javascript')
 
 
 # ── PWA Mobile ────────────────────────────────────────────────────────────────
@@ -1134,7 +1196,8 @@ def mobile_monitoramento():
                            usuario=usuario,
                            idcond=idcond,
                            nmcond=nmcond,
-                           movimentos=movimentos)
+                           movimentos=movimentos,
+                           vapid_public_key=os.getenv('VAPID_PUBLIC_KEY', ''))
 
 
 @app.route('/app/logout')
@@ -1179,6 +1242,46 @@ def api_m_estacionados():
         return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
     veiculos = obter_estacionados_mobile(idcond)
     return jsonify({'success': True, 'data': veiculos})
+
+
+@app.route('/api/m/status-monitoramento')
+def api_m_status_monitoramento():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    idcond = session.get('mobile_idcond')
+    if not idcond:
+        return jsonify({'success': False, 'message': 'Condomínio não selecionado'}), 400
+    cameras = obter_status_cameras(idcond)
+    dispositivos = obter_status_dispositivos(idcond)
+    return jsonify({'success': True, 'cameras': cameras, 'dispositivos': dispositivos})
+
+
+@app.route('/api/m/push-subscribe', methods=['POST'])
+def api_m_push_subscribe():
+    autenticado, usuario = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    data = request.get_json() or {}
+    endpoint = data.get('endpoint')
+    keys = data.get('keys', {})
+    if not endpoint or not keys.get('p256dh') or not keys.get('auth'):
+        return jsonify({'success': False, 'message': 'Inscrição inválida'}), 400
+    ok = salvar_inscricao(usuario['idgente'], endpoint, keys['p256dh'], keys['auth'])
+    return jsonify({'success': ok})
+
+
+@app.route('/api/m/push-unsubscribe', methods=['POST'])
+def api_m_push_unsubscribe():
+    autenticado, _ = verificar_autenticacao_usuario()
+    if not autenticado:
+        return jsonify({'success': False, 'message': 'Não autorizado'}), 401
+    data = request.get_json() or {}
+    endpoint = data.get('endpoint')
+    if not endpoint:
+        return jsonify({'success': False, 'message': 'Endpoint obrigatório'}), 400
+    ok = remover_inscricao(endpoint)
+    return jsonify({'success': ok})
 
 
 @app.route('/api/m/unidade-veiculos/<unidade>')
@@ -1275,12 +1378,11 @@ def api_m_novo_veiculo():
     return jsonify({'success': ok, 'message': msg})
 
 
-# ── Monitor de câmeras em background ──────────────────────────────────────────
 # WERKZEUG_RUN_MAIN='true' indica o processo filho do reloader (desenvolvimento).
 # Em produção ou sem reloader, a variável não está definida — inicia normalmente.
 if os.environ.get('WERKZEUG_RUN_MAIN', 'false') == 'true' or not os.environ.get('WERKZEUG_RUN_MAIN'):
-    iniciar_monitor_cameras()
     iniciar_persistencia_logs()
+    iniciar_monitor_status()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

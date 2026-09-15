@@ -10,10 +10,12 @@ import time
 import threading
 import logging
 import requests
+import pytz
 from datetime import datetime
 from config.database import get_db_connection
 
 logger = logging.getLogger(__name__)
+BRASIL_TZ = pytz.timezone('America/Sao_Paulo')
 
 _event_store = {}       # {idcond: [event_dict, ...]}  — mais recente primeiro
 _event_lock = threading.Lock()
@@ -250,7 +252,7 @@ def _camera_tem_dispositivo(idcam):
         conn.close()
 
 
-def _enviar_pulso_dispositivo(idcam, idcond):
+def _enviar_pulso_dispositivo(idcam, idcond, direcao=None):
     """
     Envia pulso ao relé do dispositivo associado à câmera que gerou o movimento.
 
@@ -262,9 +264,12 @@ def _enviar_pulso_dispositivo(idcam, idcond):
     if not idcam or not idcond:
         return
 
+    direcao_label = 'saída' if direcao == 'S' else 'entrada'
+    tag = f"_enviar_pulso_dispositivo({direcao_label})"
+
     conn = get_db_connection()
     if not conn:
-        logger.warning("_enviar_pulso_dispositivo: sem conexão com o banco")
+        logger.warning(f"{tag}: sem conexão com o banco")
         return
 
     cursor = conn.cursor(dictionary=True)
@@ -285,7 +290,7 @@ def _enviar_pulso_dispositivo(idcam, idcond):
 
     if not row:
         logger.info(
-            f"_enviar_pulso_dispositivo: nenhum dispositivo configurado "
+            f"{tag}: nenhum dispositivo configurado "
             f"para idcam={idcam}, idcond={idcond}"
         )
         return
@@ -301,7 +306,7 @@ def _enviar_pulso_dispositivo(idcam, idcond):
         ultima = _pulse_dedup.get(dedup_key)
         if ultima is not None and (now - ultima) < PULSE_DEDUP_SECONDS:
             logger.warning(
-                f"_enviar_pulso_dispositivo: pulso IGNORADO (dedup {now - ultima:.1f}s < {PULSE_DEDUP_SECONDS}s) "
+                f"{tag}: pulso IGNORADO (dedup {now - ultima:.1f}s < {PULSE_DEDUP_SECONDS}s) "
                 f"→ {url} relé={rele} idcam={idcam}"
             )
             return
@@ -314,11 +319,11 @@ def _enviar_pulso_dispositivo(idcam, idcond):
         resp.raise_for_status()
         resultado = resp.json().get("result", "?")
         logger.info(
-            f"_enviar_pulso_dispositivo: pulso enviado → {url} "
+            f"{tag}: pulso enviado → {url} "
             f"relé={rele} resultado={resultado}"
         )
     except requests.exceptions.RequestException as e:
-        logger.error(f"_enviar_pulso_dispositivo: falha ao enviar pulso → {url} — {e}")
+        logger.error(f"{tag}: falha ao enviar pulso → {url} — {e}")
 
 
 def obter_cameras_dispositivo_por_direcao(idcond):
@@ -380,9 +385,88 @@ def enviar_pulso_por_direcao(idcond, direcao):
         f"câmeras={[c['idcam'] for c in cameras]}"
     )
     for cam in cameras:
-        _enviar_pulso_dispositivo(cam['idcam'], idcond)
+        _enviar_pulso_dispositivo(cam['idcam'], idcond, direcao)
 
     return {'success': True, 'message': f'Pulso enviado ({len(cameras)} câmera(s))'}
+
+
+_LABEL_DIRECAO_DISPOSITIVO = {'E': 'Entrada', 'S': 'Saída'}
+
+DISPOSITIVO_TENTATIVAS_OFFLINE = 3   # leituras necessárias para confirmar offline
+DISPOSITIVO_INTERVALO_RETENTATIVA = 10  # segundos entre cada leitura de confirmação
+
+
+def _checar_dispositivo_online(urldisp, timeout=3):
+    """
+    Verifica se o dispositivo (NioBox) está online via GET /get_device_info —
+    rota de leitura do próprio dispositivo, NÃO aciona relé/pulso.
+
+    Uma leitura de sucesso já confirma online. Para confirmar offline, faz
+    DISPOSITIVO_TENTATIVAS_OFFLINE leituras com DISPOSITIVO_INTERVALO_RETENTATIVA
+    segundos entre elas — evita marcar offline por uma falha isolada de rede.
+    """
+    url = f"http://{urldisp.rstrip('/')}/get_device_info"
+    for tentativa in range(1, DISPOSITIVO_TENTATIVAS_OFFLINE + 1):
+        try:
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            if resp.json().get('result') == 'success':
+                return True
+        except (requests.exceptions.RequestException, ValueError):
+            pass
+        if tentativa < DISPOSITIVO_TENTATIVAS_OFFLINE:
+            time.sleep(DISPOSITIVO_INTERVALO_RETENTATIVA)
+    return False
+
+
+def obter_status_dispositivos(idcond):
+    """
+    Verifica, em tempo real, se os dispositivos (NioBox) das câmeras do
+    condomínio estão online (sem enviar pulso). Uma entrada por câmera com
+    iddisp configurado, rotulada pela direção da câmera (Entrada/Saída).
+
+    Retorna:
+        list[dict]: [{idcam, direcao, label, ativo, checado_em, checado_ts}]
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT cc.idcam, cc.direcao, cd.urldisp
+            FROM cadcamera cc
+            JOIN caddisp cd ON cd.iddisp = cc.iddisp
+            WHERE cc.idcond = %s AND cc.iddisp IS NOT NULL
+            ORDER BY cc.direcao
+        """, (idcond,))
+        rows = cursor.fetchall()
+    except Exception as e:
+        logger.error(f"operlib.obter_status_dispositivos: {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+    agora = datetime.now(BRASIL_TZ)
+    checado_em = agora.strftime('%d/%m/%Y %H:%M:%S')
+    checado_ts = agora.timestamp()
+
+    cache_urldisp = {}
+    resultado = []
+    for row in rows:
+        urldisp = row['urldisp']
+        if urldisp not in cache_urldisp:
+            cache_urldisp[urldisp] = _checar_dispositivo_online(urldisp)
+        resultado.append({
+            'idcam':      row['idcam'],
+            'direcao':    row['direcao'],
+            'label':      _LABEL_DIRECAO_DISPOSITIVO.get(row['direcao'], row['direcao']),
+            'ativo':      cache_urldisp[urldisp],
+            'checado_em': checado_em,
+            'checado_ts': checado_ts,
+        })
+    return resultado
 
 
 def _calcular_statusmov(cursor, rec, acao, direcao_cam='E'):
@@ -594,7 +678,7 @@ def executar_acao_operador(idmov, acao, idgente, motivo=None, origem='MANUAL', s
 
         # Enviar pulso: entrada (A, C, E, G, P) e saída (I, J)
         if statusmov in ('A', 'C', 'E', 'G', 'I', 'J', 'P'):
-            _enviar_pulso_dispositivo(rec.get('idcam'), rec.get('idcond'))
+            _enviar_pulso_dispositivo(rec.get('idcam'), rec.get('idcond'), direcao_cam)
 
         return {'success': True, 'message': 'Ação registrada com sucesso'}
 

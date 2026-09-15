@@ -174,6 +174,21 @@
             margin-bottom: 4px;
         }
 
+        /* ── Status (câmeras / NioBox) ── */
+        .status-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 0; border-bottom: 1px solid #f0f4f8;
+        }
+        .status-item:last-child { border-bottom: none; }
+        .status-nome { font-size: 14px; font-weight: 600; color: #1a3a5c; }
+        .status-duracao { font-size: 11px; color: #adb5bd; margin-top: 2px; }
+        .status-badge {
+            font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+            text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; margin-left: 10px;
+        }
+        .status-badge.on  { background: #d4edda; color: #155724; }
+        .status-badge.off { background: #f8d7da; color: #721c24; }
+
         /* ── Sheets (modais deslizantes) ── */
         .sheet-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.4);
@@ -381,6 +396,31 @@
         </div>
     </div>
 
+    <!-- ══════════════════ VIEW: STATUS (Câmeras / NioBox) ══════════════════ -->
+    <div id="view-status" class="view">
+        <div class="lista">
+            <div class="card">
+                <div class="status-item" style="border:none;padding:0">
+                    <div>
+                        <div class="status-nome">Notificações no celular</div>
+                        <div class="status-duracao" id="push-status-texto">Verificando…</div>
+                    </div>
+                    <button class="btn-secondary" style="width:auto;padding:8px 14px;margin:0"
+                            id="btn-push-toggle" onclick="alternarNotificacoes()">Ativar</button>
+                </div>
+            </div>
+            <div class="secao-titulo">Câmeras</div>
+            <div class="card">
+                <div id="status-cameras-lista"><div class="spinner">Carregando…</div></div>
+            </div>
+            <div class="secao-titulo">Dispositivos (NioBox)</div>
+            <div class="card">
+                <div id="status-dispositivos-lista"><div class="spinner">Carregando…</div></div>
+            </div>
+            <div class="atualizado" style="text-align:center" id="status-atualizado"></div>
+        </div>
+    </div>
+
     <!-- ══════════════════ VIEW: ESTACIONADOS ══════════════════ -->
     <div id="view-estacionados" class="view">
         <div class="lista">
@@ -398,6 +438,9 @@
         </button>
         <button class="nav-btn" id="nav-mapa" onclick="switchTab('mapa')">
             <span class="nav-icon">🅿️</span>Mapa
+        </button>
+        <button class="nav-btn" id="nav-status" onclick="switchTab('status')">
+            <span class="nav-icon">🖥️</span>Monitor
         </button>
         <button class="nav-btn" id="nav-estacionados" onclick="switchTab('estacionados')">
             <span class="nav-icon">🚗</span>Estacionados
@@ -688,8 +731,10 @@
 
     <script>
         const IDCOND = {{ idcond }};
+        const VAPID_PUBLIC_KEY = "{{ vapid_public_key }}";
         let mapaCarregado = false;
         let estCarregado  = false;
+        let statusCarregado = false;
 
         /* ══════════════════ NAVEGAÇÃO ══════════════════ */
 
@@ -701,6 +746,8 @@
 
             if (tab === 'mapa' && !mapaCarregado) carregarMapa();
             if (tab === 'estacionados' && !estCarregado) carregarEstacionados();
+            if (tab === 'status' && !statusCarregado) carregarStatusMonitoramento();
+            if (tab === 'status') atualizarStatusPush();
         }
 
         /* ══════════════════ SHEETS ══════════════════ */
@@ -823,6 +870,54 @@
                     </div>
                 `).join('');
             } catch { document.getElementById('sheet-unidade-body').innerHTML = '<div class="vazio">Erro ao carregar.</div>'; }
+        }
+
+        /* ══════════════════ STATUS (Câmeras / NioBox) ══════════════════ */
+
+        function _formatarDuracaoStatus(segundos) {
+            const min = Math.floor(segundos / 60);
+            if (min < 60) return `${min} min`;
+            const h = Math.floor(min / 60), restoMin = min % 60;
+            return restoMin ? `${h}h${String(restoMin).padStart(2, '0')}min` : `${h}h`;
+        }
+
+        async function carregarStatusMonitoramento() {
+            const listaCam  = document.getElementById('status-cameras-lista');
+            const listaDisp = document.getElementById('status-dispositivos-lista');
+            try {
+                const res  = await fetch('/api/m/status-monitoramento');
+                const data = await res.json();
+                if (!data.success) throw new Error();
+
+                listaCam.innerHTML = data.cameras.length === 0
+                    ? '<div class="vazio" style="padding:16px 0">Nenhuma câmera monitorada.</div>'
+                    : data.cameras.map(c => {
+                        const on = !!c.ativo;
+                        const duracao = (!on && c.offline_segundos != null)
+                            ? `<div class="status-duracao">há ${_formatarDuracaoStatus(c.offline_segundos)}</div>` : '';
+                        return `<div class="status-item">
+                                    <div><div class="status-nome">${c.nome}</div>${duracao}</div>
+                                    <span class="status-badge ${on ? 'on' : 'off'}">${on ? 'Ativo' : 'Inativo'}</span>
+                                </div>`;
+                    }).join('');
+
+                listaDisp.innerHTML = data.dispositivos.length === 0
+                    ? '<div class="vazio" style="padding:16px 0">Nenhum dispositivo monitorado.</div>'
+                    : data.dispositivos.map(d => {
+                        const on = !!d.ativo;
+                        return `<div class="status-item">
+                                    <div class="status-nome">${d.label}</div>
+                                    <span class="status-badge ${on ? 'on' : 'off'}">${on ? 'Online' : 'Offline'}</span>
+                                </div>`;
+                    }).join('');
+
+                const agora = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+                document.getElementById('status-atualizado').textContent = `Atualizado ${agora}`;
+                statusCarregado = true;
+            } catch {
+                listaCam.innerHTML  = '<div class="vazio" style="padding:16px 0">Erro ao carregar.</div>';
+                listaDisp.innerHTML = '';
+            }
         }
 
         /* ══════════════════ ESTACIONADOS ══════════════════ */
@@ -1160,7 +1255,109 @@
         }
 
         /* ══════════════════ PWA ══════════════════ */
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+
+        /* ══════════════════ NOTIFICAÇÕES PUSH ══════════════════ */
+
+        function _urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = atob(base64);
+            return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+        }
+
+        async function atualizarStatusPush() {
+            const btn = document.getElementById('btn-push-toggle');
+            const txt = document.getElementById('push-status-texto');
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || !VAPID_PUBLIC_KEY) {
+                txt.textContent = 'Não suportado neste navegador';
+                btn.style.display = 'none';
+                return;
+            }
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                const sub = await reg.pushManager.getSubscription();
+                if (sub) {
+                    txt.textContent = 'Ativadas neste dispositivo';
+                    btn.textContent = 'Desativar';
+                } else {
+                    txt.textContent = 'Avisa quando câmera/dispositivo cair';
+                    btn.textContent = 'Ativar';
+                }
+            } catch { txt.textContent = 'Não disponível'; btn.style.display = 'none'; }
+        }
+
+        async function alternarNotificacoes() {
+            const txt = document.getElementById('push-status-texto');
+
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+                txt.textContent = 'Não suportado neste navegador';
+                return;
+            }
+
+            let reg, sub;
+            try {
+                reg = await navigator.serviceWorker.ready;
+                sub = await reg.pushManager.getSubscription();
+            } catch (err) {
+                txt.textContent = 'Erro ao acessar o Service Worker';
+                console.error('push: serviceWorker/getSubscription', err);
+                return;
+            }
+
+            if (sub) {
+                try {
+                    await fetch('/api/m/push-unsubscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoint: sub.endpoint }),
+                    });
+                    await sub.unsubscribe();
+                } catch (err) {
+                    txt.textContent = 'Erro ao desativar';
+                    console.error('push: unsubscribe', err);
+                    return;
+                }
+                atualizarStatusPush();
+                return;
+            }
+
+            // iOS/Safari é rígido quanto a chamar requestPermission() o mais perto
+            // possível do clique — nada de fetch/rede antes disso.
+            let permissao;
+            try {
+                permissao = await Notification.requestPermission();
+            } catch (err) {
+                txt.textContent = 'Erro ao pedir permissão';
+                console.error('push: requestPermission', err);
+                return;
+            }
+            if (permissao !== 'granted') {
+                txt.textContent = (permissao === 'denied')
+                    ? 'Permissão negada — ative em Ajustes do iPhone > Notificações'
+                    : 'Permissão não concedida';
+                return;
+            }
+
+            try {
+                const novaSub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+                });
+                const j = novaSub.toJSON();
+                await fetch('/api/m/push-subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys }),
+                });
+            } catch (err) {
+                txt.textContent = 'Erro ao assinar notificações';
+                console.error('push: subscribe', err);
+                return;
+            }
+
+            atualizarStatusPush();
+        }
     </script>
 </body>
 </html>

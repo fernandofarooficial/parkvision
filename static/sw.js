@@ -29,3 +29,30 @@ self.addEventListener('fetch', (e) => {
         caches.match(e.request).then((cached) => cached || fetch(e.request))
     );
 });
+
+// Alertas de câmera/NioBox (visionlib/statuslib -> pushlib), mesmo conteúdo do WhatsApp
+self.addEventListener('push', (e) => {
+    let dados = { title: 'ParkVision', body: '' };
+    try { dados = e.data.json(); } catch (err) { /* payload vazio/õinválido — usa default */ }
+
+    e.waitUntil(
+        self.registration.showNotification(dados.title || 'ParkVision', {
+            body: dados.body || '',
+            icon: '/static/icons/icon-192.png',
+            badge: '/static/icons/icon-192.png',
+            tag: 'parkvision-status',
+        })
+    );
+});
+
+self.addEventListener('notificationclick', (e) => {
+    e.notification.close();
+    e.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((lista) => {
+            for (const c of lista) {
+                if (c.url.includes('/app/') && 'focus' in c) return c.focus();
+            }
+            if (clients.openWindow) return clients.openWindow('/app/monitoramento');
+        })
+    );
+});
