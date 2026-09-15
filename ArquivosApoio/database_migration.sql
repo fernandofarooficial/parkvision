@@ -235,6 +235,53 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     KEY idx_idgente (idgente)
 );
 
+-- 17. Coluna "Modo" (Auto/Manual) na vw_movimentos (2026-09-15)
+-- Expõe movcar.origem (quem confirmou o movimento: liberação automática do
+-- servidor ou decisão manual de um operador) na view usada pela tela de
+-- Monitoramento de Veículos. Chamada de "modo" na view (não "origem") porque
+-- esse nome já é usado ali com outro sentido (Detectado/Cadastrado, conforme
+-- a placa está ou não em cadveiculo). NULL em movcar.origem (registros
+-- gravados antes da coluna existir) vira 'MANUAL', mesmo padrão de COALESCE
+-- usado no resto do sistema. Puramente aditivo — só troca a definição da view,
+-- nenhuma tabela é alterada.
+CREATE OR REPLACE VIEW vw_movimentos AS
+SELECT
+    mv.idmov,
+    mv.idcond,
+    mv.placa,
+    mv.direcao,
+    COALESCE(vc.unidade, 'N/I') AS unidade,
+    COALESCE(vu.vperm, 0) AS permitidas,
+    COALESCE(ve.estacionados, 0) AS ocupadas,
+    CASE
+        WHEN vu.vperm IS NULL THEN 'Não aplicável'
+        WHEN COALESCE(ve.estacionados, 0) > vu.vperm THEN 'Excesso'
+        WHEN COALESCE(ve.estacionados, 0) = vu.vperm THEN 'Completo'
+        WHEN COALESCE(ve.estacionados, 0) < vu.vperm THEN 'Disponível'
+    END AS status_vaga,
+    ca.nmmarca AS marca,
+    cm.nmmodelo AS modelo,
+    cc.nmcor AS cor,
+    mv.nowpost AS ultima,
+    NULL AS penultima,
+    CASE WHEN cv.idmodelo IS NULL THEN 'Detectado' ELSE 'Cadastrado' END AS origem,
+    COALESCE(mv.origem, 'MANUAL') AS modo,
+    mv.idcam AS ultima_camera,
+    vc.data_inicio,
+    vc.data_fim,
+    COALESCE(vc.status_permissao, 'NÃO APLICÁVEL') AS status_permissao
+FROM movcar mv
+LEFT JOIN cadveiculo cv ON mv.placa = cv.placa
+LEFT JOIN cadmodelo cm ON cv.idmodelo = cm.idmodelo
+LEFT JOIN cadmarca ca ON cm.idmarca = ca.idmarca
+LEFT JOIN cadcores cc ON cv.idcor = cc.idcor
+LEFT JOIN vw_veiculos_cond vc ON vc.idcond = mv.idcond AND vc.placa = mv.placa
+LEFT JOIN vagasunidades vu ON vu.idcond = mv.idcond AND vu.unidade = vc.unidade
+LEFT JOIN vw_estacionados ve ON ve.idcond = mv.idcond AND ve.unidade = vc.unidade
+WHERE mv.contav = 1
+ORDER BY mv.idmov DESC
+LIMIT 5000;
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
 --
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
