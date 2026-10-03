@@ -123,8 +123,167 @@ ORDER BY s.data_solicitacao ASC;
 ALTER TABLE movcar
     ADD COLUMN IF NOT EXISTS origem ENUM('MANUAL','AUTO') NULL DEFAULT NULL;
 
+-- 10. Fase 0 do plano de matching aprendido de placas (2026-08-16)
+-- Contador de quantas vezes uma leitura (placade) já foi observada — usado para só
+-- aplicar automaticamente uma correção aprendida depois de se repetir (limiar >=3,
+-- validado a partir do histórico real de deparaplacas x movcar).
+ALTER TABLE deparaplacas
+    ADD COLUMN ocorrencias INT NOT NULL DEFAULT 1;
+
+-- Índice em movcar.placalida — necessário para consultar rapidamente o histórico de
+-- leituras brutas por placa (backfill do contador acima e geração periódica da
+-- tabela aprendida de confusões de caractere por posição).
+ALTER TABLE movcar
+    ADD INDEX idx_placalida (placalida);
+
+-- 11. Fase 2 do plano de matching aprendido de placas (2026-08-16)
+-- Backfill único do contador ocorrencias (coluna criada no item 10) a partir do
+-- histórico real de leituras em movcar.placalida. Depois deste backfill, o
+-- contador passa a ser mantido de forma incremental pelo próprio código
+-- (vplib.registrar_ocorrencia_correcao), chamado a cada correção corroborada
+-- pelo cadastro — este UPDATE não precisa ser reexecutado.
+UPDATE deparaplacas dp
+JOIN (
+    SELECT placalida, COUNT(*) AS total
+    FROM movcar
+    WHERE placalida IS NOT NULL
+    GROUP BY placalida
+) mc ON mc.placalida = dp.placade
+SET dp.ocorrencias = mc.total
+WHERE dp.ocorrencias <> mc.total;
+
+-- 12. Fase 5 do plano de matching aprendido de placas (2026-08-16)
+-- Registro do modo sombra: toda vez que a Fase 3 encontraria uma correção
+-- confiável (ocorrencias >= limiar) mas MATCHING_APRENDIDO_AUTO_APLICAR
+-- ainda não está ligada, a sugestão é gravada aqui em vez de aplicada de
+-- verdade. Depois de 2-4 semanas, compara-se placa_sugerida (congelada no
+-- momento) contra o deparaplacas.placapara atual da mesma placa — se
+-- divergirem, um operador corrigiu manualmente para outro lugar depois,
+-- ou seja, a sugestão da Fase 3 teria sido errada.
+CREATE TABLE IF NOT EXISTS matching_sombra (
+    id INT NOT NULL AUTO_INCREMENT,
+    idcond INT NOT NULL,
+    placalida CHAR(7) NOT NULL,
+    placa_sugerida CHAR(7) NOT NULL,
+    ocorrencias_no_momento INT NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_placalida (placalida),
+    KEY idx_criado_em (criado_em)
+);
+
+-- 13. Coluna lup (last update) em deparaplacas (2026-08-17)
+-- Marca a última vez que a linha foi tocada (criação ou incremento de ocorrencias
+-- via vplib.registrar_ocorrencia_correcao, ou correção manual via
+-- vplib.criar_mapeamento_deparaplacas) — antes só existia created_at (data de
+-- criação), sem sinal de "última recorrência". Puramente aditivo, ON UPDATE
+-- automático do MySQL, não exige mudança de código.
+ALTER TABLE deparaplacas
+    ADD COLUMN lup DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+-- 14. Mapeamento de câmeras com o CamWatch (2026-09-13)
+-- ParkVision deixou de fazer sua própria verificação de câmera (RTSP OPTIONS
+-- via camlib) e passou a ler o status de um app externo já rodando na mesma
+-- VPS/servidor MySQL: CamWatch (banco `camwatch`, tabela `camera.ultimo_status`,
+-- 'online'/'offline'/'desconhecido'). camwatch_camera_id aponta para
+-- camwatch.camera.id — quando NULL, a câmera simplesmente não aparece no painel
+-- de monitoramento (visionlib/camlib.obter_status_cameras faz INNER JOIN).
+-- Preenchimento é manual, condomínio por condomínio (não há chave de
+-- correspondência confiável por nome ou RTSP entre os dois cadastros) — feito
+-- via UPDATE direto, sem tela própria. Preenchido inicialmente só para o
+-- condomínio 2 (Veraneio): idcam 190 (Entrada) -> camwatch_camera_id 2,
+-- idcam 164 (Saída) -> camwatch_camera_id 1.
+ALTER TABLE cadcamera
+    ADD COLUMN camwatch_camera_id INT NULL DEFAULT NULL;
+
+UPDATE cadcamera SET camwatch_camera_id = 2 WHERE idcam = 190 AND idcond = 2; -- Veraneio Entrada
+UPDATE cadcamera SET camwatch_camera_id = 1 WHERE idcam = 164 AND idcond = 2; -- Veraneio Saída
+
+-- 15. Destino de WhatsApp por condomínio para alertas de mudança de status (2026-09-13)
+-- Quando a checagem em background (visionlib/statuslib) detecta que uma câmera
+-- (camwatch.camera.ultimo_status) ou um dispositivo NioBox (GET /get_device_info)
+-- mudou de online para offline ou vice-versa, envia uma mensagem via Evolution API
+-- (instance 'parkvision-alertas', já conectada a um WhatsApp real) para o número
+-- cadastrado aqui. Sem linha para o idcond, o alerta é simplesmente pulado (mesmo
+-- comportamento de "sem configuração = sem painel/aviso" já usado em
+-- camwatch_camera_id e cadmensagem). PK em idcond: um destino por condomínio.
+CREATE TABLE IF NOT EXISTS cadmensagem_whatsapp (
+    idcond INT NOT NULL,
+    numero VARCHAR(20) NOT NULL,
+    PRIMARY KEY (idcond)
+);
+
+-- 16. Inscrições de Web Push (mobile) para os mesmos alertas do WhatsApp (2026-09-13)
+-- Cada linha é a inscrição de um dispositivo (endpoint do navegador) para
+-- notificações push, vinculada ao usuário que autorizou (idgente). Quando uma
+-- câmera/NioBox muda de status, visionlib/statuslib manda a mesma notificação
+-- (WhatsApp + push) para os usuários com acesso ao condomínio no momento —
+-- consulta usuario_condominios (+ ADM, que tem acesso a tudo), não a sessão
+-- (quem dispara o envio é uma thread de background, sem sessão de ninguém).
+-- Um usuário pode ter várias linhas (um dispositivo/navegador por linha).
+-- Assinatura inválida/expirada (push service responde 404/410) é removida
+-- pelo próprio código de envio, não precisa de limpeza manual.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INT NOT NULL AUTO_INCREMENT,
+    idgente INT NOT NULL,
+    endpoint VARCHAR(500) NOT NULL,
+    p256dh VARCHAR(255) NOT NULL,
+    auth VARCHAR(255) NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_endpoint (endpoint),
+    KEY idx_idgente (idgente)
+);
+
+-- 17. Coluna "Modo" (Auto/Manual) na vw_movimentos (2026-09-15)
+-- Expõe movcar.origem (quem confirmou o movimento: liberação automática do
+-- servidor ou decisão manual de um operador) na view usada pela tela de
+-- Monitoramento de Veículos. Chamada de "modo" na view (não "origem") porque
+-- esse nome já é usado ali com outro sentido (Detectado/Cadastrado, conforme
+-- a placa está ou não em cadveiculo). NULL em movcar.origem (registros
+-- gravados antes da coluna existir) vira 'MANUAL', mesmo padrão de COALESCE
+-- usado no resto do sistema. Puramente aditivo — só troca a definição da view,
+-- nenhuma tabela é alterada.
+CREATE OR REPLACE VIEW vw_movimentos AS
+SELECT
+    mv.idmov,
+    mv.idcond,
+    mv.placa,
+    mv.direcao,
+    COALESCE(vc.unidade, 'N/I') AS unidade,
+    COALESCE(vu.vperm, 0) AS permitidas,
+    COALESCE(ve.estacionados, 0) AS ocupadas,
+    CASE
+        WHEN vu.vperm IS NULL THEN 'Não aplicável'
+        WHEN COALESCE(ve.estacionados, 0) > vu.vperm THEN 'Excesso'
+        WHEN COALESCE(ve.estacionados, 0) = vu.vperm THEN 'Completo'
+        WHEN COALESCE(ve.estacionados, 0) < vu.vperm THEN 'Disponível'
+    END AS status_vaga,
+    ca.nmmarca AS marca,
+    cm.nmmodelo AS modelo,
+    cc.nmcor AS cor,
+    mv.nowpost AS ultima,
+    NULL AS penultima,
+    CASE WHEN cv.idmodelo IS NULL THEN 'Detectado' ELSE 'Cadastrado' END AS origem,
+    COALESCE(mv.origem, 'MANUAL') AS modo,
+    mv.idcam AS ultima_camera,
+    vc.data_inicio,
+    vc.data_fim,
+    COALESCE(vc.status_permissao, 'NÃO APLICÁVEL') AS status_permissao
+FROM movcar mv
+LEFT JOIN cadveiculo cv ON mv.placa = cv.placa
+LEFT JOIN cadmodelo cm ON cv.idmodelo = cm.idmodelo
+LEFT JOIN cadmarca ca ON cm.idmarca = ca.idmarca
+LEFT JOIN cadcores cc ON cv.idcor = cc.idcor
+LEFT JOIN vw_veiculos_cond vc ON vc.idcond = mv.idcond AND vc.placa = mv.placa
+LEFT JOIN vagasunidades vu ON vu.idcond = mv.idcond AND vu.unidade = vc.unidade
+LEFT JOIN vw_estacionados ve ON ve.idcond = mv.idcond AND ve.unidade = vc.unidade
+WHERE mv.contav = 1
+ORDER BY mv.idmov DESC
+LIMIT 5000;
+
 -- COMENTÁRIOS SOBRE AS MODIFICAÇÕES:
--- 
+--
 -- 1. A tabela 'usuarios' substitui o sistema atual de senhas hardcoded
 -- 2. 'usuario_condominios' controla quais condomínios cada usuário pode acessar
 -- 3. 'solicitacoes_inscricao' gerencia pedidos de cadastro

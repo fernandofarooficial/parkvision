@@ -3,6 +3,9 @@
 .env.example
 env
 
+# Chave privada VAPID (Web Push) - NUNCA COMMITAR!
+*.pem
+
 # Arquivos Python
 __pycache__/
 *.py[cod]

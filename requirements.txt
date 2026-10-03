@@ -6,3 +6,5 @@ python-telegram-bot==22.3
 pytz
 python-dotenv
 opencv-python-headless
+bcrypt
+pywebpush
