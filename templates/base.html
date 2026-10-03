@@ -263,26 +263,16 @@
                             </div>
                         </div>
 
-                        <!-- Permissão no condomínio atual -->
+                        <!-- Permissões no condomínio atual (todas, inclusive vencidas) -->
                         <div class="info-secao mb-3" id="info-bloco-perm">
-                            <div class="info-titulo"><i class="bi bi-shield-check me-1"></i>Permissão</div>
-                            <div class="info-linha">
-                                <div class="info-campo">
-                                    <span class="info-campo-label">Unidade</span>
-                                    <span class="info-campo-valor" id="info-p-unidade">—</span>
-                                </div>
-                                <div class="info-campo">
-                                    <span class="info-campo-label">Status</span>
-                                    <span class="info-campo-valor" id="info-p-status">—</span>
-                                </div>
-                                <div class="info-campo">
-                                    <span class="info-campo-label">Início</span>
-                                    <span class="info-campo-valor" id="info-p-inicio">—</span>
-                                </div>
-                                <div class="info-campo">
-                                    <span class="info-campo-label">Fim</span>
-                                    <span class="info-campo-valor" id="info-p-fim">—</span>
-                                </div>
+                            <div class="info-titulo"><i class="bi bi-shield-check me-1"></i>Permissões</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light"><tr>
+                                        <th>Unidade</th><th>Início</th><th>Fim</th><th>Status</th>
+                                    </tr></thead>
+                                    <tbody id="info-perm-tbody"></tbody>
+                                </table>
                             </div>
                         </div>
 
@@ -534,8 +524,8 @@
                 document.getElementById('info-v-modelo').textContent = v.modelo || '—';
                 document.getElementById('info-v-cor').textContent    = v.cor    || '—';
 
-                const p = data.permissao;
-                if (!p) {
+                const perms = data.permissoes || [];
+                if (perms.length === 0) {
                     semPerm.classList.remove('d-none');
                     blocoV.classList.add('d-none');
                     blocoG.classList.add('d-none');
@@ -543,15 +533,17 @@
                     const statusBadge = {
                         'VIGENTE':    '<span class="badge bg-success">Vigente</span>',
                         'INDEFINIDA': '<span class="badge bg-primary">Indeterminada</span>',
+                        'FUTURA':     '<span class="badge bg-warning text-dark">Futura</span>',
                         'VENCIDA':    '<span class="badge bg-danger">Vencida</span>',
-                        'SEM PERMISSÃO': '<span class="badge bg-secondary">Sem permissão</span>',
                     };
-                    document.getElementById('info-p-unidade').textContent = p.unidade || '—';
-                    document.getElementById('info-p-status').innerHTML    = statusBadge[p.status_permissao] || p.status_permissao || '—';
-                    document.getElementById('info-p-inicio').textContent  =
-                        p.data_inicio ? `${p.data_inicio} ${p.hora_inicio || ''}`.trim() : '—';
-                    document.getElementById('info-p-fim').textContent     =
-                        p.data_fim    ? `${p.data_fim} ${p.hora_fim || ''}`.trim()    : 'Indeterminado';
+                    document.getElementById('info-perm-tbody').innerHTML = perms.map(p =>
+                        '<tr>' +
+                        '<td>' + p.unidade + '</td>' +
+                        '<td>' + p.data_inicio + '</td>' +
+                        '<td>' + (p.data_fim === 'Indefinido' ? 'Indeterminado' : p.data_fim) + '</td>' +
+                        '<td>' + (statusBadge[p.status] || p.status) + '</td>' +
+                        '</tr>'
+                    ).join('');
                 }
 
                 const g = data.vagas;

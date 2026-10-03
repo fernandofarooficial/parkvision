@@ -997,18 +997,21 @@ def obter_info_veiculo_operador(idcond, placa):
         """, (placa,))
         placas_de = [row['placade'] for row in cursor.fetchall()]
 
-        # Permissões em outros condomínios (seção extra, além da permissão do condomínio atual)
+        # Todas as permissões da placa (inclusive vencidas), separadas entre o
+        # condomínio atual e os demais (seção extra)
         cursor.execute("""
-            SELECT cc.nmcond AS condominio,
+            SELECT p.idcond,
+                   cc.nmcond AS condominio,
                    p.unidade,
                    p.data_inicio,
                    p.data_fim
             FROM cadperm  p
             JOIN cadcond cc ON cc.idcond = p.idcond
-            WHERE p.placa = %s AND p.idcond != %s
+            WHERE p.placa = %s
             ORDER BY p.data_inicio DESC
-        """, (placa, idcond))
+        """, (placa,))
         now = datetime.now()
+        permissoes = []
         permissoes_outros_condominios = []
         for row in cursor.fetchall():
             di = row['data_inicio']
@@ -1021,15 +1024,20 @@ def obter_info_veiculo_operador(idcond, placa):
                 status = 'VIGENTE'
             else:
                 status = 'VENCIDA'
-            permissoes_outros_condominios.append({
+            item = {
                 'condominio':  row['condominio'],
                 'unidade':     row['unidade'] or '—',
                 'data_inicio': di.strftime('%d/%m/%Y %H:%M') if di else '—',
                 'data_fim':    df.strftime('%d/%m/%Y %H:%M') if df else 'Indefinido',
                 'status':      status,
-            })
+            }
+            if row['idcond'] == idcond:
+                permissoes.append(item)
+            else:
+                permissoes_outros_condominios.append(item)
 
-        # Melhor permissão (rank mais alto)
+        # Melhor permissão (rank mais alto; empate → data_fim mais recente) —
+        # define a unidade usada no bloco de vagas
         cursor.execute("""
             SELECT a.unidade,
                    a.status_permissao,
@@ -1037,7 +1045,7 @@ def obter_info_veiculo_operador(idcond, placa):
                    a.data_fim
             FROM vw_autorizacoes a
             WHERE a.idcond = %s AND a.placa = %s
-            ORDER BY a.rank_permissao
+            ORDER BY a.rank_permissao, a.data_fim DESC
             LIMIT 1
         """, (idcond, placa))
         row_perm = cursor.fetchone()
@@ -1112,7 +1120,8 @@ def obter_info_veiculo_operador(idcond, placa):
             'success':                       True,
             'veiculo':                       veiculo,
             'permissao':                     permissao,
-            'vagas':                         vagas,
+            'permissoes':                    permissoes,
+            'vagas':                        vagas,
             'estacionados':                  estacionados,
             'placas_de':                     placas_de,
             'permissoes_outros_condominios': permissoes_outros_condominios,
